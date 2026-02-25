@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用户管理 - 字典管理系统</title>
+    <script src="/js/vue.global.js"></script>
+    <script src="/js/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        #app {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            padding: 30px;
+            margin-bottom: 20px;
+        }
+
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .search-box {
+            display: flex;
+            gap: 10px;
+        }
+
+        .search-box input {
+            padding: 10px 15px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+            width: 300px;
+            outline: none;
+        }
+
+        .search-box input:focus {
+            border-color: #667eea;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        th {
+            background: #f9fafb;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        tr:hover {
+            background: #f9fafb;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .action-buttons .btn {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .pagination button {
+            padding: 8px 12px;
+            border: 1px solid #e5e7eb;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .pagination button:hover:not(:disabled) {
+            background: #f3f4f6;
+        }
+
+        .pagination button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            margin-bottom: 20px;
+        }
+
+        .modal-header h2 {
+            color: #2c3e50;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            border-color: #667eea;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        /* 菜单权限树样式 */
+        .menu-permission-tree {
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .menu-group-item {
+            margin-bottom: 15px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        .menu-parent-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #f3f4f6;
+            margin-bottom: 10px;
+        }
+
+        .menu-checkbox-label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            font-weight: 600;
+            flex: 1;
+        }
+
+        .menu-checkbox-label input[type="checkbox"] {
+            width: auto;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+
+        .menu-name {
+            font-size: 15px;
+            color: #374151;
+        }
+
+        .menu-children {
+            margin-left: 30px;
+            margin-top: 10px;
+        }
+
+        .menu-child-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 0;
+            margin-bottom: 5px;
+        }
+
+        .menu-child-row .menu-checkbox-label {
+            font-weight: normal;
+        }
+
+        .permission-type-selector {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .permission-type-selector label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+            font-weight: normal;
+            margin: 0;
+        }
+
+        .permission-type-selector input[type="radio"] {
+            width: auto;
+            margin: 0;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="header">
+            <h1>👥 用户管理</h1>
+        </div>
+
+        <div class="card" v-if="!hasPermission">
+            <div style="text-align: center; padding: 40px; color: #ef4444;">
+                <h2>无权限访问</h2>
+                <p style="margin-top: 10px; color: #666;">您没有权限访问用户管理功能，请联系管理员。</p>
+            </div>
+        </div>
+
+        <div class="card" v-if="hasPermission">
+            <div class="toolbar">
+                <div class="search-box">
+                    <input 
+                        type="text" 
+                        v-model="keyword" 
+                        placeholder="搜索用户名、中文名、Git用户名"
+                        @keyup.enter="loadUsers"
+                    />
+                    <button class="btn btn-primary" @click="loadUsers">搜索</button>
+                </div>
+                <button class="btn btn-primary" @click="showAddModal">添加用户</button>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>用户名</th>
+                        <th>用户中文名</th>
+                        <th>Git用户名</th>
+                        <th>是否管理员</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="user in userList" :key="user.id">
+                        <td>{{ user.username }}</td>
+                        <td>{{ user.chineseName || '-' }}</td>
+                        <td>{{ user.gitUsername || '-' }}</td>
+                        <td>{{ user.isAdmin === 1 ? '是' : '否' }}</td>
+                        <td>{{ user.status === 1 ? '启用' : '禁用' }}</td>
+                        <td>
+                            <div class="action-buttons">
+                                <button class="btn btn-secondary" @click="showEditModal(user)">编辑</button>
+                                <button class="btn btn-secondary" @click="showResetPasswordModal(user)">重置密码</button>
+                                <button class="btn btn-secondary" @click="showPermissionModal(user)">权限配置</button>
+                                <button class="btn btn-danger" @click="deleteUser(user)" :disabled="user.username === 'admin'">删除</button>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="pagination">
+                <button @click="prevPage" :disabled="currentPage === 1">上一页</button>
+                <span>第 {{ currentPage }} / {{ totalPages }} 页</span>
+                <button @click="nextPage" :disabled="currentPage === totalPages">下一页</button>
+            </div>
+        </div>
+
+        <!-- 添加/编辑用户模态框 -->
+        <div class="modal" :class="{ show: showUserModal }">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>{{ editingUser ? '编辑用户' : '添加用户' }}</h2>
+                </div>
+                <div class="form-group">
+                    <label>用户名</label>
+                    <input 
+                        type="text" 
+                        v-model="formData.username" 
+                        :disabled="editingUser"
+                        required
+                    />
+                </div>
+                <div class="form-group">
+                    <label>用户中文名</label>
+                    <input type="text" v-model="formData.chineseName" />
+                </div>
+                <div class="form-group">
+                    <label>Git用户名</label>
+                    <input type="text" v-model="formData.gitUsername" />
+                </div>
+                <div class="form-group">
+                    <label>是否管理员</label>
+                    <select v-model="formData.isAdmin">
+                        <option :value="0">否</option>
+                        <option :value="1">是</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>状态</label>
+                    <select v-model="formData.status">
+                        <option :value="1">启用</option>
+                        <option :value="0">禁用</option>
+                    </select>
+                </div>
+                <div class="form-group" v-if="!editingUser">
+                    <label>密码</label>
+                    <input type="password" v-model="formData.password" placeholder="留空则使用默认密码Spdb@123" />
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @click="closeUserModal">取消</button>
+                    <button class="btn btn-primary" @click="saveUser">保存</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 重置密码模态框 -->
+        <div class="modal" :class="{ show: showPasswordModal }">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>重置密码</h2>
+                </div>
+                <div class="form-group">
+                    <label>新密码</label>
+                    <input type="password" v-model="newPassword" required />
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @click="showPasswordModal = false">取消</button>
+                    <button class="btn btn-primary" @click="resetPassword">确定</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 权限配置模态框 -->
+        <div class="modal" :class="{ show: showPermissionConfigModal }">
+            <div class="modal-content" style="max-width: 800px; max-height: 80vh; overflow-y: auto;">
+                <div class="modal-header">
+                    <h2>权限配置 - {{ permissionUser?.username }}</h2>
+                </div>
+                <div style="padding: 20px;">
+                    <div style="margin-bottom: 20px;">
+                        <p style="color: #6b7280; margin-bottom: 15px;">
+                            <strong>说明：</strong><br>
+                            • 所有菜单对所有用户可见，权限配置仅控制功能操作<br>
+                            • 勾选大菜单时，其下所有子菜单将自动选中<br>
+                            • <strong>读写权限</strong>：可以导入、新增、删除、编辑<br>
+                            • <strong>只读权限</strong>：只能导出、查看<br>
+                            • 未分配权限的菜单：用户可以看到菜单，但无法进行任何操作
+                        </p>
+                    </div>
+                    <div v-if="loadingPermissions" style="text-align: center; padding: 40px;">
+                        <p>加载中...</p>
+                    </div>
+                    <div v-else class="menu-permission-tree">
+                        <div v-for="parentMenu in menuTree" :key="parentMenu.id" class="menu-group-item">
+                            <div class="menu-parent-row">
+                                <label class="menu-checkbox-label">
+                                    <input 
+                                        type="checkbox" 
+                                        :checked="isParentMenuChecked(parentMenu)"
+                                        @change="toggleParentMenu(parentMenu, $event)"
+                                    />
+                                    <span class="menu-name">{{ parentMenu.icon }} {{ parentMenu.menuName }}</span>
+                                </label>
+                                <div class="permission-type-selector" v-if="isParentMenuChecked(parentMenu)">
+                                    <label>
+                                        <input 
+                                            type="radio" 
+                                            :name="'parent-' + parentMenu.id"
+                                            value="READ_ONLY"
+                                            :checked="getPermissionType(parentMenu.id) === 'READ_ONLY'"
+                                            @change="setPermissionType(parentMenu.id, 'READ_ONLY')"
+                                        />
+                                        只读
+                                    </label>
+                                    <label>
+                                        <input 
+                                            type="radio" 
+                                            :name="'parent-' + parentMenu.id"
+                                            value="READ_WRITE"
+                                            :checked="getPermissionType(parentMenu.id) === 'READ_WRITE'"
+                                            @change="setPermissionType(parentMenu.id, 'READ_WRITE')"
+                                        />
+                                        读写
+                                    </label>
+                                </div>
+                            </div>
+                            <div v-if="parentMenu.children && parentMenu.children.length > 0" class="menu-children">
+                                <div v-for="childMenu in parentMenu.children" :key="childMenu.id" class="menu-child-row">
+                                    <label class="menu-checkbox-label">
+                                        <input 
+                                            type="checkbox" 
+                                            :checked="isMenuChecked(childMenu.id)"
+                                            @change="toggleChildMenu(parentMenu, childMenu, $event)"
+                                        />
+                                        <span class="menu-name">{{ childMenu.icon }} {{ childMenu.menuName }}</span>
+                                    </label>
+                                    <div class="permission-type-selector" v-if="isMenuChecked(childMenu.id)">
+                                        <label>
+                                            <input 
+                                                type="radio" 
+                                                :name="'child-' + childMenu.id"
+                                                value="READ_ONLY"
+                                                :checked="getPermissionType(childMenu.id) === 'READ_ONLY'"
+                                                @change="setPermissionType(childMenu.id, 'READ_ONLY')"
+                                            />
+                                            只读
+                                        </label>
+                                        <label>
+                                            <input 
+                                                type="radio" 
+                                                :name="'child-' + childMenu.id"
+                                                value="READ_WRITE"
+                                                :checked="getPermissionType(childMenu.id) === 'READ_WRITE'"
+                                                @change="setPermissionType(childMenu.id, 'READ_WRITE')"
+                                            />
+                                            读写
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @click="showPermissionConfigModal = false">取消</button>
+                    <button class="btn btn-primary" @click="savePermissions" :disabled="loadingPermissions">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    userList: [],
+                    keyword: '',
+                    currentPage: 1,
+                    pageSize: 10,
+                    totalPages: 1,
+                    showUserModal: false,
+                    editingUser: null,
+                    formData: {
+                        username: '',
+                        chineseName: '',
+                        gitUsername: '',
+                        isAdmin: 0,
+                        status: 1,
+                        password: ''
+                    },
+                    showPasswordModal: false,
+                    passwordUserId: null,
+                    newPassword: '',
+                    showPermissionConfigModal: false,
+                    permissionUser: null,
+                    menuTree: [],
+                    userPermissions: {},  // {menuId: permissionType}
+                    loadingPermissions: false,
+                    isAdmin: false,
+                    hasPermission: false
+                };
+            },
+            async mounted() {
+                // 先检查用户权限
+                await this.checkPermission();
+                if (this.hasPermission) {
+                    this.loadUsers();
+                }
+            },
+            methods: {
+                // 检查用户权限
+                async checkPermission() {
+                    try {
+                        const response = await axios.get('/api/auth/current');
+                        if (response.data.code === 200) {
+                            this.isAdmin = response.data.data.isAdmin || false;
+                            this.hasPermission = this.isAdmin;
+                        } else {
+                            this.hasPermission = false;
+                        }
+                    } catch (error) {
+                        console.error('检查权限失败:', error);
+                        this.hasPermission = false;
+                    }
+                },
+                async loadUsers() {
+                    if (!this.hasPermission) {
+                        return;
+                    }
+                    try {
+                        const response = await axios.get('/api/user/page', {
+                            params: {
+                                current: this.currentPage,
+                                size: this.pageSize,
+                                keyword: this.keyword
+                            }
+                        });
+                        
+                        if (response.data.code === 200) {
+                            this.userList = response.data.data.records;
+                            this.totalPages = response.data.data.pages;
+                        } else {
+                            // 如果是权限错误，不弹出提示（因为已经有权限检查）
+                            if (response.data.message && response.data.message.includes('无权限')) {
+                                this.hasPermission = false;
+                                return;
+                            }
+                            alert('加载用户列表失败: ' + response.data.message);
+                        }
+                    } catch (error) {
+                        // 如果是权限错误，不弹出提示（因为已经有权限检查）
+                        if (error.response?.data?.message && error.response.data.message.includes('无权限')) {
+                            this.hasPermission = false;
+                            return;
+                        }
+                        alert('加载用户列表失败: ' + (error.response?.data?.message || error.message));
+                    }
+                },
+                showAddModal() {
+                    this.editingUser = null;
+                    this.formData = {
+                        username: '',
+                        chineseName: '',
+                        gitUsername: '',
+                        isAdmin: 0,
+                        status: 1,
+                        password: ''
+                    };
+                    this.showUserModal = true;
+                },
+                showEditModal(user) {
+                    this.editingUser = user;
+                    this.formData = {
+                        username: user.username,
+                        chineseName: user.chineseName || '',
+                        gitUsername: user.gitUsername || '',
+                        isAdmin: user.isAdmin,
+                        status: user.status,
+                        password: ''
+                    };
+                    this.showUserModal = true;
+                },
+                closeUserModal() {
+                    this.showUserModal = false;
+                    this.editingUser = null;
+                },
+                async saveUser() {
+                    try {
+                        const url = this.editingUser ? '/api/user/update' : '/api/user/add';
+                        const data = { ...this.formData };
+                        if (this.editingUser) {
+                            data.id = this.editingUser.id;
+                        }
+                        
+                        const response = await axios.post(url, data);
+                        
+                        if (response.data.code === 200) {
+                            alert(response.data.message);
+                            this.closeUserModal();
+                            this.loadUsers();
+                        } else {
+                            alert('操作失败: ' + response.data.message);
+                        }
+                    } catch (error) {
+                        alert('操作失败: ' + (error.response?.data?.message || error.message));
+                    }
+                },
+                showResetPasswordModal(user) {
+                    this.passwordUserId = user.id;
+                    this.newPassword = 'Spdb@123'; // 默认密码
+                    this.showPasswordModal = true;
+                },
+                async resetPassword() {
+                    // 如果未输入密码，使用默认密码
+                    const password = this.newPassword || 'Spdb@123';
+                    
+                    try {
+                        const response = await axios.post('/api/user/reset-password', {
+                            id: this.passwordUserId,
+                            password: password
+                        });
+                        
+                        if (response.data.code === 200) {
+                            alert(response.data.message);
+                            this.showPasswordModal = false;
+                        } else {
+                            alert('操作失败: ' + response.data.message);
+                        }
+                    } catch (error) {
+                        alert('操作失败: ' + (error.response?.data?.message || error.message));
+                    }
+                },
+                async showPermissionModal(user) {
+                    this.permissionUser = user;
+                    this.showPermissionConfigModal = true;
+                    this.loadingPermissions = true;
+                    
+                    try {
+                        // 加载菜单树和用户权限
+                        await this.loadMenuPermissions(user.id);
+                    } catch (error) {
+                        console.error('加载权限数据失败:', error);
+                        alert('加载权限数据失败: ' + (error.response?.data?.message || error.message));
+                    } finally {
+                        this.loadingPermissions = false;
+                    }
+                },
+                async loadMenuPermissions(userId) {
+                    try {
+                        const response = await axios.get(`/api/user-menu-permission/tree/${userId}`);
+                        if (response.data.code === 200) {
+                            this.menuTree = response.data.data.menuTree || [];
+                            this.userPermissions = response.data.data.permissions || {};
+                        } else {
+                            throw new Error(response.data.message || '加载权限数据失败');
+                        }
+                    } catch (error) {
+                        console.error('加载菜单权限失败:', error);
+                        throw error;
+                    }
+                },
+                isParentMenuChecked(parentMenu) {
+                    // 检查父菜单是否被选中（如果所有子菜单都被选中，或者父菜单本身被选中）
+                    if (this.userPermissions[parentMenu.id]) {
+                        return true;
+                    }
+                    if (parentMenu.children && parentMenu.children.length > 0) {
+                        return parentMenu.children.every(child => this.userPermissions[child.id]);
+                    }
+                    return false;
+                },
+                isMenuChecked(menuId) {
+                    return !!this.userPermissions[menuId];
+                },
+                getPermissionType(menuId) {
+                    return this.userPermissions[menuId] || 'READ_ONLY';
+                },
+                setPermissionType(menuId, permissionType) {
+                    if (this.userPermissions[menuId]) {
+                        this.userPermissions[menuId] = permissionType;
+                    }
+                },
+                toggleParentMenu(parentMenu, event) {
+                    const checked = event.target.checked;
+                    
+                    if (checked) {
+                        // 选中父菜单，默认设置所有子菜单为只读权限
+                        this.userPermissions[parentMenu.id] = 'READ_ONLY';
+                        if (parentMenu.children && parentMenu.children.length > 0) {
+                            parentMenu.children.forEach(child => {
+                                this.userPermissions[child.id] = 'READ_ONLY';
+                            });
+                        }
+                    } else {
+                        // 取消父菜单，同时取消所有子菜单
+                        delete this.userPermissions[parentMenu.id];
+                        if (parentMenu.children && parentMenu.children.length > 0) {
+                            parentMenu.children.forEach(child => {
+                                delete this.userPermissions[child.id];
+                            });
+                        }
+                    }
+                },
+                toggleChildMenu(parentMenu, childMenu, event) {
+                    const checked = event.target.checked;
+                    
+                    if (checked) {
+                        // 选中子菜单，默认设置为只读权限
+                        this.userPermissions[childMenu.id] = 'READ_ONLY';
+                        
+                        // 检查是否所有子菜单都被选中，如果是则选中父菜单
+                        if (parentMenu.children && parentMenu.children.every(child => this.userPermissions[child.id])) {
+                            this.userPermissions[parentMenu.id] = 'READ_ONLY';
+                        }
+                    } else {
+                        // 取消子菜单
+                        delete this.userPermissions[childMenu.id];
+                        
+                        // 取消父菜单
+                        delete this.userPermissions[parentMenu.id];
+                    }
+                },
+                async savePermissions() {
+                    if (!this.permissionUser) {
+                        return;
+                    }
+                    
+                    try {
+                        // 转换权限数据格式
+                        const permissions = {};
+                        for (const [menuId, permissionType] of Object.entries(this.userPermissions)) {
+                            permissions[menuId] = permissionType;
+                        }
+                        
+                        const response = await axios.post('/api/user-menu-permission/save', {
+                            userId: this.permissionUser.id,
+                            permissions: permissions
+                        });
+                        
+                        if (response.data.code === 200) {
+                            alert('保存权限成功');
+                            this.showPermissionConfigModal = false;
+                        } else {
+                            alert('保存权限失败: ' + response.data.message);
+                        }
+                    } catch (error) {
+                        alert('保存权限失败: ' + (error.response?.data?.message || error.message));
+                    }
+                },
+                async deleteUser(user) {
+                    if (!confirm(`确定要删除用户 ${user.username} 吗？`)) {
+                        return;
+                    }
+                    
+                    try {
+                        const response = await axios.post('/api/user/delete', null, {
+                            params: { id: user.id }
+                        });
+                        
+                        if (response.data.code === 200) {
+                            alert(response.data.message);
+                            this.loadUsers();
+                        } else {
+                            alert('删除失败: ' + response.data.message);
+                        }
+                    } catch (error) {
+                        alert('删除失败: ' + (error.response?.data?.message || error.message));
+                    }
+                },
+                prevPage() {
+                    if (this.currentPage > 1) {
+                        this.currentPage--;
+                        this.loadUsers();
+                    }
+                },
+                nextPage() {
+                    if (this.currentPage < this.totalPages) {
+                        this.currentPage++;
+                        this.loadUsers();
+                    }
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>在途字典使用分析 - 字典管理系统</title>
+    <script src="/js/vue.global.js"></script>
+    <script src="/js/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        #app {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header .subtitle {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            padding: 30px;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #374151;
+            font-size: 14px;
+        }
+
+        .form-group input[type="text"],
+        .form-group input[type="file"] {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s;
+            outline: none;
+        }
+
+        .form-group input[type="text"]:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-group .help-text {
+            margin-top: 5px;
+            font-size: 12px;
+            color: #6b7280;
+        }
+
+        .file-upload-container {
+            border: 2px dashed #e5e7eb;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            background: #f9fafb;
+            transition: all 0.3s;
+        }
+
+        .file-upload-container:hover {
+            border-color: #667eea;
+            background: #f0f2ff;
+        }
+
+        .file-upload-container.has-file {
+            border-color: #10b981;
+            background: #d1fae5;
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px;
+            background: white;
+            border-radius: 6px;
+            margin-top: 10px;
+        }
+
+        .file-info .file-name {
+            font-weight: 500;
+            color: #374151;
+        }
+
+        .file-info .file-size {
+            font-size: 12px;
+            color: #6b7280;
+            margin-left: 10px;
+        }
+
+        .file-info .remove-btn {
+            padding: 4px 12px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .file-info .remove-btn:hover {
+            background: #dc2626;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 5px;
+            text-decoration: none;
+            display: inline-block;
+            font-weight: 600;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+
+        .action-buttons {
+            text-align: center;
+            margin-top: 30px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+
+        .spinner {
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .result-message {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .result-message.success {
+            background: #d1fae5;
+            border: 1px solid #10b981;
+            color: #065f46;
+        }
+
+        .result-message.error {
+            background: #fee2e2;
+            border: 1px solid #ef4444;
+            color: #991b1b;
+        }
+
+        .result-message.info {
+            background: #dbeafe;
+            border: 1px solid #3b82f6;
+            color: #1e40af;
+        }
+
+        .progress-container {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f9fafb;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e5e7eb;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 12px;
+        }
+
+        .progress-text {
+            font-size: 13px;
+            color: #6b7280;
+            text-align: center;
+        }
+
+        .download-link {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 8px 16px;
+            background: #10b981;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .download-link:hover {
+            background: #059669;
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="header">
+            <h1>📊 在途字典使用分析</h1>
+            <p class="subtitle">分析字典字段在XML代码中的使用情况</p>
+        </div>
+
+        <div class="card">
+            <form @submit.prevent="analyzeUsage">
+                <div class="form-group">
+                    <label>分析代码目录 <span style="color: #ef4444;">*</span></label>
+                    <input 
+                        type="text" 
+                        v-model="codeDirectory" 
+                        placeholder="请输入代码目录路径，如：/home/code/project 或 D:\code\project"
+                        required>
+                    <div class="help-text">指定要分析的代码目录，将扫描该目录下的所有XML文件</div>
+                </div>
+
+                <div class="form-group">
+                    <label>分析字典文件 <span style="color: #ef4444;">*</span></label>
+                    <div class="file-upload-container" :class="{'has-file': dictFile}">
+                        <input 
+                            type="file" 
+                            ref="fileInput"
+                            @change="handleFileSelect"
+                            accept=".xlsx,.xls"
+                            style="display: none;">
+                        <div v-if="!dictFile" @click="$refs.fileInput.click()" style="cursor: pointer;">
+                            <p style="font-size: 40px; margin-bottom: 10px;">📁</p>
+                            <p style="color: #6b7280;">点击选择字典Excel文件</p>
+                            <p style="font-size: 12px; color: #9ca3af; margin-top: 5px;">支持 .xlsx 和 .xls 格式</p>
+                        </div>
+                        <div v-else class="file-info">
+                            <div>
+                                <span class="file-name">{{ dictFile.name }}</span>
+                                <span class="file-size">({{ formatFileSize(dictFile.size) }})</span>
+                            </div>
+                            <button type="button" class="remove-btn" @click="removeFile">删除</button>
+                        </div>
+                    </div>
+                    <div class="help-text">选择要分析的字典Excel文件（需包含JAVA/ESF规范命名的J列）</div>
+                </div>
+
+                <div class="action-buttons">
+                    <button type="submit" class="btn btn-primary" :disabled="analyzing || !canSubmit">
+                        {{ analyzing ? '⏳ 分析中...' : '🔍 一键分析' }}
+                    </button>
+                    <button type="button" class="btn btn-secondary" @click="resetForm" :disabled="analyzing">
+                        🔄 重置
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="window.history.back()">
+                        ← 返回
+                    </button>
+                </div>
+            </form>
+
+            <div v-if="analyzing" class="progress-container">
+                <div class="progress-bar">
+                    <div class="progress-fill" :style="{width: progress + '%'}">
+                        {{ progress }}%
+                    </div>
+                </div>
+                <div class="progress-text">{{ progressMessage }}</div>
+            </div>
+
+            <div v-if="resultMessage" class="result-message" :class="resultMessage.type">
+                <div v-html="resultMessage.message"></div>
+                <a v-if="resultMessage.downloadUrl" :href="resultMessage.downloadUrl" class="download-link" download>
+                    📥 下载分析结果文件
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    codeDirectory: '',
+                    dictFile: null,
+                    analyzing: false,
+                    progress: 0,
+                    progressMessage: '',
+                    resultMessage: null
+                };
+            },
+            computed: {
+                canSubmit() {
+                    return this.codeDirectory.trim() && this.dictFile;
+                }
+            },
+            methods: {
+                handleFileSelect(event) {
+                    const file = event.target.files[0];
+                    if (file) {
+                        this.dictFile = file;
+                    }
+                },
+                removeFile() {
+                    this.dictFile = null;
+                    this.$refs.fileInput.value = '';
+                },
+                formatFileSize(bytes) {
+                    if (bytes === 0) return '0 Bytes';
+                    const k = 1024;
+                    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+                    const i = Math.floor(Math.log(bytes) / Math.log(k));
+                    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+                },
+                async analyzeUsage() {
+                    if (!this.canSubmit) {
+                        alert('请填写完整信息');
+                        return;
+                    }
+
+                    const confirmMsg = `确认要分析字典文件 "${this.dictFile.name}" 在目录 "${this.codeDirectory}" 中的使用情况吗？\n\n这可能需要一些时间，请耐心等待。`;
+                    if (!confirm(confirmMsg)) {
+                        return;
+                    }
+
+                    this.analyzing = true;
+                    this.progress = 0;
+                    this.progressMessage = '准备分析...';
+                    this.resultMessage = null;
+
+                    try {
+                        const formData = new FormData();
+                        formData.append('codeDirectory', this.codeDirectory.trim());
+                        formData.append('dictFile', this.dictFile);
+
+                        const response = await axios.post('/api/dict-usage/analyze', formData, {
+                            headers: {
+                                'Content-Type': 'multipart/form-data'
+                            },
+                            onUploadProgress: (progressEvent) => {
+                                if (progressEvent.total) {
+                                    const uploadProgress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                                    this.progress = Math.min(uploadProgress * 0.2, 20); // 上传占20%
+                                    this.progressMessage = '正在上传文件...';
+                                }
+                            }
+                        });
+
+                        if (response.data.code === 200) {
+                            this.progress = 100;
+                            this.progressMessage = '分析完成！';
+                            
+                            const data = response.data.data;
+                            let message = `<strong>✅ 分析完成！</strong><br>`;
+                            message += `- 总字段数：${data.totalFields || 0}<br>`;
+                            message += `- 已使用字段数：${data.usedFields || 0}<br>`;
+                            message += `- 未使用字段数：${data.unusedFields || 0}<br>`;
+                            message += `- 匹配总数：${data.totalMatches || 0}<br>`;
+                            message += `- 分析文件：${data.outputFileName || ''}`;
+                            
+                            this.resultMessage = {
+                                type: 'success',
+                                message: message,
+                                downloadUrl: data.downloadUrl
+                            };
+                        } else {
+                            this.resultMessage = {
+                                type: 'error',
+                                message: `<strong>❌ 分析失败</strong><br>${response.data.message || '未知错误'}`
+                            };
+                        }
+                    } catch (error) {
+                        console.error('分析失败:', error);
+                        this.resultMessage = {
+                            type: 'error',
+                            message: `<strong>❌ 分析失败</strong><br>${error.response?.data?.message || error.message || '网络错误'}`
+                        };
+                    } finally {
+                        this.analyzing = false;
+                    }
+                },
+                resetForm() {
+                    this.codeDirectory = '';
+                    this.dictFile = null;
+                    this.$refs.fileInput.value = '';
+                    this.progress = 0;
+                    this.progressMessage = '';
+                    this.resultMessage = null;
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
+

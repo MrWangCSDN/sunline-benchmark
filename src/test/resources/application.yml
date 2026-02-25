@@ -1,0 +1,24 @@
+# 测试环境配置
+spring:
+  # 禁用数据源自动配置，避免测试时需要真实数据库连接
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration
+  
+  # 禁用观察功能
+  observation:
+    http:
+      enabled: false
+
+# 禁用 Actuator
+management:
+  endpoints:
+    enabled-by-default: false
+
+# 日志配置
+logging:
+  level:
+    root: WARN
+    com.sunline.dict: INFO
+

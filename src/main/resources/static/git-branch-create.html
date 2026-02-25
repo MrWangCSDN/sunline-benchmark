@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Git分支创建 - 字典管理系统</title>
+    <script src="/js/vue.global.js"></script>
+    <script src="/js/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        #app {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header .subtitle {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            padding: 30px;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #374151;
+            font-size: 14px;
+        }
+
+        .form-group input[type="text"],
+        .form-group select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s;
+            outline: none;
+        }
+
+        .form-group input[type="text"]:focus,
+        .form-group select:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-group .help-text {
+            margin-top: 5px;
+            font-size: 12px;
+            color: #6b7280;
+        }
+
+        .projects-container {
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+            background: #f9fafb;
+        }
+
+        .project-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            margin-bottom: 8px;
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            transition: all 0.3s;
+        }
+
+        .project-item:hover {
+            border-color: #667eea;
+            background: #f0f2ff;
+        }
+
+        .project-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            margin-right: 12px;
+            cursor: pointer;
+        }
+
+        .project-item label {
+            flex: 1;
+            margin: 0;
+            cursor: pointer;
+            font-weight: normal;
+            color: #374151;
+        }
+
+        .project-item .project-path {
+            font-size: 12px;
+            color: #6b7280;
+            margin-left: 10px;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 5px;
+            text-decoration: none;
+            display: inline-block;
+            font-weight: 600;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background: #dc2626;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(239, 68, 68, 0.4);
+        }
+
+        .btn-danger:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .action-buttons {
+            text-align: center;
+            margin-top: 30px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+
+        .spinner {
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .result-message {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .result-message.success {
+            background: #d1fae5;
+            border: 1px solid #10b981;
+            color: #065f46;
+        }
+
+        .result-message.error {
+            background: #fee2e2;
+            border: 1px solid #ef4444;
+            color: #991b1b;
+        }
+
+        .result-message .result-item {
+            margin: 8px 0;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+        }
+
+        .select-all {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.3s;
+        }
+
+        .select-all:hover {
+            background: #5568d3;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="header">
+            <h1>🌿 Git分支创建</h1>
+            <p class="subtitle">基于指定分支创建新分支</p>
+        </div>
+
+        <div class="card">
+            <form @submit.prevent="createBranches">
+                <div class="form-group">
+                    <label>新分支名称 <span style="color: #ef4444;">*</span></label>
+                    <input 
+                        type="text" 
+                        v-model="newBranchName" 
+                        placeholder="请输入新分支名称，如：feature/new-feature"
+                        required>
+                    <div class="help-text">分支名称不能包含空格，建议使用小写字母、数字、连字符或下划线</div>
+                </div>
+
+                <div class="form-group">
+                    <label>来源分支 <span style="color: #ef4444;">*</span></label>
+                    <input 
+                        type="text" 
+                        v-model="sourceBranch" 
+                        placeholder="请输入来源分支名称，如：main、master、develop"
+                        required>
+                    <div class="help-text">输入要基于哪个分支创建新分支（例如：main、master、develop）</div>
+                </div>
+
+                <div class="form-group">
+                    <label>来源分支版本号 <span style="color: #ef4444;">*</span></label>
+                    <input 
+                        type="text" 
+                        v-model="sourceVersion" 
+                        placeholder="如：1.0.0-SNAPSHOT"
+                        required>
+                    <div class="help-text">输入来源分支中pom.xml的版本号，用于查找和替换</div>
+                </div>
+
+                <div class="form-group">
+                    <label>新分支版本号 <span style="color: #6b7280;">（可选）</span></label>
+                    <input 
+                        type="text" 
+                        v-model="newVersion" 
+                        placeholder="如：cs-1.0.0-SNAPSHOT（留空则不替换版本号）">
+                    <div class="help-text">输入新分支中pom.xml的版本号，留空则不替换版本号</div>
+                </div>
+
+                <div class="form-group">
+                    <label>选择Git工程 <span style="color: #ef4444;">*</span></label>
+                    <div class="projects-container">
+                        <button type="button" class="select-all" @click="toggleSelectAll">
+                            {{ allSelected ? '取消全选' : '全选' }}
+                        </button>
+                        <div v-if="loadingProjects" class="loading">
+                            <div class="spinner"></div>
+                            <p>正在加载Git工程列表...</p>
+                        </div>
+                        <div v-else-if="projects.length === 0" style="text-align: center; padding: 40px; color: #9ca3af;">
+                            <p>暂无Git工程</p>
+                        </div>
+                        <div v-else>
+                            <div v-for="project in projects" :key="project.id" class="project-item">
+                                <input 
+                                    type="checkbox" 
+                                    :id="'project-' + project.id"
+                                    :value="project.id"
+                                    v-model="selectedProjects">
+                                <label :for="'project-' + project.id">
+                                    {{ project.name }}
+                                    <span class="project-path" v-if="project.path">({{ project.path }})</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="help-text">已选择 {{ selectedProjects.length }} 个工程</div>
+                </div>
+
+                <div class="action-buttons">
+                    <button type="submit" class="btn btn-primary" :disabled="creating || !canSubmit">
+                        {{ creating ? '⏳ 创建中...' : '✅ 确认创建' }}
+                    </button>
+                    <button type="button" class="btn btn-danger" @click="deleteBranches" :disabled="deleting || !canDelete">
+                        {{ deleting ? '⏳ 删除中...' : '🗑️ 确认删除' }}
+                    </button>
+                    <button type="button" class="btn btn-primary" @click="updateVersions" :disabled="updatingVersions || !canUpdateVersion">
+                        {{ updatingVersions ? '⏳ 修改中...' : '🔄 版本修改' }}
+                    </button>
+                    <button type="button" class="btn btn-secondary" @click="resetForm" :disabled="creating || updatingVersions || deleting">
+                        重置
+                    </button>
+                </div>
+            </form>
+
+            <div v-if="resultMessage" class="result-message" :class="resultMessage.type">
+                <div v-if="resultMessage.type === 'success'">
+                    <strong>✅ 创建成功！</strong>
+                    <div v-for="(item, index) in resultMessage.items" :key="index" class="result-item">
+                        <strong>{{ item.project }}</strong>: {{ item.message }}
+                    </div>
+                </div>
+                <div v-else>
+                    <strong>❌ 创建失败</strong>
+                    <div v-for="(item, index) in resultMessage.items" :key="index" class="result-item">
+                        <strong>{{ item.project }}</strong>: {{ item.message }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    newBranchName: '',
+                    sourceBranch: '',
+                    sourceVersion: '',
+                    newVersion: '',
+                    projects: [],
+                    selectedProjects: [],
+                    loadingProjects: false,
+                    creating: false,
+                    updatingVersions: false,
+                    deleting: false,
+                    resultMessage: null
+                };
+            },
+            computed: {
+                allSelected() {
+                    return this.projects.length > 0 && this.selectedProjects.length === this.projects.length;
+                },
+                canSubmit() {
+                    return this.newBranchName.trim() && 
+                           this.sourceBranch && 
+                           this.sourceVersion.trim() &&
+                           this.selectedProjects.length > 0;
+                },
+                canUpdateVersion() {
+                    return this.sourceBranch.trim() && 
+                           this.sourceVersion.trim() && 
+                           this.newVersion.trim() &&
+                           this.selectedProjects.length > 0;
+                },
+                canDelete() {
+                    // 要求新分支名称和来源分支一样，且选择了工程
+                    return this.newBranchName.trim() && 
+                           this.sourceBranch.trim() &&
+                           this.newBranchName.trim() === this.sourceBranch.trim() &&
+                           this.selectedProjects.length > 0;
+                }
+            },
+            mounted() {
+                this.loadProjects();
+            },
+            methods: {
+                async loadProjects() {
+                    this.loadingProjects = true;
+                    try {
+                        const response = await axios.get('/api/git/projects');
+                        if (response.data.code === 200) {
+                            this.projects = response.data.data || [];
+                        } else {
+                            alert('加载Git工程列表失败: ' + response.data.message);
+                        }
+                    } catch (error) {
+                        console.error('加载Git工程列表失败:', error);
+                        alert('加载Git工程列表失败: ' + (error.response?.data?.message || error.message));
+                    } finally {
+                        this.loadingProjects = false;
+                    }
+                },
+                toggleSelectAll() {
+                    if (this.allSelected) {
+                        this.selectedProjects = [];
+                    } else {
+                        this.selectedProjects = this.projects.map(p => p.id);
+                    }
+                },
+                async createBranches() {
+                    if (!this.canSubmit) {
+                        alert('请填写完整信息并至少选择一个Git工程');
+                        return;
+                    }
+
+                    let confirmMsg = `确认要在 ${this.selectedProjects.length} 个Git工程中基于 "${this.sourceBranch}" 分支创建新分支 "${this.newBranchName}" 吗？`;
+                    if (this.newVersion.trim()) {
+                        confirmMsg += `\n\n版本号将从 "${this.sourceVersion}" 替换为 "${this.newVersion}"`;
+                    }
+                    if (!confirm(confirmMsg)) {
+                        return;
+                    }
+
+                    this.creating = true;
+                    this.resultMessage = null;
+
+                    try {
+                        const response = await axios.post('/api/git/branches/create', {
+                            newBranchName: this.newBranchName.trim(),
+                            sourceBranch: this.sourceBranch,
+                            sourceVersion: this.sourceVersion.trim(),
+                            newVersion: this.newVersion.trim(),
+                            projectIds: this.selectedProjects
+                        });
+
+                        if (response.data.code === 200) {
+                            this.resultMessage = {
+                                type: 'success',
+                                items: response.data.data || []
+                            };
+                        } else {
+                            this.resultMessage = {
+                                type: 'error',
+                                items: [{ project: '系统', message: response.data.message || '创建失败' }]
+                            };
+                        }
+                    } catch (error) {
+                        console.error('创建分支失败:', error);
+                        this.resultMessage = {
+                            type: 'error',
+                            items: [{ project: '系统', message: error.response?.data?.message || error.message || '创建失败' }]
+                        };
+                    } finally {
+                        this.creating = false;
+                    }
+                },
+                async updateVersions() {
+                    if (!this.canUpdateVersion) {
+                        alert('请填写完整信息并至少选择一个Git工程');
+                        return;
+                    }
+
+                    let confirmMsg = `确认要在 ${this.selectedProjects.length} 个Git工程的 "${this.sourceBranch}" 分支中修改版本号吗？\n\n版本号将从 "${this.sourceVersion}" 替换为 "${this.newVersion}"`;
+                    if (!confirm(confirmMsg)) {
+                        return;
+                    }
+
+                    this.updatingVersions = true;
+                    this.resultMessage = null;
+
+                    try {
+                        const response = await axios.post('/api/git/versions/update', {
+                            sourceBranch: this.sourceBranch.trim(),
+                            sourceVersion: this.sourceVersion.trim(),
+                            newVersion: this.newVersion.trim(),
+                            projectIds: this.selectedProjects
+                        });
+
+                        if (response.data.code === 200) {
+                            this.resultMessage = {
+                                type: 'success',
+                                items: response.data.data || []
+                            };
+                        } else {
+                            this.resultMessage = {
+                                type: 'error',
+                                items: [{ project: '系统', message: response.data.message || '版本修改失败' }]
+                            };
+                        }
+                    } catch (error) {
+                        console.error('版本修改失败:', error);
+                        this.resultMessage = {
+                            type: 'error',
+                            items: [{ project: '系统', message: error.response?.data?.message || error.message || '版本修改失败' }]
+                        };
+                    } finally {
+                        this.updatingVersions = false;
+                    }
+                },
+                async deleteBranches() {
+                    if (!this.canDelete) {
+                        alert('请确保新分支名称和来源分支一致，并至少选择一个Git工程');
+                        return;
+                    }
+
+                    let branchName = this.newBranchName.trim();
+                    let confirmMsg = `⚠️ 警告：确认要删除 ${this.selectedProjects.length} 个Git工程中的分支 "${branchName}" 吗？\n\n此操作不可恢复！`;
+                    if (!confirm(confirmMsg)) {
+                        return;
+                    }
+
+                    this.deleting = true;
+                    this.resultMessage = null;
+
+                    try {
+                        const response = await axios.post('/api/git/branches/delete', {
+                            branchName: branchName,
+                            projectIds: this.selectedProjects
+                        });
+
+                        if (response.data.code === 200) {
+                            this.resultMessage = {
+                                type: 'success',
+                                items: response.data.data || []
+                            };
+                        } else {
+                            this.resultMessage = {
+                                type: 'error',
+                                items: [{ project: '系统', message: response.data.message || '删除分支失败' }]
+                            };
+                        }
+                    } catch (error) {
+                        console.error('删除分支失败:', error);
+                        this.resultMessage = {
+                            type: 'error',
+                            items: [{ project: '系统', message: error.response?.data?.message || error.message || '删除分支失败' }]
+                        };
+                    } finally {
+                        this.deleting = false;
+                    }
+                },
+                resetForm() {
+                    this.newBranchName = '';
+                    this.sourceBranch = '';
+                    this.sourceVersion = '';
+                    this.newVersion = '';
+                    this.selectedProjects = [];
+                    this.resultMessage = null;
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

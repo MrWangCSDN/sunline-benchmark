@@ -1,0 +1,163 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+  # 连接超时配置（毫秒）
+  connection-timeout: 300000
+  # Tomcat配置
+  tomcat:
+    connection-timeout: 300000
+    max-connections: 10000
+    threads:
+      max: 200
+      min-spare: 10
+
+spring:
+  application:
+    name: dict-manager
+  profiles:
+    active: dev
+  
+  # 禁用观察功能，避免 Micrometer 相关错误（Spring Boot 3.1.1 版本问题）
+  observation:
+    http:
+      enabled: false
+  
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 500MB
+      max-request-size: 500MB
+      file-size-threshold: 10MB
+  
+  web:
+    resources:
+      static-locations: classpath:/static/,classpath:/public/
+
+# 禁用 Actuator 和监控功能（如果不需要）
+management:
+  endpoints:
+    enabled-by-default: false
+
+# MyBatis Plus配置
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.sunline.dict.entity
+
+# Excel导入配置
+excel:
+  import:
+    password: "201314"  # Excel导入口令（6位数字）
+
+# Git配置
+git:
+  gitlab:
+    url: http://gitlab.spdb.com  # GitLab地址
+
+# Webhook 调 GitLab API 用的 token（必须用 access-token 这个 key，不能用 accessToken）
+# 不配置则 Webhook 会尝试用 database.export.token，建议与下方 database.export.token 保持一致
+gitlab:
+  access-token: WScw9XyM8hM1sYKLAz8o  # 与 database.export.token 一致，用于 Webhook 下载文件
+  download-mode: api   # api=仅 API；clone=仅 git clone（API 一直 404 时可改为 clone）
+  # UAT 分支提交校验：要求 commit 先在 sit 分支存在
+  validate-uat-from-sit: true  # 是否启用 uat 分支校验（默认 false）
+  bypass-keywords: 用于贯标优先,紧急修复优先  # 白名单关键字（逗号分隔），commit message 包含任一关键字时跳过校验
+
+# 数据库导出配置
+database:
+  export:
+    environments:
+      dev:
+        url: "jdbc:opengauss://localhost:5432/database_dev"
+        username: "gaussdb_user"
+        password: "password123"
+      sit:
+        url: "jdbc:opengauss://localhost:5432/database_sit"
+        username: "gaussdb_user"
+        password: "password123"
+      uat:
+        url: "jdbc:opengauss://localhost:5432/database_uat"
+        username: "gaussdb_user"
+        password: "password123"
+      base:
+        url: "jdbc:opengauss://localhost:5432/database_base"
+        username: "gaussdb_user"
+        password: "password123"
+    username: c-wangsh8  # GitLab用户名（如果使用token认证，此字段可选）
+    password: Liang*201314  # GitLab密码（如果使用token认证，此字段可选）
+    # GitLab Personal Access Token（推荐使用，优先级高于用户名密码）
+    # 获取方式：登录GitLab -> 用户设置 -> Access Tokens -> 创建Token
+    # 需要勾选权限：api, read_api, read_repository
+    token: WScw9XyM8hM1sYKLAz8o  # 请在此处填写您的GitLab Personal Access Token
+  projects:
+    # Git工程列表配置，格式：GitLab项目ID，用逗号分隔
+    # 例如：64145,64142,63227,63467,63474
+    # GitLab项目ID可以在项目设置中查看，或者从项目URL中获取
+    # 如果不配置，系统会自动从GitLab API获取用户的所有项目
+    list: 63286,63223,64145,64142,63227,63467,63474,63469,63479,63468,63475,63470,63480,63587,63588
+
+# 日志配置
+logging:
+  level:
+    com.sunline.dict: debug
+    com.baomidou.mybatisplus: debug
+    # 降低HTTP解析错误的日志级别（避免HTTPS访问HTTP端口的错误日志）
+    org.apache.coyote.http11.Http11Processor: ERROR
+  pattern:
+    console: '%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{50} - %msg%n'
+
+---
+# 开发环境（默认）
+spring:
+  config:
+    activate:
+      on-profile: dev
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://103.47.81.50:3306/apimega?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true
+    username: apimega
+    password: Liang@201314
+    hikari:
+      minimum-idle: 10
+      maximum-pool-size: 30
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      connection-timeout: 60000
+      validation-timeout: 5000
+      leak-detection-threshold: 60000
+      connection-test-query: SELECT 1
+
+---
+# SIT 环境
+spring:
+  config:
+    activate:
+      on-profile: sit
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://21.64.203.16:3306/benchmarkdb?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true
+    username: benchmark
+    password: benchmark123
+    hikari:
+      minimum-idle: 10
+      maximum-pool-size: 30
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      connection-timeout: 60000
+      validation-timeout: 5000
+      leak-detection-threshold: 60000
+      connection-test-query: SELECT 1
+

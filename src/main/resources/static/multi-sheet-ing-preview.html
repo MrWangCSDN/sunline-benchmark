@@ -1,0 +1,1178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel导入分析（在途） - 字典管理系统</title>
+    <script src="/js/vue.global.js"></script>
+    <script src="/js/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        #app {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header .subtitle {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            padding: 30px;
+            margin-bottom: 20px;
+        }
+
+        /* 上传区域 */
+        .upload-section {
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        .upload-box {
+            border: 2px dashed #667eea;
+            border-radius: 8px;
+            padding: 40px;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #f8f9ff;
+        }
+
+        .upload-box:hover {
+            border-color: #764ba2;
+            background: #f0f2ff;
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 5px;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+
+        /* 统计卡片 */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            color: white;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .stat-card.dict {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+
+        .stat-card.domain {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        }
+
+        .stat-card.code {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        }
+
+        .stat-card h3 {
+            font-size: 36px;
+            margin-bottom: 5px;
+        }
+
+        .stat-card p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        /* Tab标签页 */
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #e5e7eb;
+            margin-bottom: 20px;
+            gap: 10px;
+        }
+
+        .tab {
+            padding: 12px 24px;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            font-size: 16px;
+            color: #6b7280;
+            transition: all 0.3s;
+            border-bottom: 3px solid transparent;
+            position: relative;
+        }
+
+        .tab:hover {
+            color: #667eea;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            font-weight: 600;
+        }
+
+        .tab .badge {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            margin-left: 8px;
+        }
+
+        .tab.active .badge {
+            background: #764ba2;
+        }
+
+        /* 表格样式 */
+        .table-container {
+            overflow-x: auto;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        thead {
+            position: sticky;
+            top: 0;
+            background: #f9fafb;
+            z-index: 10;
+        }
+
+        th {
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #374151;
+            border-bottom: 2px solid #e5e7eb;
+            white-space: nowrap;
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #f3f4f6;
+            color: #4b5563;
+        }
+
+        tr:hover {
+            background: #f9fafb;
+        }
+
+        /* 空状态 */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #9ca3af;
+        }
+
+        .empty-state .icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+
+        /* 加载动画 */
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 操作按钮组 */
+        .action-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .action-bar .left {
+            display: flex;
+            gap: 10px;
+        }
+
+        /* 校验错误样式 */
+        .validation-error {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+        }
+
+        .validation-error-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            color: #dc2626;
+            font-weight: 600;
+            font-size: 18px;
+        }
+
+        .validation-error-item {
+            background: white;
+            border-left: 4px solid #dc2626;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+        }
+
+        .validation-error-item h4 {
+            color: #991b1b;
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+
+        .validation-error-item .error-field {
+            color: #dc2626;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .validation-error-item .error-value {
+            color: #374151;
+            background: #f3f4f6;
+            padding: 5px 10px;
+            border-radius: 4px;
+            display: inline-block;
+            margin: 5px 0;
+            font-family: monospace;
+        }
+
+        .validation-error-item .error-rows {
+            color: #6b7280;
+            margin-top: 5px;
+        }
+
+        .validation-error-item .error-rows span {
+            color: #dc2626;
+            font-weight: 600;
+        }
+
+        /* 响应式 */
+        @media (max-width: 768px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .tabs {
+                overflow-x: auto;
+            }
+
+            .action-bar {
+                flex-direction: column;
+                gap: 10px;
+                align-items: stretch;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="header">
+            <h1>📊 Excel导入分析（在途）</h1>
+            <p class="subtitle">智能识别数据变化 • 预览变更内容 • 安全导入在途数据</p>
+        </div>
+
+        <!-- 上传视图 -->
+        <div v-if="currentView === 'upload'" class="card upload-section">
+            <div class="upload-box" @click="selectFile">
+                <div class="upload-icon">📁</div>
+                <h3>选择Excel文件</h3>
+                <p style="color: #6b7280; margin-top: 10px;">
+                    支持包含多个Sheet的Excel文件（.xlsx）
+                </p>
+                <p style="color: #9ca3af; font-size: 14px; margin-top: 10px;">
+                    点击选择文件或拖拽文件到此处
+                </p>
+                <input 
+                    type="file" 
+                    ref="fileInput" 
+                    class="file-input" 
+                    accept=".xlsx,.xls"
+                    @change="handleFileSelect">
+            </div>
+
+            <div v-if="selectedFile" style="margin-top: 20px; text-align: center;">
+                <p style="color: #374151; margin-bottom: 15px;">
+                    已选择: <strong>{{ selectedFile.name }}</strong> ({{ formatFileSize(selectedFile.size) }})
+                </p>
+                <button class="btn btn-primary" @click="previewFile" :disabled="uploading">
+                    {{ uploading ? '分析中...' : '📊 分析变更' }}
+                </button>
+            </div>
+
+        </div>
+
+        <!-- 校验错误视图 -->
+        <div v-if="currentView === 'validation-error'" class="card">
+            <div class="validation-error">
+                <div class="validation-error-header">
+                    <span style="font-size: 32px;">❌</span>
+                    <span>数据校验失败</span>
+                </div>
+
+                <p style="color: #6b7280; margin-bottom: 20px;">
+                    发现 <strong style="color: #dc2626;">{{ validationErrors.length }}</strong> 个数据错误，请修正后重新导入：
+                </p>
+
+                <div v-for="(error, index) in validationErrors" :key="index" class="validation-error-item">
+                    <h4>{{ error.sheetName }} - {{ error.fieldName }}</h4>
+                    <div class="error-field" v-if="error.errorType === 'duplicate'">
+                        重复值: <span class="error-value">{{ error.duplicateValue }}</span>
+                    </div>
+                    <div class="error-field" v-else-if="error.errorType === 'invalid_java_naming'">
+                        不符合Java命名规范: <span class="error-value">{{ error.duplicateValue }}</span>
+                    </div>
+                    <div class="error-field" v-else-if="error.errorType === 'duplicate_with_standard'">
+                        重复值: <span class="error-value">{{ error.duplicateValue }}</span>
+                    </div>
+                    <div class="error-field" v-else>
+                        错误值: <span class="error-value">{{ error.duplicateValue }}</span>
+                    </div>
+                    <div class="error-rows">
+                        出现在第 <span>{{ error.rows.join(', ') }}</span> 行
+                    </div>
+                    <div v-if="error.errorType === 'duplicate_with_standard'" style="color: #dc2626; margin-top: 5px; font-weight: 600;">
+                        ⚠️ 与贯标数据重复
+                    </div>
+                    <div v-else-if="error.errorType === 'invalid_java_naming'" style="color: #dc2626; margin-top: 5px; font-weight: 600;">
+                        ⚠️ 不符合Java命名规范
+                    </div>
+                </div>
+            </div>
+
+            <div style="text-align: center; margin-top: 20px;">
+                <button class="btn btn-secondary" @click="backToUpload">
+                    ← 重新选择文件
+                </button>
+            </div>
+        </div>
+
+        <!-- 预览视图 -->
+        <div v-if="currentView === 'preview'" class="card">
+            <div class="action-bar">
+                <div class="left">
+                    <button class="btn btn-secondary" @click="backToUpload">
+                        ← 重新选择
+                    </button>
+                    <button v-if="hasChanges()" class="btn btn-primary" @click="exportAnalysisReport" :disabled="exportingReport" style="background: #10b981;">
+                        {{ exportingReport ? '⏳ 导出中...' : '📊 导出分析报告' }}
+                    </button>
+                </div>
+                <div v-if="hasChanges()" style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <label style="color: #374151; font-weight: 500; white-space: nowrap;">
+                            <span style="color: #dc2626; margin-right: 2px;">*</span>变更说明:
+                        </label>
+                        <input 
+                            v-model="changeDescription" 
+                            type="text" 
+                            placeholder="请输入本次变更的说明（必填）"
+                            style="width: 350px; padding: 10px 15px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none; transition: all 0.3s;"
+                            :style="{ borderColor: changeDescriptionError ? '#dc2626' : '#e5e7eb' }"
+                            @focus="changeDescriptionError = false"
+                            @input="changeDescriptionError = false">
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <label style="color: #374151; font-weight: 500; white-space: nowrap;">
+                            <span style="color: #dc2626; margin-right: 2px;">*</span>导入口令:
+                        </label>
+                        <input 
+                            v-model="importPassword" 
+                            type="password" 
+                            placeholder="请输入6位数字口令（必填）"
+                            maxlength="6"
+                            style="width: 150px; padding: 10px 15px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 14px; outline: none; transition: all 0.3s;"
+                            :style="{ borderColor: passwordError ? '#dc2626' : '#e5e7eb' }"
+                            @focus="passwordError = false"
+                            @input="passwordError = false; importPassword = importPassword.replace(/\D/g, '')">
+                    </div>
+                    <button class="btn btn-primary" @click="confirmImport" :disabled="importing">
+                        {{ importing ? '导入中...' : '✓ 确认导入' }}
+                    </button>
+                </div>
+                <div v-else style="padding: 15px; background: #f0f9ff; border-radius: 8px; border-left: 4px solid #3b82f6;">
+                    <p style="margin: 0; color: #1e40af;">
+                        ℹ️ 数据完全一致，无需导入
+                    </p>
+                </div>
+            </div>
+            
+            <!-- 变更说明错误提示 -->
+            <div v-if="changeDescriptionError" style="margin: -10px 0 20px 0; padding: 12px 15px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; display: flex; align-items: center; gap: 8px;">
+                <span style="color: #dc2626; font-size: 18px;">⚠️</span>
+                <span style="color: #dc2626; font-size: 14px; font-weight: 500;">请填写变更说明后再确认导入</span>
+            </div>
+            
+            <!-- 口令错误提示 -->
+            <div v-if="passwordError" style="margin: -10px 0 20px 0; padding: 12px 15px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; display: flex; align-items: center; gap: 8px;">
+                <span style="color: #dc2626; font-size: 18px;">⚠️</span>
+                <span style="color: #dc2626; font-size: 14px; font-weight: 500;">请输入正确的6位数字口令</span>
+            </div>
+            
+            <!-- 导入进度条 - 与页面同宽，显示在action-bar下方 -->
+            <div v-if="importing" style="margin: 20px -30px 0 -30px; padding: 25px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;">
+                            <h3 style="margin: 0; color: white; font-size: 18px; font-weight: 600;">
+                                📊 导入进度
+                            </h3>
+                        </div>
+                        
+                        <!-- 进度条 -->
+                        <div style="width: 100%; height: 40px; background: rgba(255, 255, 255, 0.2); border-radius: 20px; overflow: hidden; margin-bottom: 15px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);">
+                            <div style="height: 100%; background: linear-gradient(90deg, #10b981 0%, #34d399 100%); transition: width 0.5s ease; box-shadow: 0 2px 8px rgba(16, 185, 129, 0.5);"
+                                 :style="{ width: importProgress + '%' }">
+                            </div>
+                        </div>
+                        
+                        <!-- 状态信息 -->
+                        <div style="display: flex; align-items: center; justify-content: space-between;">
+                            <span style="color: white; font-size: 15px; text-shadow: 0 1px 2px rgba(0,0,0,0.2);">
+                                {{ importMessage }}
+                            </span>
+                            <span style="color: rgba(255, 255, 255, 0.9); font-size: 14px;">
+                                <span v-if="importStatus === 'importing'">⏳ 正在导入中...</span>
+                                <span v-else-if="importStatus === 'completed'">✅ 导入完成！</span>
+                                <span v-else-if="importStatus === 'error'">❌ 导入失败</span>
+                            </span>
+                        </div>
+                        
+                        <!-- 提示信息 -->
+                        <div style="margin-top: 12px; padding: 10px; background: rgba(255, 255, 255, 0.15); border-radius: 8px; text-align: center;">
+                            <span style="color: rgba(255, 255, 255, 0.95); font-size: 13px;">
+                                💡 请勿关闭页面，导入过程中如果失败将自动回滚所有数据
+                            </span>
+                        </div>
+            </div>
+
+            <!-- 总体变更统计 -->
+            <div class="summary-section">
+                <div class="summary-card" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                    <h3>{{ getTotalSummary().newCount }}</h3>
+                    <p>总新增</p>
+                </div>
+                <div class="summary-card" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">
+                    <h3>{{ getTotalSummary().updateCount }}</h3>
+                    <p>总修改</p>
+                </div>
+                <div class="summary-card" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);">
+                    <h3>{{ getTotalSummary().deleteCount }}</h3>
+                    <p>总删除</p>
+                </div>
+                <div class="summary-card" style="background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);">
+                    <h3>{{ getTotalSummary().unchangedCount }}</h3>
+                    <p>总不变</p>
+                </div>
+            </div>
+
+            <!-- Sheet选择Tab -->
+            <div class="tabs" style="margin-bottom: 20px;">
+                <button 
+                    class="tab" 
+                    :class="{ active: activeSheetTab === 'dict' }"
+                    @click="activeSheetTab = 'dict'">
+                    📚 字典
+                    <span class="badge">{{ getDictSummary().newCount + getDictSummary().updateCount + getDictSummary().deleteCount }}</span>
+                </button>
+                <button 
+                    class="tab" 
+                    :class="{ active: activeSheetTab === 'domain' }"
+                    @click="activeSheetTab = 'domain'">
+                    🗂️ 域清单
+                    <span class="badge">{{ getDomainSummary().newCount + getDomainSummary().updateCount + getDomainSummary().deleteCount }}</span>
+                </button>
+                <button 
+                    class="tab" 
+                    :class="{ active: activeSheetTab === 'code' }"
+                    @click="activeSheetTab = 'code'">
+                    🔢 代码扩展清单
+                    <span class="badge">{{ getCodeSummary().newCount + getCodeSummary().updateCount + getCodeSummary().deleteCount }}</span>
+                </button>
+            </div>
+
+            <!-- 当前Sheet的变更统计 -->
+            <div class="summary-section">
+                <div class="summary-card" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                    <h3>{{ getCurrentSummary().newCount }}</h3>
+                    <p>新增</p>
+                </div>
+                <div class="summary-card" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">
+                    <h3>{{ getCurrentSummary().updateCount }}</h3>
+                    <p>修改</p>
+                </div>
+                <div class="summary-card" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);">
+                    <h3>{{ getCurrentSummary().deleteCount }}</h3>
+                    <p>删除</p>
+                </div>
+                <div class="summary-card" style="background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);">
+                    <h3>{{ getCurrentSummary().unchangedCount }}</h3>
+                    <p>不变</p>
+                </div>
+            </div>
+
+            <!-- 变更类型Tab -->
+            <div class="tabs">
+                <button 
+                    class="tab" 
+                    :class="{ active: activeChangeTab === 'new' }"
+                    @click="activeChangeTab = 'new'">
+                    新增 ({{ getCurrentSummary().newCount }})
+                </button>
+                <button 
+                    class="tab" 
+                    :class="{ active: activeChangeTab === 'update' }"
+                    @click="activeChangeTab = 'update'">
+                    修改 ({{ getCurrentSummary().updateCount }})
+                </button>
+                <button 
+                    class="tab" 
+                    :class="{ active: activeChangeTab === 'delete' }"
+                    @click="activeChangeTab = 'delete'">
+                    删除 ({{ getCurrentSummary().deleteCount }})
+                </button>
+            </div>
+
+            <!-- 变更详情表格 -->
+            <div class="table-container">
+                <!-- 字典表 -->
+                <table v-if="activeSheetTab === 'dict' && getCurrentChangeList().length > 0">
+                    <thead>
+                        <tr>
+                            <th>数据项编号</th>
+                            <th>英文简称</th>
+                            <th>中文名称</th>
+                            <th>字典属性</th>
+                            <th>域中文名称</th>
+                            <th>数据类型</th>
+                            <th>数据格式</th>
+                            <th>JAVA/ESF规范命名</th>
+                            <th>ESF数据格式</th>
+                            <th>GaussDB数据格式</th>
+                            <th>GoldenDB数据格式</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="(item, index) in getCurrentChangeList()" :key="index">
+                            <td>{{ item.dataItemCode }}</td>
+                            <td>{{ item.englishAbbr }}</td>
+                            <td>{{ item.chineseName }}</td>
+                            <td>{{ item.dictAttr }}</td>
+                            <td>{{ item.domainChineseName }}</td>
+                            <td>{{ item.dataType }}</td>
+                            <td>{{ item.dataFormat }}</td>
+                            <td>{{ item.javaEsfName }}</td>
+                            <td>{{ item.esfDataFormat }}</td>
+                            <td>{{ item.gaussdbDataFormat }}</td>
+                            <td>{{ item.goldendbDataFormat }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <!-- 域清单表 (严格13个字段) -->
+                <table v-if="activeSheetTab === 'domain' && getCurrentChangeList().length > 0">
+                    <thead>
+                        <tr>
+                            <th>域编号</th>
+                            <th>域类型</th>
+                            <th>域组</th>
+                            <th>域中文名称</th>
+                            <th>域英文名称</th>
+                            <th>域英文简称</th>
+                            <th>域定义</th>
+                            <th>数据格式</th>
+                            <th>域规则</th>
+                            <th>取值范围</th>
+                            <th>域来源</th>
+                            <th>来源编号</th>
+                            <th>备注</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="(item, index) in getCurrentChangeList()" :key="index">
+                            <td>{{ item.domainNumber }}</td>
+                            <td>{{ item.domainType }}</td>
+                            <td>{{ item.domainGroup }}</td>
+                            <td>{{ item.chineseName }}</td>
+                            <td>{{ item.englishName }}</td>
+                            <td>{{ item.englishAbbr }}</td>
+                            <td>{{ item.domainDefinition }}</td>
+                            <td>{{ item.dataFormat }}</td>
+                            <td>{{ item.domainRule }}</td>
+                            <td>{{ item.valueRange }}</td>
+                            <td>{{ item.domainSource }}</td>
+                            <td>{{ item.sourceNumber }}</td>
+                            <td>{{ item.remark }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <!-- 代码扩展清单表 -->
+                <table v-if="activeSheetTab === 'code' && getCurrentChangeList().length > 0">
+                    <thead>
+                        <tr>
+                            <th>代码域编号</th>
+                            <th>代码域中文名称</th>
+                            <th>代码取值</th>
+                            <th>取值含义中文名称</th>
+                            <th>代码含义英文名称</th>
+                            <th>代码含义英文简称</th>
+                            <th>代码描述</th>
+                            <th>域规则</th>
+                            <th>代码域来源</th>
+                            <th>来源编号</th>
+                            <th>备注</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="(item, index) in getCurrentChangeList()" :key="index">
+                            <td>{{ item.codeDomainNumber }}</td>
+                            <td>{{ item.codeDomainChineseName }}</td>
+                            <td>{{ item.codeValue }}</td>
+                            <td>{{ item.valueChineseName }}</td>
+                            <td>{{ item.codeEnglishName }}</td>
+                            <td>{{ item.codeEnglishAbbr }}</td>
+                            <td>{{ item.codeDescription }}</td>
+                            <td>{{ item.domainRule }}</td>
+                            <td>{{ item.codeDomainSource }}</td>
+                            <td>{{ item.sourceNumber }}</td>
+                            <td>{{ item.remark }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <!-- 空状态 -->
+                <div v-if="getCurrentChangeList().length === 0" class="empty-state">
+                    <div class="icon">📭</div>
+                    <p>暂无{{ activeChangeTab === 'new' ? '新增' : activeChangeTab === 'update' ? '修改' : '删除' }}数据</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 加载状态 -->
+        <div v-if="loading" class="card loading">
+            <div class="spinner"></div>
+            <p>正在解析Excel文件...</p>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    currentView: 'upload',  // upload, preview, validation-error
+                    activeSheetTab: 'dict', // dict, domain, code - Sheet选择
+                    activeChangeTab: 'new', // new, update, delete - 变更类型选择
+                    selectedFile: null,
+                    uploading: false,
+                    loading: false,
+                    importing: false,
+                    exportingReport: false,  // 导出分析报告中
+                    validationErrors: [],  // 校验错误列表
+                    changeDescription: '',  // 变更说明
+                    changeDescriptionError: false,  // 变更说明错误标记
+                    importPassword: '',  // 导入口令
+                    passwordError: false,  // 口令错误标记
+                    multiSheetChangeReport: {
+                        dictChangeReport: null,
+                        domainChangeReport: null,
+                        codeExtensionChangeReport: null
+                    },
+                    importProgress: 0,
+                    importStatus: 'importing',
+                    importMessage: '准备导入...'
+                };
+            },
+            methods: {
+                selectFile() {
+                    this.$refs.fileInput.click();
+                },
+                handleFileSelect(event) {
+                    const file = event.target.files[0];
+                    if (file) {
+                        this.selectedFile = file;
+                    }
+                },
+                formatFileSize(bytes) {
+                    if (bytes < 1024) return bytes + ' B';
+                    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+                    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+                },
+                async previewFile() {
+                    if (!this.selectedFile) {
+                        alert('请先选择文件');
+                        return;
+                    }
+
+                    this.uploading = true;
+                    this.loading = true;
+
+                    const formData = new FormData();
+                    formData.append('file', this.selectedFile);
+
+                    try {
+                        const response = await axios.post('/api/multi-sheet-ing/change-preview', formData, {
+                            headers: {
+                                'Content-Type': 'multipart/form-data'
+                            }
+                        });
+
+                        if (response.data.code === 200) {
+                            this.multiSheetChangeReport = response.data.data;
+                            this.currentView = 'preview';
+                            console.log('变更分析数据:', this.multiSheetChangeReport);
+                        } else if (response.data.code === 500 && response.data.message === '数据校验失败') {
+                            // 校验失败，显示错误
+                            this.validationErrors = response.data.data.errors || [];
+                            this.currentView = 'validation-error';
+                            console.log('校验错误:', this.validationErrors);
+                        } else {
+                            alert('变更分析失败: ' + response.data.message);
+                        }
+                    } catch (error) {
+                        console.error('变更分析失败:', error);
+                        alert('变更分析失败: ' + (error.response?.data?.message || error.message));
+                    } finally {
+                        this.uploading = false;
+                        this.loading = false;
+                    }
+                },
+                backToUpload() {
+                    this.currentView = 'upload';
+                    this.selectedFile = null;
+                    this.validationErrors = [];
+                    this.changeDescription = '';
+                    this.changeDescriptionError = false;
+                    this.multiSheetChangeReport = {
+                        dictChangeReport: null,
+                        domainChangeReport: null,
+                        codeExtensionChangeReport: null
+                    };
+                    this.$refs.fileInput.value = '';
+                },
+                // 获取当前Sheet的变更报告
+                getCurrentChangeReport() {
+                    if (this.activeSheetTab === 'dict') {
+                        return this.multiSheetChangeReport.dictChangeReport || { newList: [], updateList: [], deleteList: [], unchangedList: [], summary: { newCount: 0, updateCount: 0, deleteCount: 0, unchangedCount: 0 } };
+                    } else if (this.activeSheetTab === 'domain') {
+                        return this.multiSheetChangeReport.domainChangeReport || { newList: [], updateList: [], deleteList: [], unchangedList: [], summary: { newCount: 0, updateCount: 0, deleteCount: 0, unchangedCount: 0 } };
+                    } else if (this.activeSheetTab === 'code') {
+                        return this.multiSheetChangeReport.codeExtensionChangeReport || { newList: [], updateList: [], deleteList: [], unchangedList: [], summary: { newCount: 0, updateCount: 0, deleteCount: 0, unchangedCount: 0 } };
+                    }
+                    return { newList: [], updateList: [], deleteList: [], unchangedList: [], summary: { newCount: 0, updateCount: 0, deleteCount: 0, unchangedCount: 0 } };
+                },
+                // 获取当前Sheet的统计信息
+                getCurrentSummary() {
+                    return this.getCurrentChangeReport().summary;
+                },
+                // 获取字典表统计
+                getDictSummary() {
+                    return this.multiSheetChangeReport.dictChangeReport?.summary || { newCount: 0, updateCount: 0, deleteCount: 0, unchangedCount: 0 };
+                },
+                // 获取域清单统计
+                getDomainSummary() {
+                    return this.multiSheetChangeReport.domainChangeReport?.summary || { newCount: 0, updateCount: 0, deleteCount: 0, unchangedCount: 0 };
+                },
+                // 获取代码扩展统计
+                getCodeSummary() {
+                    return this.multiSheetChangeReport.codeExtensionChangeReport?.summary || { newCount: 0, updateCount: 0, deleteCount: 0, unchangedCount: 0 };
+                },
+                // 获取总统计
+                getTotalSummary() {
+                    const dict = this.getDictSummary();
+                    const domain = this.getDomainSummary();
+                    const code = this.getCodeSummary();
+                    return {
+                        newCount: dict.newCount + domain.newCount + code.newCount,
+                        updateCount: dict.updateCount + domain.updateCount + code.updateCount,
+                        deleteCount: dict.deleteCount + domain.deleteCount + code.deleteCount,
+                        unchangedCount: dict.unchangedCount + domain.unchangedCount + code.unchangedCount
+                    };
+                },
+                // 获取当前变更类型的数据列表
+                getCurrentChangeList() {
+                    const report = this.getCurrentChangeReport();
+                    if (this.activeChangeTab === 'new') {
+                        return report.newList || [];
+                    } else if (this.activeChangeTab === 'update') {
+                        return report.updateList || [];
+                    } else if (this.activeChangeTab === 'delete') {
+                        return report.deleteList || [];
+                    }
+                    return [];
+                },
+                // 判断是否有变更
+                hasChanges() {
+                    const total = this.getTotalSummary();
+                    return total.newCount > 0 || total.updateCount > 0 || total.deleteCount > 0;
+                },
+                async confirmImport() {
+                    if (!this.selectedFile) {
+                        alert('请先选择文件');
+                        return;
+                    }
+                    
+                    // 验证变更说明
+                    if (!this.changeDescription || !this.changeDescription.trim()) {
+                        this.changeDescriptionError = true;
+                        alert('请填写变更说明');
+                        return;
+                    }
+                    
+                    // 验证口令
+                    if (!this.importPassword || this.importPassword.length !== 6) {
+                        this.passwordError = true;
+                        alert('请输入正确的6位数字口令');
+                        return;
+                    }
+                    
+                    // 校验变更说明是否填写
+                    if (!this.changeDescription || this.changeDescription.trim() === '') {
+                        this.changeDescriptionError = true;
+                        // 滚动到顶部，让用户看到错误提示
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                        return;
+                    }
+
+                    const total = this.getTotalSummary();
+                    const dict = this.getDictSummary();
+                    const domain = this.getDomainSummary();
+                    const code = this.getCodeSummary();
+                    
+                    const message = `确认导入以下变更吗？\n\n` +
+                        `📚 字典: 新增${dict.newCount}条, 修改${dict.updateCount}条, 删除${dict.deleteCount}条\n` +
+                        `🗂️ 域清单: 新增${domain.newCount}条, 修改${domain.updateCount}条, 删除${domain.deleteCount}条\n` +
+                        `🔢 代码扩展: 新增${code.newCount}条, 修改${code.updateCount}条, 删除${code.deleteCount}条\n\n` +
+                        `总计: 新增${total.newCount}条, 修改${total.updateCount}条, 删除${total.deleteCount}条`;
+                    
+                    if (!confirm(message)) {
+                        return;
+                    }
+
+                    this.importing = true;
+                    this.importProgress = 0;
+                    this.importStatus = 'importing';
+                    this.importMessage = '准备导入...';
+
+                    // 生成客户端ID
+                    const clientId = 'client_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                    console.log('生成客户端ID:', clientId);
+                    
+                    // 建立SSE连接
+                    const eventSource = new EventSource(`/api/multi-sheet-ing/progress/${clientId}`);
+                    console.log('SSE连接已建立:', `/api/multi-sheet/progress/${clientId}`);
+                    
+                    // 设置超时
+                    const timeout = setTimeout(() => {
+                        console.warn('导入超时');
+                        eventSource.close();
+                        this.importing = false;
+                        alert('导入超时，请检查数据量或网络连接');
+                    }, 300000); // 5分钟超时
+                    
+                    eventSource.onopen = () => {
+                        console.log('SSE连接已打开');
+                    };
+                    
+                    eventSource.onmessage = (event) => {
+                        try {
+                            console.log('收到SSE消息:', event.data);
+                            const data = JSON.parse(event.data);
+                            
+                            // 注意：后端发送的是 percentage，不是 progress
+                            const newProgress = data.percentage || data.progress || 0;
+                            const newStatus = data.status || 'importing';
+                            const newMessage = data.message || '';
+                            
+                            console.log('准备更新进度:', {
+                                oldProgress: this.importProgress,
+                                newProgress: newProgress,
+                                oldStatus: this.importStatus,
+                                newStatus: newStatus,
+                                thisType: typeof this,
+                                isVueInstance: this.$data !== undefined
+                            });
+                            
+                            // 保存Vue实例引用
+                            const vm = this;
+                            
+                            // Vue 3 直接赋值并强制更新
+                            vm.importProgress = newProgress;
+                            vm.importStatus = newStatus;
+                            vm.importMessage = newMessage;
+                            
+                            // 使用$nextTick确保DOM更新
+                            vm.$nextTick(() => {
+                                console.log('✅ 进度已更新（nextTick后）:', {
+                                    importProgress: vm.importProgress,
+                                    importStatus: vm.importStatus,
+                                    importMessage: vm.importMessage,
+                                    importing: vm.importing
+                                });
+                            });
+                            
+                            console.log('✅ 进度已更新（立即）:', {
+                                importProgress: this.importProgress,
+                                importStatus: this.importStatus,
+                                importMessage: this.importMessage,
+                                importing: this.importing
+                            });
+                            
+                            // 强制检查DOM更新并手动设置（fallback）
+                            this.$nextTick(() => {
+                                // 尝试多种方式查找进度条
+                                const methods = [
+                                    () => document.querySelector('div[style*="linear-gradient(90deg, #10b981"]'),
+                                    () => document.querySelector('div[style*="height: 100%"]'),
+                                    () => {
+                                        const all = document.querySelectorAll('div');
+                                        for (let div of all) {
+                                            if (div.style.background && div.style.background.includes('#10b981')) {
+                                                return div;
+                                            }
+                                        }
+                                        return null;
+                                    }
+                                ];
+                                
+                                let progressBar = null;
+                                for (let method of methods) {
+                                    progressBar = method();
+                                    if (progressBar) break;
+                                }
+                                
+                                if (progressBar) {
+                                    console.log('✅ 找到进度条:', progressBar);
+                                    console.log('当前宽度:', progressBar.style.width);
+                                    // 手动设置宽度作为fallback
+                                    progressBar.style.width = newProgress + '%';
+                                    console.log('手动设置宽度为:', newProgress + '%');
+                                } else {
+                                    console.error('❌ 未找到进度条元素！');
+                                    console.log('尝试查找所有div:', document.querySelectorAll('div').length);
+                                }
+                            });
+                            
+                            if (data.status === 'completed') {
+                                console.log('✅ 导入完成，等待2秒后关闭进度条');
+                                eventSource.close();
+                                clearTimeout(timeout); // 清除超时定时器
+                                
+                                // 延迟2秒，让用户看到100%的进度
+                                setTimeout(() => {
+                                    this.importing = false; // 关闭进度条显示
+                                    alert(`✅ ${data.message}`);
+                                    
+                                    // 如果在iframe中，通知父窗口切换视图，否则直接跳转
+                                    if (window.parent !== window && typeof window.parent.switchView === 'function') {
+                                        window.parent.switchView('data-list');
+                                    } else {
+                                        window.location.href = '/';
+                                    }
+                                }, 2000);
+                            } else if (data.status === 'error') {
+                                console.error('❌ 导入失败:', data.message);
+                                eventSource.close();
+                                clearTimeout(timeout); // 清除超时定时器
+                                this.importing = false;
+                                alert('❌ ' + data.message);
+                            }
+                        } catch (e) {
+                            console.error('❌ 解析进度数据失败:', e, event.data);
+                        }
+                    };
+                    
+                    eventSource.onerror = (error) => {
+                        console.error('SSE连接错误:', error);
+                        eventSource.close();
+                        this.importing = false;
+                        alert('进度连接失败，但数据可能已导入，请刷新页面查看');
+                    };
+
+                    // 等待SSE连接建立后再发送POST请求
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    console.log('开始发送导入请求...');
+
+                    const formData = new FormData();
+                    formData.append('file', this.selectedFile);
+                    formData.append('clientId', clientId);
+                    formData.append('changeDescription', this.changeDescription.trim());
+                    formData.append('password', this.importPassword);
+
+                    try {
+                        const response = await axios.post('/api/multi-sheet-ing/confirm', formData, {
+                            headers: {
+                                'Content-Type': 'multipart/form-data'
+                            }
+                        });
+                        
+                        console.log('导入请求响应:', response.data);
+
+                        clearTimeout(timeout);
+
+                        if (response.data.code !== 200) {
+                            eventSource.close();
+                            this.importing = false;
+                            alert('导入失败: ' + response.data.message);
+                        }
+                    } catch (error) {
+                        clearTimeout(timeout);
+                        eventSource.close();
+                        this.importing = false;
+                        console.error('导入失败:', error);
+                        alert('导入失败: ' + (error.response?.data?.message || error.message));
+                    }
+                },
+                async exportAnalysisReport() {
+                    if (!this.selectedFile) {
+                        alert('没有可导出的文件');
+                        return;
+                    }
+                    
+                    this.exportingReport = true;
+                    
+                    try {
+                        const formData = new FormData();
+                        formData.append('file', this.selectedFile);
+                        
+                        const response = await axios.post('/api/multi-sheet-ing/export-analysis-report', 
+                            formData, {
+                            headers: {
+                                'Content-Type': 'multipart/form-data'
+                            },
+                            responseType: 'blob'
+                        });
+                        
+                        // 检查响应类型
+                        const contentType = response.headers['content-type'];
+                        if (contentType && contentType.includes('application/json')) {
+                            // 如果是JSON，说明有错误
+                            const text = await response.data.text();
+                            const errorData = JSON.parse(text);
+                            alert('导出失败: ' + (errorData.error || '未知错误'));
+                            return;
+                        }
+                        
+                        // 创建下载链接
+                        const url = window.URL.createObjectURL(new Blob([response.data]));
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.setAttribute('download', '分析报告.xlsx');
+                        document.body.appendChild(link);
+                        link.click();
+                        link.remove();
+                        window.URL.revokeObjectURL(url);
+                        
+                        alert('分析报告导出成功');
+                    } catch (error) {
+                        console.error('导出分析报告失败:', error);
+                        if (error.response && error.response.data && error.response.data instanceof Blob) {
+                            // 尝试读取错误消息
+                            const text = await error.response.data.text();
+                            try {
+                                const errorData = JSON.parse(text);
+                                alert('导出失败: ' + (errorData.error || errorData.message || '未知错误'));
+                            } catch (e) {
+                                alert('导出失败: ' + error.message);
+                            }
+                        } else {
+                            alert('导出分析报告失败: ' + (error.response?.data?.message || error.message));
+                        }
+                    } finally {
+                        this.exportingReport = false;
+                    }
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
+

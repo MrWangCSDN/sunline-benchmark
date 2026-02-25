@@ -1,0 +1,2722 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>字典管理系统</title>
+    <script src="/js/vue.global.js"></script>
+    <script src="/js/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+            margin: 0;
+            padding: 0;
+        }
+        
+        #app {
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+        
+        /* 左侧菜单栏 */
+        .sidebar {
+            width: 250px;
+            background: #2c3e50;
+            color: white;
+            overflow-y: auto;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            transition: width 0.3s ease;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .sidebar.collapsed {
+            width: 50px;
+            min-width: 50px;
+        }
+        
+        .sidebar.collapsed .sidebar-header,
+        .sidebar.collapsed .menu-group {
+            opacity: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
+        
+        .sidebar.collapsed .sidebar-footer {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        
+        .sidebar.collapsed .sidebar-toggle {
+            width: 100%;
+            padding: 10px 5px;
+        }
+        
+        .sidebar.collapsed .sidebar-toggle span:not(.icon) {
+            display: none;
+        }
+        
+        .sidebar-header {
+            padding: 20px;
+            background: #1a252f;
+            border-bottom: 1px solid #34495e;
+        }
+        
+        .sidebar-header h2 {
+            margin: 0;
+            font-size: 20px;
+            color: white;
+        }
+        
+        .menu-group {
+            padding: 10px 0;
+        }
+        
+        .menu-group-title {
+            padding: 12px 20px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #bdc3c7;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: background 0.3s;
+        }
+        
+        .menu-group-title:hover {
+            background: #34495e;
+        }
+        
+        .menu-group-title.active {
+            background: #34495e;
+            color: #3498db;
+        }
+        
+        .menu-group-title .arrow {
+            transition: transform 0.3s;
+        }
+        
+        .menu-group-title.collapsed .arrow {
+            transform: rotate(-90deg);
+        }
+        
+        .menu-items {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+        
+        .menu-group.expanded .menu-items {
+            max-height: 1000px;
+            transition: max-height 0.3s ease-in;
+        }
+        
+        .menu-item {
+            padding: 12px 20px 12px 40px;
+            cursor: pointer;
+            transition: all 0.3s;
+            color: #ecf0f1;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .menu-item:hover {
+            background: #34495e;
+            color: white;
+        }
+        
+        .menu-item.active {
+            background: #3498db;
+            color: white;
+        }
+        
+        /* 侧边栏底部折叠按钮 */
+        .sidebar-footer {
+            margin-top: auto;
+            padding: 15px;
+            border-top: 1px solid #34495e;
+            background: #1a252f;
+        }
+        
+        .sidebar-toggle {
+            width: 100%;
+            padding: 10px;
+            background: transparent;
+            border: 1px solid #34495e;
+            border-radius: 6px;
+            color: #ecf0f1;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+        
+        .sidebar-toggle:hover {
+            background: #34495e;
+            border-color: #3498db;
+            color: white;
+        }
+        
+        .sidebar-toggle .icon {
+            font-size: 16px;
+            transition: transform 0.3s;
+        }
+        
+        .sidebar.collapsed + .main-content {
+            margin-left: 0;
+        }
+        
+        /* 右侧内容区 */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: white;
+            transition: margin-left 0.3s ease;
+        }
+        
+        .content-header {
+            padding: 20px 30px;
+            background: white;
+            border-bottom: 1px solid #e0e0e0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: nowrap;
+        }
+        
+        .content-header h1 {
+            margin: 0;
+            font-size: 24px;
+            color: #2c3e50;
+            flex: 0 0 auto;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex: 0 0 auto;
+            margin-left: auto;
+        }
+
+        .user-name {
+            color: #2c3e50;
+            font-size: 14px;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .user-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: nowrap;
+        }
+
+        .btn-user-action {
+            padding: 8px 16px;
+            border: 1px solid #e5e7eb;
+            background: white;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #374151;
+            cursor: pointer;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+
+        .btn-user-action:hover {
+            background: #f3f4f6;
+            border-color: #cbd5e0;
+        }
+
+        .btn-user-action.primary {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .btn-user-action.primary:hover {
+            background: #5568d3;
+        }
+
+        .btn-user-action.danger {
+            color: #ef4444;
+            border-color: #fecaca;
+        }
+
+        .btn-user-action.danger:hover {
+            background: #fee2e2;
+            border-color: #fca5a5;
+        }
+        
+        .content-body {
+            flex: 1;
+            overflow: hidden;
+            padding: 0;
+            position: relative;
+            min-height: 0; /* 重要：允许 flex 子元素缩小 */
+        }
+        
+        .content-body .data-list-view {
+            padding: 20px 30px;
+            overflow-y: auto;
+            height: 100%;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .content-body iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+            background: white;
+            z-index: 10;
+        }
+        
+        /* 确保数据列表视图在 iframe 下方 */
+        .content-body .data-list-view {
+            position: relative;
+            z-index: 1;
+        }
+        
+        /* 数据列表页面样式 */
+        .data-list-view {
+            background: white;
+        }
+        
+        /* 保留原有样式用于数据列表页面 */
+        .data-list-view .header {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        }
+        
+        .data-list-view .header h1 {
+            color: #667eea;
+            font-size: 28px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .data-list-view .toolbar {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .data-list-view .toolbar-left {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .data-list-view .toolbar-right {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        
+        .btn-link {
+            background: #10b981;
+            color: white;
+        }
+        
+        .btn-link:hover {
+            background: #059669;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(16, 185, 129, 0.4);
+        }
+        
+        .file-upload {
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .file-upload input[type="file"] {
+            position: absolute;
+            top: 0;
+            left: 0;
+            opacity: 0;
+            cursor: pointer;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .help-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: help;
+            line-height: 1;
+            transition: all 0.3s;
+            flex-shrink: 0;
+        }
+        
+        .help-icon:hover {
+            transform: scale(1.1);
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(245, 87, 108, 0.4);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .btn-edit {
+            padding: 6px 12px;
+            background: #10b981;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-right: 5px;
+        }
+        
+        .btn-edit:hover {
+            background: #059669;
+        }
+        
+        .btn-delete {
+            padding: 6px 12px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .btn-delete:hover {
+            background: #dc2626;
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        
+        .modal.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-content {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        
+        .modal-header {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: #667eea;
+        }
+        
+        .modal-body {
+            margin-bottom: 20px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #333;
+        }
+        
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        
+        .search-box {
+            display: flex;
+            gap: 10px;
+            flex: 1;
+            max-width: 400px;
+        }
+        
+        .search-panel {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .search-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .search-item {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .search-item label {
+            font-size: 14px;
+            font-weight: 500;
+            color: #374151;
+        }
+        
+        .search-item input {
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        .search-item input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .search-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+        
+        .search-input {
+            flex: 1;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        
+        .search-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .stats {
+            display: flex;
+            gap: 15px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .stat-item {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        
+        .content {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            min-height: 500px;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 50px;
+            color: #999;
+            font-size: 16px;
+        }
+        
+        .empty {
+            text-align: center;
+            padding: 80px 20px;
+            color: #999;
+        }
+        
+        .empty-icon {
+            font-size: 60px;
+            margin-bottom: 20px;
+        }
+        
+        .table-container {
+            overflow-x: auto;
+            margin-top: 20px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        
+        th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 10px;
+            text-align: left;
+            font-weight: 500;
+            white-space: nowrap;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        td {
+            padding: 12px 10px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        tr:hover {
+            background: #f8f9ff;
+        }
+        
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: 30px;
+            flex-wrap: wrap;
+        }
+        
+        .page-btn {
+            padding: 8px 16px;
+            border: 1px solid #e0e0e0;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .page-btn:hover:not(:disabled) {
+            border-color: #667eea;
+            color: #667eea;
+        }
+        
+        .page-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: transparent;
+        }
+        
+        .page-info {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .toast {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 15px 30px;
+            border-radius: 8px;
+            color: white;
+            font-size: 14px;
+            z-index: 9999;
+            animation: slideDown 0.3s ease;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+        }
+        
+        .toast.success {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        }
+        
+        .toast.error {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translate(-50%, -20px);
+            }
+            to {
+                opacity: 1;
+                transform: translate(-50%, 0);
+            }
+        }
+        
+        .filename {
+            color: #667eea;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        
+        /* 进度条样式 */
+        .progress-container {
+            margin-top: 15px;
+            padding: 15px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        
+        .progress-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .progress-text {
+            color: #667eea;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .progress-percentage {
+            color: #667eea;
+            font-size: 16px;
+            font-weight: 600;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 24px;
+            background: #f0f0f0;
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            border-radius: 12px;
+            transition: width 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .progress-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(
+                90deg,
+                transparent,
+                rgba(255, 255, 255, 0.3),
+                transparent
+            );
+            animation: shimmer 2s infinite;
+        }
+        
+        @keyframes shimmer {
+            0% {
+                transform: translateX(-100%);
+            }
+            100% {
+                transform: translateX(100%);
+            }
+        }
+        
+        /* Tab样式 */
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e5e7eb;
+            flex-wrap: wrap;
+        }
+        
+        .tab {
+            padding: 12px 24px;
+            background: transparent;
+            border: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            color: #6b7280;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .tab:hover {
+            color: #667eea;
+            background: rgba(102, 126, 234, 0.05);
+        }
+        
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            background: rgba(102, 126, 234, 0.1);
+        }
+        
+        .tab .badge {
+            background: #667eea;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .tab.active .badge {
+            background: white;
+            color: #667eea;
+        }
+        
+        @media (max-width: 768px) {
+            .toolbar {
+                flex-direction: column;
+            }
+            
+            .toolbar-left,
+            .search-box {
+                width: 100%;
+                max-width: 100%;
+            }
+            
+            .stats {
+                flex-direction: column;
+            }
+            
+            .stat-item {
+                width: 100%;
+            }
+            
+            table {
+                font-size: 12px;
+            }
+            
+            th, td {
+                padding: 10px 5px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- 左侧菜单栏 -->
+        <div class="sidebar" :class="{ collapsed: sidebarCollapsed }">
+            <div class="sidebar-header">
+                <h2>📊 字典管理系统</h2>
+            </div>
+            
+            <div class="menu-group" v-if="hasMenuPermission('dict-management') || hasMenuPermission('data-list') || hasMenuPermission('excel-import') || hasMenuPermission('excel-import-ing') || hasMenuPermission('change-history') || hasMenuPermission('excel-export') || hasMenuPermission('enum-mapping') || hasMenuPermission('domain-mapping') || hasMenuPermission('dict-usage-analysis') || hasMenuPermission('dict-batch-delete')" :class="{ expanded: menuExpanded }">
+                <div class="menu-group-title" :class="{ collapsed: !menuExpanded }" @click="toggleMenu">
+                    <span>数标管理</span>
+                    <span class="arrow">▼</span>
+                </div>
+                <div class="menu-items">
+                    <div class="menu-item" v-if="hasMenuPermission('data-list')" :class="{ active: currentView === 'data-list' }" @click="switchView('data-list')">
+                        <span>📋 数据列表</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('excel-import')" :class="{ active: currentView === 'excel-import' }" @click="switchView('excel-import')">
+                        <span>📊 Excel导入分析</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('excel-import-ing')" :class="{ active: currentView === 'excel-import-ing' }" @click="switchView('excel-import-ing')">
+                        <span>📊 Excel导入分析(在途)</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('change-history')" :class="{ active: currentView === 'change-history' }" @click="switchView('change-history')">
+                        <span>📜 变更历史</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('excel-export')" :class="{ active: currentView === 'excel-export' }" @click="switchView('excel-export')">
+                        <span>📥 Excel导出</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('enum-mapping')" :class="{ active: currentView === 'enum-mapping' }" @click="switchView('enum-mapping')">
+                        <span>🔗 枚举映射关系维护</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('domain-mapping')" :class="{ active: currentView === 'domain-mapping' }" @click="switchView('domain-mapping')">
+                        <span>🗂️ 域清单映射关系维护</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('dict-usage-analysis')" :class="{ active: currentView === 'dict-usage-analysis' }" @click="switchView('dict-usage-analysis')">
+                        <span>📊 在途字典使用分析</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('dict-batch-delete')" :class="{ active: currentView === 'dict-batch-delete' }" @click="switchView('dict-batch-delete')">
+                        <span>🗑️ 在途字典批量删除</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="menu-group" v-if="hasMenuPermission('git-management') || hasMenuPermission('git-branch-create') || hasMenuPermission('git-permission-manage') || hasMenuPermission('jar-scan-analysis') || hasMenuPermission('service-build-scan') || hasMenuPermission('service-impl-build-scan') || hasMenuPermission('method-stack-scan') || hasMenuPermission('flow-tree-query') || hasMenuPermission('pom-dependency-tree') || hasMenuPermission('batch-clone') || hasMenuPermission('excel-compare') || hasMenuPermission('excel-clean') || hasMenuPermission('db-table-export') || hasMenuPermission('xml-db-compare') || hasMenuPermission('esf-interface-compare') || hasMenuPermission('migration-table-compare') || hasMenuPermission('layer-call-rule')" :class="{ expanded: gitMenuExpanded }">
+                <div class="menu-group-title" :class="{ collapsed: !gitMenuExpanded }" @click="toggleGitMenu">
+                    <span>工具箱</span>
+                    <span class="arrow">▼</span>
+                </div>
+                <div class="menu-items">
+                    <div class="menu-item" v-if="hasMenuPermission('git-branch-create')" :class="{ active: currentView === 'git-branch-create' }" @click="switchView('git-branch-create')">
+                        <span>🌿 分支创建</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('git-permission-manage')" @click="switchView('git-permission-manage')" :class="{ active: currentView === 'git-permission-manage' }">
+                        <span>👥 权限管理</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('protected-branch-settings')" @click="switchView('protected-branch-settings')" :class="{ active: currentView === 'protected-branch-settings' }">
+                        <span>🛡️ 保护分支设置</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('jar-scan-analysis')" @click="switchView('jar-scan-analysis')" :class="{ active: currentView === 'jar-scan-analysis' }">
+                        <span>🔍 扫描分析</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('service-build-scan')" @click="switchView('service-build-scan')" :class="{ active: currentView === 'service-build-scan' }">
+                        <span>🔧 服务和构建扫描</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('service-impl-build-scan')" @click="switchView('service-impl-build-scan')" :class="{ active: currentView === 'service-impl-build-scan' }">
+                        <span>⚙️ 服务和构建实现扫描</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('method-stack-scan')" @click="switchView('method-stack-scan')" :class="{ active: currentView === 'method-stack-scan' }">
+                        <span>🔗 代码方法栈扫描</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('flow-tree-query')" @click="switchView('flow-tree-query')" :class="{ active: currentView === 'flow-tree-query' }">
+                        <span>🌳 交易树查询</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('pom-dependency-tree')" @click="switchView('pom-dependency-tree')" :class="{ active: currentView === 'pom-dependency-tree' }">
+                        <span>📦 POM依赖树检查</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('batch-clone')" @click="switchView('batch-clone')" :class="{ active: currentView === 'batch-clone' }">
+                        <span>📦 批量克隆项目</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('excel-compare')" @click="switchView('excel-compare')" :class="{ active: currentView === 'excel-compare' }">
+                        <span>📊 Excel文档比对</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('excel-clean')" @click="switchView('excel-clean')" :class="{ active: currentView === 'excel-clean' }">
+                        <span>🧹 Excel数据清洗</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('db-table-export')" @click="switchView('db-table-export')" :class="{ active: currentView === 'db-table-export' }">
+                        <span>💾 数据库表导出</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('xml-db-compare')" @click="switchView('xml-db-compare')" :class="{ active: currentView === 'xml-db-compare' }">
+                        <span>🔄 XML模型与数据库比对</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('esf-interface-compare')" @click="switchView('esf-interface-compare')" :class="{ active: currentView === 'esf-interface-compare' }">
+                        <span>📡 ESF接口文档比对</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('migration-table-compare')" @click="switchView('migration-table-compare')" :class="{ active: currentView === 'migration-table-compare' }">
+                        <span>🔄 迁移中间表比对</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('layer-call-rule')" @click="switchView('layer-call-rule')" :class="{ active: currentView === 'layer-call-rule' }">
+                        <span>⚙️ 分层调用规则配置</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 系统管理菜单（仅超级管理员可见） -->
+            <div class="menu-group" v-if="isAdmin" :class="{ expanded: systemMenuExpanded }">
+                <div class="menu-group-title" :class="{ collapsed: !systemMenuExpanded }" @click="toggleSystemMenu">
+                    <span>系统管理</span>
+                    <span class="arrow">▼</span>
+                </div>
+                <div class="menu-items">
+                    <div class="menu-item" @click="switchView('user-management')" :class="{ active: currentView === 'user-management' }">
+                        <span>👥 用户管理</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 侧边栏底部折叠按钮 -->
+            <div class="sidebar-footer">
+                <button class="sidebar-toggle" @click="toggleSidebar">
+                    <span class="icon">{{ sidebarCollapsed ? '▶' : '◀' }}</span>
+                    <span v-if="!sidebarCollapsed">{{ sidebarCollapsed ? '展开' : '收起' }}</span>
+                </button>
+            </div>
+        </div>
+        
+        <!-- 右侧内容区 -->
+        <div class="main-content">
+            <div class="content-header">
+                <h1>{{ getViewTitle() }}</h1>
+                <div class="user-info" v-if="currentUser">
+                    <span class="user-name">{{ currentUser.chineseName || currentUser.username }}</span>
+                    <div class="user-actions">
+                        <button class="btn-user-action primary" @click="openChangePasswordModal">修改密码</button>
+                        <button class="btn-user-action danger" @click="logout">登出</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="content-body">
+                <!-- 其他视图使用 iframe - 放在最前面确保始终存在 -->
+                <iframe v-show="currentView === 'excel-import'" src="/multi-sheet-preview.html"></iframe>
+                <iframe v-show="currentView === 'excel-import-ing'" src="/multi-sheet-ing-preview.html"></iframe>
+                <iframe v-show="currentView === 'change-history'" src="/change-history.html"></iframe>
+                <iframe v-show="currentView === 'excel-export'" src="/excel-export.html"></iframe>
+                <iframe v-show="currentView === 'git-branch-create'" src="/git-branch-create.html"></iframe>
+                <iframe v-show="currentView === 'git-permission-manage'" src="/git-permission-manage.html"></iframe>
+                <iframe v-show="currentView === 'protected-branch-settings'" src="/protected-branch-settings.html"></iframe>
+                <iframe v-show="currentView === 'jar-scan-analysis'" src="/jar-scan-analysis.html"></iframe>
+                <iframe v-show="currentView === 'service-build-scan'" src="/service-build-scan.html"></iframe>
+                <iframe v-show="currentView === 'service-impl-build-scan'" src="/service-impl-build-scan.html"></iframe>
+                <iframe v-show="currentView === 'method-stack-scan'" src="/method-stack-scan.html"></iframe>
+                <iframe v-show="currentView === 'flow-tree-query'" src="/flow-tree-query.html"></iframe>
+                <iframe v-show="currentView === 'pom-dependency-tree'" src="/pom-dependency-tree.html"></iframe>
+                <iframe v-show="currentView === 'batch-clone'" src="/batch-clone.html"></iframe>
+                <iframe v-show="currentView === 'excel-compare'" src="/excel-compare.html"></iframe>
+                <iframe v-show="currentView === 'excel-clean'" src="/excel-clean.html"></iframe>
+                <iframe v-show="currentView === 'db-table-export'" src="/db-table-export.html"></iframe>
+                <iframe v-show="currentView === 'xml-db-compare'" src="/xml-db-compare.html"></iframe>
+                <iframe v-show="currentView === 'esf-interface-compare'" src="/esf-interface-compare.html"></iframe>
+                <iframe v-show="currentView === 'migration-table-compare'" src="/migration-table-compare.html"></iframe>
+                <iframe v-show="currentView === 'layer-call-rule'" src="/layer-call-rule.html"></iframe>
+                <iframe v-show="currentView === 'user-management'" src="/user-management.html"></iframe>
+                <iframe v-show="currentView === 'enum-mapping'" src="/enum-mapping.html"></iframe>
+                <iframe v-show="currentView === 'domain-mapping'" src="/domain-mapping.html"></iframe>
+                <iframe v-show="currentView === 'dict-usage-analysis'" src="/dict-usage-analysis.html"></iframe>
+                <iframe v-show="currentView === 'dict-batch-delete'" src="/dict-batch-delete.html"></iframe>
+                
+                <!-- 数据列表视图 -->
+                <div v-if="currentView === 'data-list'" class="data-list-view">
+                    <div class="header">
+                        <div class="toolbar">
+                            <div class="search-box">
+                                <button 
+                                    class="btn btn-secondary" 
+                                    @click="generateRelationshipReport" 
+                                    :disabled="generatingReport"
+                                    style="position: relative; display: flex; align-items: center; gap: 6px;">
+                                    <span>{{ generatingReport ? '⏳ 导出中...' : '📊 导出关联性检查' }}</span>
+                                    <span 
+                                        class="help-icon"
+                                        title="该功能用于导出字典关联不上域清单，域清单中的代码类关联不上代码扩展清单的数据"
+                                        @click.stop>
+                                        ?
+                                    </span>
+                                </button>
+                                <button class="btn btn-primary" @click="toggleSearchPanel">
+                                    {{ showSearchPanel ? '🔼 收起搜索' : '🔍 高级搜索' }}
+                                </button>
+                                <button class="btn btn-secondary" @click="resetSearch" v-if="hasSearchConditions()">
+                                    ✗ 清空搜索
+                                </button>
+                            </div>
+                        </div>
+            
+            <!-- 高级搜索面板 -->
+            <div v-if="showSearchPanel" class="search-panel">
+                <!-- 字典搜索 -->
+                <div v-if="activeTab === 'dict'" class="search-grid">
+                    <div class="search-item">
+                        <label>数据项编号</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.dataItemCode" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>英文简称</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.englishAbbr" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>英文名称</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.englishName" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>中文名称</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.chineseName" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>字典属性</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.dictAttr" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>域中文名称</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.domainChineseName" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>数据类型</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.dataType" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>数据格式</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.dataFormat" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>取值范围</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.valueRange" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>JAVA/ESF规范命名</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.javaEsfName" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>ESF数据格式</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.esfDataFormat" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>GaussDB数据格式</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.gaussdbDataFormat" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>GoldenDB数据格式</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.goldendbDataFormat" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                </div>
+                
+                <!-- 域清单搜索 -->
+                <div v-if="activeTab === 'domain'" class="search-grid">
+                    <div class="search-item">
+                        <label>域编号</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.domainNumber" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>域类型</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.domainType" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>域组</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.domainGroup" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>域中文名称</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.chineseName" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>域英文名称</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.englishName" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>域英文简称</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.englishAbbr" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>域定义</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.domainDefinition" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>数据格式</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.dataFormat" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>域规则</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.domainRule" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>取值范围</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.valueRange" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>域来源</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.domainSource" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>来源编号</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.sourceNumber" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>备注</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.remark" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                </div>
+                
+                <!-- 代码扩展清单搜索 -->
+                <div v-if="activeTab === 'code'" class="search-grid">
+                    <div class="search-item">
+                        <label>代码域编号</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.codeDomainNumber" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>代码域中文名称</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.codeDomainChineseName" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>代码取值</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.codeValue" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>取值含义中文名称</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.valueChineseName" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>代码含义英文名称</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.codeEnglishName" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>代码含义英文简称</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.codeEnglishAbbr" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>代码描述</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.codeDescription" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>域规则</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.domainRule" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>代码域来源</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.codeDomainSource" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>来源编号</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.sourceNumber" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                    <div class="search-item">
+                        <label>备注</label>
+                        <input 
+                            type="text" 
+                            v-model="searchConditions.remark" 
+                            placeholder="模糊搜索"
+                            @keyup.enter="search">
+                    </div>
+                </div>
+                
+                <div class="search-actions">
+                    <button class="btn btn-primary" @click="search">🔍 搜索</button>
+                    <button class="btn btn-secondary" @click="resetSearch">清空</button>
+                </div>
+            </div>
+            
+            
+            <!-- 数据源切换 -->
+            <div style="margin-bottom: 20px; padding: 15px; background: white; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <label style="font-weight: 500; color: #374151; font-size: 16px;">数据源：</label>
+                    <div style="display: flex; gap: 10px;">
+                        <button 
+                            class="btn" 
+                            :class="{ 'btn-primary': dataSource === 'standard', 'btn-secondary': dataSource !== 'standard' }"
+                            @click="switchDataSource('standard')"
+                            style="padding: 10px 20px; font-size: 14px;">
+                            贯标数据
+                        </button>
+                        <button 
+                            class="btn" 
+                            :class="{ 'btn-primary': dataSource === 'ing', 'btn-secondary': dataSource !== 'ing' }"
+                            @click="switchDataSource('ing')"
+                            style="padding: 10px 20px; font-size: 14px;">
+                            在途数据
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tab切换 -->
+            <div class="tabs">
+                <button 
+                    class="tab" 
+                    :class="{ active: activeTab === 'dict' }"
+                    @click="switchTab('dict')">
+                    📚 字典技术衍生表
+                    <span class="badge">{{ dictCount }}</span>
+                </button>
+                <button 
+                    class="tab" 
+                    :class="{ active: activeTab === 'domain' }"
+                    @click="switchTab('domain')">
+                    🗂️ 域清单
+                    <span class="badge">{{ domainCount }}</span>
+                </button>
+                <button 
+                    class="tab" 
+                    :class="{ active: activeTab === 'code' }"
+                    @click="switchTab('code')">
+                    🔢 代码扩展清单
+                    <span class="badge">{{ codeCount }}</span>
+                </button>
+            </div>
+            
+            <div class="stats">
+                <div class="stat-item">
+                    📋 总记录数: {{ totalCount }}
+                </div>
+                <div class="stat-item">
+                    📄 当前页: {{ currentPage }} / {{ totalPages }}
+                </div>
+            </div>
+        </div>
+        
+        <div class="content">
+            <div v-if="toast.show" :class="['toast', toast.type]">
+                {{ toast.message }}
+            </div>
+            
+            <div v-if="loading" class="loading">
+                ⏳ 加载中...
+            </div>
+            
+            <div v-else-if="dataList.length === 0" class="empty">
+                <div class="empty-icon">📭</div>
+                <div>暂无数据，请先导入Excel文件</div>
+            </div>
+            
+            <div v-else>
+                <!-- 字典技术衍生表 -->
+                <div v-if="activeTab === 'dict'" class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>数据项编号</th>
+                                <th>英文简称</th>
+                                <th>英文名称</th>
+                                <th>中文名称</th>
+                                <th>字典属性</th>
+                                <th>域中文名称</th>
+                                <th>数据类型</th>
+                                <th>数据格式</th>
+                                <th>取值范围</th>
+                                <th>JAVA/ESF规范命名</th>
+                                <th>ESF数据格式</th>
+                                <th>GaussDB数据格式</th>
+                                <th>GoldenDB数据格式</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="item in dataList" :key="item.id">
+                                <td>{{ item.dataItemCode }}</td>
+                                <td>{{ item.englishAbbr }}</td>
+                                <td>{{ item.englishName }}</td>
+                                <td>{{ item.chineseName }}</td>
+                                <td>{{ item.dictAttr }}</td>
+                                <td>{{ item.domainChineseName }}</td>
+                                <td>{{ item.dataType }}</td>
+                                <td>{{ item.dataFormat }}</td>
+                                <td>{{ item.valueRange }}</td>
+                                <td>{{ item.javaEsfName }}</td>
+                                <td>{{ item.esfDataFormat }}</td>
+                                <td>{{ item.gaussdbDataFormat }}</td>
+                                <td>{{ item.goldendbDataFormat }}</td>
+                                <td>
+                                    <button class="btn-edit" v-if="hasWritePermission('data-list')" @click="editItem(item)">编辑</button>
+                                    <button class="btn-delete" v-if="hasWritePermission('data-list')" @click="deleteItem(item)">删除</button>
+                                    <span v-if="!hasWritePermission('data-list')" style="color: #9ca3af;">仅查看</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- 域清单表 -->
+                <div v-if="activeTab === 'domain'" class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>域编号</th>
+                                <th>域类型</th>
+                                <th>域组</th>
+                                <th>域中文名称</th>
+                                <th>域英文名称</th>
+                                <th>域英文简称</th>
+                                <th>域定义</th>
+                                <th>数据格式</th>
+                                <th>域规则</th>
+                                <th>取值范围</th>
+                                <th>域来源</th>
+                                <th>来源编号</th>
+                                <th>备注</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="item in dataList" :key="item.id">
+                                <td>{{ item.domainNumber }}</td>
+                                <td>{{ item.domainType }}</td>
+                                <td>{{ item.domainGroup }}</td>
+                                <td>{{ item.chineseName }}</td>
+                                <td>{{ item.englishName }}</td>
+                                <td>{{ item.englishAbbr }}</td>
+                                <td>{{ item.domainDefinition }}</td>
+                                <td>{{ item.dataFormat }}</td>
+                                <td>{{ item.domainRule }}</td>
+                                <td>{{ item.valueRange }}</td>
+                                <td>{{ item.domainSource }}</td>
+                                <td>{{ item.sourceNumber }}</td>
+                                <td>{{ item.remark }}</td>
+                                <td>
+                                    <button class="btn-edit" v-if="hasWritePermission('data-list')" @click="editItem(item)">编辑</button>
+                                    <button class="btn-delete" v-if="hasWritePermission('data-list')" @click="deleteItem(item)">删除</button>
+                                    <span v-if="!hasWritePermission('data-list')" style="color: #9ca3af;">仅查看</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- 代码扩展清单表 -->
+                <div v-if="activeTab === 'code'" class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>代码域编号</th>
+                                <th>代码域中文名称</th>
+                                <th>代码取值</th>
+                                <th>取值含义中文名称</th>
+                                <th>代码含义英文名称</th>
+                                <th>代码含义英文简称</th>
+                                <th>代码描述</th>
+                                <th>域规则</th>
+                                <th>代码域来源</th>
+                                <th>来源编号</th>
+                                <th>备注</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="item in dataList" :key="item.id">
+                                <td>{{ item.codeDomainNumber }}</td>
+                                <td>{{ item.codeDomainChineseName }}</td>
+                                <td>{{ item.codeValue }}</td>
+                                <td>{{ item.valueChineseName }}</td>
+                                <td>{{ item.codeEnglishName }}</td>
+                                <td>{{ item.codeEnglishAbbr }}</td>
+                                <td>{{ item.codeDescription }}</td>
+                                <td>{{ item.domainRule }}</td>
+                                <td>{{ item.codeDomainSource }}</td>
+                                <td>{{ item.sourceNumber }}</td>
+                                <td>{{ item.remark }}</td>
+                                <td>
+                                    <button class="btn-edit" v-if="hasWritePermission('data-list')" @click="editItem(item)">编辑</button>
+                                    <button class="btn-delete" v-if="hasWritePermission('data-list')" @click="deleteItem(item)">删除</button>
+                                    <span v-if="!hasWritePermission('data-list')" style="color: #9ca3af;">仅查看</span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="pagination" v-if="totalPages > 1">
+                    <button class="page-btn" @click="goToPage(1)" :disabled="currentPage === 1">首页</button>
+                    <button class="page-btn" @click="goToPage(currentPage - 1)" :disabled="currentPage === 1">上一页</button>
+                    
+                    <span class="page-info">
+                        第 <input 
+                            type="number" 
+                            v-model.number="jumpPage" 
+                            @keyup.enter="jumpToPage"
+                            style="width: 50px; text-align: center; padding: 5px; border: 1px solid #e0e0e0; border-radius: 4px;"
+                        > 页
+                    </span>
+                    
+                    <button class="page-btn" @click="goToPage(currentPage + 1)" :disabled="currentPage === totalPages">下一页</button>
+                    <button class="page-btn" @click="goToPage(totalPages)" :disabled="currentPage === totalPages">末页</button>
+                </div>
+                </div>
+                </div>
+                
+                <!-- Excel导出视图 -->
+                <iframe v-show="currentView === 'excel-export'" src="/excel-export.html"></iframe>
+            </div>
+        </div>
+        
+        <!-- 口令输入对话框 -->
+        <div class="modal" :class="{ show: showPasswordModal }" @click.self="cancelOperation">
+            <div class="modal-content">
+                <div class="modal-header">
+                    {{ currentAction === 'edit' ? '编辑数据' : '删除数据' }}
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>请输入口令：</label>
+                        <input type="password" v-model="password" @keyup.enter="confirmPassword" placeholder="请输入6位数字口令" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary" @click="confirmPassword">确认</button>
+                    <button class="btn" @click="cancelOperation">取消</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 编辑对话框 -->
+        <div class="modal" :class="{ show: showEditModal }" @click.self="cancelOperation">
+            <div class="modal-content" style="max-width: 800px;">
+                <div class="modal-header">
+                    编辑{{ activeTab === 'dict' ? '字典技术衍生表' : activeTab === 'domain' ? '域清单' : '代码扩展清单' }}
+                </div>
+                <div class="modal-body" style="max-height: 60vh; overflow-y: auto;">
+                    <template v-if="activeTab === 'dict'">
+                        <div class="form-group">
+                            <label>数据项编号：</label>
+                            <input type="text" v-model="editForm.dataItemCode" />
+                        </div>
+                        <div class="form-group">
+                            <label>英文简称：</label>
+                            <input type="text" v-model="editForm.englishAbbr" />
+                        </div>
+                        <div class="form-group">
+                            <label>英文名称：</label>
+                            <input type="text" v-model="editForm.englishName" />
+                        </div>
+                        <div class="form-group">
+                            <label>中文名称：</label>
+                            <input type="text" v-model="editForm.chineseName" />
+                        </div>
+                        <div class="form-group">
+                            <label>字典属性：</label>
+                            <input type="text" v-model="editForm.dictAttr" />
+                        </div>
+                        <div class="form-group">
+                            <label>域中文名称：</label>
+                            <input type="text" v-model="editForm.domainChineseName" />
+                        </div>
+                        <div class="form-group">
+                            <label>数据类型：</label>
+                            <input type="text" v-model="editForm.dataType" />
+                        </div>
+                        <div class="form-group">
+                            <label>数据格式：</label>
+                            <input type="text" v-model="editForm.dataFormat" />
+                        </div>
+                        <div class="form-group">
+                            <label>取值范围：</label>
+                            <input type="text" v-model="editForm.valueRange" />
+                        </div>
+                        <div class="form-group">
+                            <label>JAVA/ESF规范命名：</label>
+                            <input type="text" v-model="editForm.javaEsfName" />
+                        </div>
+                        <div class="form-group">
+                            <label>ESF数据格式：</label>
+                            <input type="text" v-model="editForm.esfDataFormat" />
+                        </div>
+                        <div class="form-group">
+                            <label>GaussDB数据格式：</label>
+                            <input type="text" v-model="editForm.gaussdbDataFormat" />
+                        </div>
+                        <div class="form-group">
+                            <label>GoldenDB数据格式：</label>
+                            <input type="text" v-model="editForm.goldendbDataFormat" />
+                        </div>
+                    </template>
+                    <template v-else-if="activeTab === 'domain'">
+                        <div class="form-group">
+                            <label>域编号：</label>
+                            <input type="text" v-model="editForm.domainNumber" />
+                        </div>
+                        <div class="form-group">
+                            <label>域类型：</label>
+                            <input type="text" v-model="editForm.domainType" />
+                        </div>
+                        <div class="form-group">
+                            <label>域组：</label>
+                            <input type="text" v-model="editForm.domainGroup" />
+                        </div>
+                        <div class="form-group">
+                            <label>域中文名称：</label>
+                            <input type="text" v-model="editForm.chineseName" />
+                        </div>
+                        <div class="form-group">
+                            <label>域英文名称：</label>
+                            <input type="text" v-model="editForm.englishName" />
+                        </div>
+                        <div class="form-group">
+                            <label>域英文简称：</label>
+                            <input type="text" v-model="editForm.englishAbbr" />
+                        </div>
+                        <div class="form-group">
+                            <label>域定义：</label>
+                            <textarea v-model="editForm.domainDefinition" rows="3"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>数据格式：</label>
+                            <input type="text" v-model="editForm.dataFormat" />
+                        </div>
+                        <div class="form-group">
+                            <label>域规则：</label>
+                            <input type="text" v-model="editForm.domainRule" />
+                        </div>
+                        <div class="form-group">
+                            <label>取值范围：</label>
+                            <input type="text" v-model="editForm.valueRange" />
+                        </div>
+                        <div class="form-group">
+                            <label>域来源：</label>
+                            <input type="text" v-model="editForm.domainSource" />
+                        </div>
+                        <div class="form-group">
+                            <label>来源编号：</label>
+                            <input type="text" v-model="editForm.sourceNumber" />
+                        </div>
+                        <div class="form-group">
+                            <label>备注：</label>
+                            <textarea v-model="editForm.remark" rows="3"></textarea>
+                        </div>
+                    </template>
+                    <template v-else-if="activeTab === 'code'">
+                        <div class="form-group">
+                            <label>代码域编号：</label>
+                            <input type="text" v-model="editForm.codeDomainNumber" />
+                        </div>
+                        <div class="form-group">
+                            <label>代码域中文名称：</label>
+                            <input type="text" v-model="editForm.codeDomainChineseName" />
+                        </div>
+                        <div class="form-group">
+                            <label>代码取值：</label>
+                            <input type="text" v-model="editForm.codeValue" />
+                        </div>
+                        <div class="form-group">
+                            <label>取值含义中文名称：</label>
+                            <input type="text" v-model="editForm.valueChineseName" />
+                        </div>
+                        <div class="form-group">
+                            <label>代码含义英文名称：</label>
+                            <input type="text" v-model="editForm.codeEnglishName" />
+                        </div>
+                        <div class="form-group">
+                            <label>代码含义英文简称：</label>
+                            <input type="text" v-model="editForm.codeEnglishAbbr" />
+                        </div>
+                        <div class="form-group">
+                            <label>代码描述：</label>
+                            <textarea v-model="editForm.codeDescription" rows="3"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>域规则：</label>
+                            <input type="text" v-model="editForm.domainRule" />
+                        </div>
+                        <div class="form-group">
+                            <label>代码域来源：</label>
+                            <input type="text" v-model="editForm.codeDomainSource" />
+                        </div>
+                        <div class="form-group">
+                            <label>来源编号：</label>
+                            <input type="text" v-model="editForm.sourceNumber" />
+                        </div>
+                        <div class="form-group">
+                            <label>备注：</label>
+                            <textarea v-model="editForm.remark" rows="3"></textarea>
+                        </div>
+                    </template>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary" @click="saveEdit">保存</button>
+                    <button class="btn" @click="cancelOperation">取消</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 修改密码模态框 -->
+        <div class="modal" :class="{ show: showChangePasswordModal }" @click.self="showChangePasswordModal = false">
+            <div class="modal-content" @click.stop>
+                <div class="modal-header">
+                    <h2>修改密码</h2>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>原密码</label>
+                        <input 
+                            type="password" 
+                            v-model="changePasswordForm.oldPassword" 
+                            placeholder="请输入原密码"
+                            autofocus
+                        />
+                    </div>
+                    <div class="form-group">
+                        <label>新密码</label>
+                        <input 
+                            type="password" 
+                            v-model="changePasswordForm.newPassword" 
+                            placeholder="请输入新密码（至少6位）"
+                        />
+                    </div>
+                    <div class="form-group">
+                        <label>确认新密码</label>
+                        <input 
+                            type="password" 
+                            v-model="changePasswordForm.confirmPassword" 
+                            placeholder="请再次输入新密码"
+                        />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @click="showChangePasswordModal = false">取消</button>
+                    <button class="btn btn-primary" @click="changePassword">确定</button>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        const app = createApp({
+            data() {
+                return {
+                    currentView: 'data-list', // 当前视图: 'data-list', 'excel-import', 'excel-import-ing', 'change-history', 'excel-export', 'git-branch-create', 'git-permission-manage', 'jar-scan-analysis', 'enum-mapping', 'domain-mapping'
+                    menuExpanded: true, // 菜单是否展开
+                    gitMenuExpanded: true, // Git代码管理菜单是否展开
+                    systemMenuExpanded: true, // 系统管理菜单是否展开
+                    isAdmin: false, // 是否为超级管理员
+                    currentUser: null, // 当前登录用户
+                    menuPermissions: {}, // 当前用户的菜单权限 {menuCode: permissionType}
+                    sidebarCollapsed: false, // 侧边栏是否收起
+                    activeTab: 'dict', // 当前激活的Tab: dict, domain, code
+                    dataSource: 'standard', // 数据源: 'standard' 贯标数据, 'ing' 在途数据
+                    dataList: [],
+                    currentPage: 1,
+                    pageSize: 20,
+                    totalCount: 0,
+                    totalPages: 0,
+                    dictCount: 0,      // 字典表总数
+                    domainCount: 0,    // 域清单总数
+                    codeCount: 0,      // 代码扩展总数
+                    keyword: '',
+                    showSearchPanel: false,
+                    searchConditions: {
+                        dataItemCode: '',
+                        englishAbbr: '',
+                        englishName: '',
+                        chineseName: '',
+                        dictAttr: '',
+                        domainChineseName: '',
+                        dataType: '',
+                        dataFormat: '',
+                        valueRange: '',
+                        javaEsfName: '',
+                        esfDataFormat: '',
+                        gaussdbDataFormat: '',
+                        goldendbDataFormat: ''
+                    },
+                    selectedFile: null,
+                    loading: false,
+                    uploading: false,
+                    toast: {
+                        show: false,
+                        message: '',
+                        type: 'success'
+                    },
+                    jumpPage: 1,
+                    progress: {
+                        show: false,
+                        percentage: 0,
+                        message: '准备导入...',
+                        status: 'parsing'
+                    },
+                    clientId: 'client_' + Date.now(),
+                    eventSource: null,
+                    generatingReport: false,  // 关联性报告生成中
+                    showPasswordModal: false,  // 显示口令输入对话框
+                    showEditModal: false,  // 显示编辑对话框
+                    password: '',  // 输入的口令
+                    currentAction: null,  // 当前操作: 'edit' 或 'delete'
+                    currentItem: null,  // 当前操作的数据项
+                    editForm: {},  // 编辑表单数据
+                    showChangePasswordModal: false,  // 显示修改密码对话框
+                    changePasswordForm: {
+                        oldPassword: '',
+                        newPassword: '',
+                        confirmPassword: ''
+                    }
+                }
+            },
+            async mounted() {
+                // 检查登录状态
+                await this.checkLogin();
+                this.loadData();
+                this.loadAllCounts();
+            },
+            methods: {
+                // 切换菜单展开/收起
+                toggleMenu() {
+                    this.menuExpanded = !this.menuExpanded;
+                },
+                
+                // 切换Git代码管理菜单展开/收起
+                toggleGitMenu() {
+                    this.gitMenuExpanded = !this.gitMenuExpanded;
+                },
+                // 切换系统管理菜单展开/收起
+                toggleSystemMenu() {
+                    this.systemMenuExpanded = !this.systemMenuExpanded;
+                },
+                // 检查登录状态
+                async checkLogin() {
+                    try {
+                        const response = await axios.get('/api/auth/current');
+                        if (response.data.code === 200) {
+                            this.currentUser = response.data.data;
+                            this.isAdmin = response.data.data.isAdmin || false;
+                            // 加载菜单权限
+                            await this.loadMenuPermissions();
+                        } else {
+                            // 未登录，跳转到登录页
+                            window.location.href = '/login.html';
+                        }
+                    } catch (error) {
+                        // 未登录，跳转到登录页
+                        window.location.href = '/login.html';
+                    }
+                },
+                // 加载菜单权限
+                async loadMenuPermissions() {
+                    try {
+                        const response = await axios.get('/api/auth/menu-permissions');
+                        if (response.data.code === 200) {
+                            this.menuPermissions = response.data.data || {};
+                        }
+                    } catch (error) {
+                        console.error('加载菜单权限失败:', error);
+                        this.menuPermissions = {};
+                    }
+                },
+                // 检查是否有菜单权限
+                hasMenuPermission(menuCode) {
+                    // 超级管理员拥有所有权限
+                    if (this.isAdmin) {
+                        return true;
+                    }
+                    // 检查是否有该菜单的权限
+                    return this.menuPermissions.hasOwnProperty(menuCode);
+                },
+                // 检查是否有菜单的写权限
+                hasWritePermission(menuCode) {
+                    // 超级管理员拥有所有权限
+                    if (this.isAdmin) {
+                        return true;
+                    }
+                    return this.menuPermissions[menuCode] === 'READ_WRITE';
+                },
+                // 显示修改密码模态框
+                openChangePasswordModal() {
+                    this.changePasswordForm = {
+                        oldPassword: '',
+                        newPassword: '',
+                        confirmPassword: ''
+                    };
+                    this.showChangePasswordModal = true;
+                },
+                // 修改密码
+                async changePassword() {
+                    if (!this.changePasswordForm.oldPassword) {
+                        alert('请输入原密码');
+                        return;
+                    }
+                    if (!this.changePasswordForm.newPassword) {
+                        alert('请输入新密码');
+                        return;
+                    }
+                    if (this.changePasswordForm.newPassword !== this.changePasswordForm.confirmPassword) {
+                        alert('两次输入的新密码不一致');
+                        return;
+                    }
+                    if (this.changePasswordForm.newPassword.length < 6) {
+                        alert('新密码长度不能少于6位');
+                        return;
+                    }
+
+                    try {
+                        const response = await axios.post('/api/auth/change-password', {
+                            oldPassword: this.changePasswordForm.oldPassword,
+                            newPassword: this.changePasswordForm.newPassword
+                        });
+
+                        if (response.data.code === 200) {
+                            alert('密码修改成功，请重新登录');
+                            this.showChangePasswordModal = false;
+                            await this.logout();
+                        } else {
+                            alert('修改密码失败: ' + response.data.message);
+                        }
+                    } catch (error) {
+                        alert('修改密码失败: ' + (error.response?.data?.message || error.message));
+                    }
+                },
+                // 登出
+                async logout() {
+                    if (!confirm('确定要登出吗？')) {
+                        return;
+                    }
+                    try {
+                        await axios.post('/api/auth/logout');
+                        window.location.href = '/login.html';
+                    } catch (error) {
+                        // 即使请求失败也跳转到登录页
+                        window.location.href = '/login.html';
+                    }
+                },
+                
+                // 切换侧边栏显示/隐藏
+                toggleSidebar() {
+                    this.sidebarCollapsed = !this.sidebarCollapsed;
+                },
+                
+                // 切换视图
+                switchView(view) {
+                    console.log('切换视图:', view);
+                    console.log('切换前 currentView:', this.currentView);
+                    // 直接赋值，Vue 3 会自动处理响应式
+                    this.currentView = view;
+                    console.log('切换后 currentView:', this.currentView);
+                    // 确保菜单展开
+                    if (!this.menuExpanded) {
+                        this.menuExpanded = true;
+                    }
+                    // 强制更新视图
+                    this.$nextTick(() => {
+                        console.log('nextTick 后 currentView:', this.currentView);
+                        // 检查 content-body
+                        const contentBody = document.querySelector('.content-body');
+                        if (contentBody) {
+                            console.log('找到 content-body，子元素数量:', contentBody.children.length);
+                            console.log('content-body 的 HTML:', contentBody.innerHTML.substring(0, 500));
+                        } else {
+                            console.error('未找到 .content-body 元素！');
+                        }
+                        // 检查所有 iframe
+                        const allIframes = document.querySelectorAll('iframe');
+                        console.log('页面中所有 iframe 数量:', allIframes.length);
+                        allIframes.forEach((iframe, index) => {
+                            console.log(`iframe ${index}:`, iframe.src, 'display:', window.getComputedStyle(iframe).display);
+                        });
+                    });
+                },
+                
+                // 获取视图标题
+                getViewTitle() {
+                    const titles = {
+                        'data-list': '📋 数据列表',
+                        'excel-import': '📊 Excel导入分析',
+                        'excel-import-ing': '📊 Excel导入分析(在途)',
+                        'change-history': '📜 变更历史',
+                        'excel-export': '📥 Excel导出',
+                        'git-branch-create': '🌿 分支创建',
+                        'git-permission-manage': '👥 权限管理',
+                        'protected-branch-settings': '🛡️ 保护分支设置',
+                        'jar-scan-analysis': '🔍 扫描分析',
+                        'flow-tree-query': '🌳 交易树查询',
+                        'pom-dependency-tree': '📦 POM依赖树检查',
+                        'service-build-scan': '🔧 服务和构建扫描',
+                        'service-impl-build-scan': '⚙️ 服务和构建实现扫描',
+                        'method-stack-scan': '🔗 代码方法栈扫描',
+                        'user-management': '👥 用户管理',
+                        'enum-mapping': '🔗 枚举映射关系维护',
+                        'domain-mapping': '🗂️ 域清单映射关系维护',
+                        'dict-usage-analysis': '📊 在途字典使用分析',
+                        'dict-batch-delete': '🗑️ 在途字典批量删除',
+                        'batch-clone': '📦 批量克隆项目',
+                        'excel-compare': '📊 Excel文档比对',
+                        'excel-clean': '🧹 Excel数据清洗',
+                        'db-table-export': '💾 数据库表导出',
+                        'xml-db-compare': '🔄 XML模型与数据库比对',
+                        'esf-interface-compare': '📡 ESF接口文档比对',
+                        'migration-table-compare': '🔄 迁移中间表比对',
+                        'layer-call-rule': '⚙️ 分层调用规则配置'
+                    };
+                    return titles[this.currentView] || '字典管理系统';
+                },
+                // 切换数据源
+                switchDataSource(source) {
+                    this.dataSource = source;
+                    this.currentPage = 1;
+                    this.loadData();
+                    this.loadAllCounts();
+                },
+                // 切换Tab
+                switchTab(tab) {
+                    this.activeTab = tab;
+                    this.currentPage = 1;
+                    this.loadData();
+                },
+                // 加载所有表的总数
+                async loadAllCounts() {
+                    try {
+                        const prefix = this.dataSource === 'ing' ? '/api/dict-ing' : '/api/dict';
+                        const domainPrefix = this.dataSource === 'ing' ? '/api/domain-ing' : '/api/domain';
+                        const codePrefix = this.dataSource === 'ing' ? '/api/code-extension-ing' : '/api/code-extension';
+                        
+                        // 加载字典表总数
+                        const dictResponse = await axios.get(prefix + '/count');
+                        if (dictResponse.data.code === 200) {
+                            this.dictCount = dictResponse.data.data;
+                        }
+                        
+                        // 加载域清单总数  
+                        const domainResponse = await axios.get(domainPrefix + '/count');
+                        if (domainResponse.data.code === 200) {
+                            this.domainCount = domainResponse.data.data;
+                        }
+                        
+                        // 加载代码扩展总数
+                        const codeResponse = await axios.get(codePrefix + '/count');
+                        if (codeResponse.data.code === 200) {
+                            this.codeCount = codeResponse.data.data;
+                        }
+                    } catch (error) {
+                        console.error('加载总数失败:', error);
+                    }
+                },
+                async loadData() {
+                    this.loading = true;
+                    try {
+                        // 构建查询参数
+                        const params = {
+                            current: this.currentPage,
+                            size: this.pageSize
+                        };
+                        
+                        // 根据activeTab和数据源选择不同的API和搜索参数
+                        let apiUrl = '';
+                        const prefix = this.dataSource === 'ing' ? '/api/dict-ing' : '/api/dict';
+                        const domainPrefix = this.dataSource === 'ing' ? '/api/domain-ing' : '/api/domain';
+                        const codePrefix = this.dataSource === 'ing' ? '/api/code-extension-ing' : '/api/code-extension';
+                        
+                        if (this.activeTab === 'dict') {
+                            apiUrl = prefix + '/page';
+                            
+                            // 字典搜索：组合多列搜索条件为keyword格式
+                            const searchParts = [];
+                            if (this.searchConditions.dataItemCode) {
+                                searchParts.push(`dataItemCode:${this.searchConditions.dataItemCode}`);
+                            }
+                            if (this.searchConditions.englishAbbr) {
+                                searchParts.push(`englishAbbr:${this.searchConditions.englishAbbr}`);
+                            }
+                            if (this.searchConditions.englishName) {
+                                searchParts.push(`englishName:${this.searchConditions.englishName}`);
+                            }
+                            if (this.searchConditions.chineseName) {
+                                searchParts.push(`chineseName:${this.searchConditions.chineseName}`);
+                            }
+                            if (this.searchConditions.dictAttr) {
+                                searchParts.push(`dictAttr:${this.searchConditions.dictAttr}`);
+                            }
+                            if (this.searchConditions.domainChineseName) {
+                                searchParts.push(`domainChineseName:${this.searchConditions.domainChineseName}`);
+                            }
+                            if (this.searchConditions.dataType) {
+                                searchParts.push(`dataType:${this.searchConditions.dataType}`);
+                            }
+                            if (this.searchConditions.dataFormat) {
+                                searchParts.push(`dataFormat:${this.searchConditions.dataFormat}`);
+                            }
+                            if (this.searchConditions.valueRange) {
+                                searchParts.push(`valueRange:${this.searchConditions.valueRange}`);
+                            }
+                            if (this.searchConditions.javaEsfName) {
+                                searchParts.push(`javaEsfName:${this.searchConditions.javaEsfName}`);
+                            }
+                            if (this.searchConditions.esfDataFormat) {
+                                searchParts.push(`esfDataFormat:${this.searchConditions.esfDataFormat}`);
+                            }
+                            if (this.searchConditions.gaussdbDataFormat) {
+                                searchParts.push(`gaussdbDataFormat:${this.searchConditions.gaussdbDataFormat}`);
+                            }
+                            if (this.searchConditions.goldendbDataFormat) {
+                                searchParts.push(`goldendbDataFormat:${this.searchConditions.goldendbDataFormat}`);
+                            }
+                            
+                            if (searchParts.length > 0) {
+                                params.keyword = searchParts.join('|');
+                            }
+                            
+                        } else if (this.activeTab === 'domain') {
+                            apiUrl = domainPrefix + '/page';
+                            
+                            // 域清单搜索：直接传递各个字段参数
+                            if (this.searchConditions.domainNumber) {
+                                params.domainNumber = this.searchConditions.domainNumber;
+                            }
+                            if (this.searchConditions.domainType) {
+                                params.domainType = this.searchConditions.domainType;
+                            }
+                            if (this.searchConditions.domainGroup) {
+                                params.domainGroup = this.searchConditions.domainGroup;
+                            }
+                            if (this.searchConditions.chineseName) {
+                                params.chineseName = this.searchConditions.chineseName;
+                            }
+                            if (this.searchConditions.englishName) {
+                                params.englishName = this.searchConditions.englishName;
+                            }
+                            if (this.searchConditions.englishAbbr) {
+                                params.englishAbbr = this.searchConditions.englishAbbr;
+                            }
+                            if (this.searchConditions.domainDefinition) {
+                                params.domainDefinition = this.searchConditions.domainDefinition;
+                            }
+                            if (this.searchConditions.dataFormat) {
+                                params.dataFormat = this.searchConditions.dataFormat;
+                            }
+                            if (this.searchConditions.domainRule) {
+                                params.domainRule = this.searchConditions.domainRule;
+                            }
+                            if (this.searchConditions.valueRange) {
+                                params.valueRange = this.searchConditions.valueRange;
+                            }
+                            if (this.searchConditions.domainSource) {
+                                params.domainSource = this.searchConditions.domainSource;
+                            }
+                            if (this.searchConditions.sourceNumber) {
+                                params.sourceNumber = this.searchConditions.sourceNumber;
+                            }
+                            if (this.searchConditions.remark) {
+                                params.remark = this.searchConditions.remark;
+                            }
+                            
+                        } else if (this.activeTab === 'code') {
+                            apiUrl = codePrefix + '/page';
+                            
+                            // 代码扩展清单搜索：直接传递各个字段参数
+                            if (this.searchConditions.codeDomainNumber) {
+                                params.codeDomainNumber = this.searchConditions.codeDomainNumber;
+                            }
+                            if (this.searchConditions.codeDomainChineseName) {
+                                params.codeDomainChineseName = this.searchConditions.codeDomainChineseName;
+                            }
+                            if (this.searchConditions.codeValue) {
+                                params.codeValue = this.searchConditions.codeValue;
+                            }
+                            if (this.searchConditions.valueChineseName) {
+                                params.valueChineseName = this.searchConditions.valueChineseName;
+                            }
+                            if (this.searchConditions.codeEnglishName) {
+                                params.codeEnglishName = this.searchConditions.codeEnglishName;
+                            }
+                            if (this.searchConditions.codeEnglishAbbr) {
+                                params.codeEnglishAbbr = this.searchConditions.codeEnglishAbbr;
+                            }
+                            if (this.searchConditions.codeDescription) {
+                                params.codeDescription = this.searchConditions.codeDescription;
+                            }
+                            if (this.searchConditions.domainRule) {
+                                params.domainRule = this.searchConditions.domainRule;
+                            }
+                            if (this.searchConditions.codeDomainSource) {
+                                params.codeDomainSource = this.searchConditions.codeDomainSource;
+                            }
+                            if (this.searchConditions.sourceNumber) {
+                                params.sourceNumber = this.searchConditions.sourceNumber;
+                            }
+                            if (this.searchConditions.remark) {
+                                params.remark = this.searchConditions.remark;
+                            }
+                        }
+                        
+                        const response = await axios.get(apiUrl, { params });
+                        
+                        if (response.data.code === 200) {
+                            const pageData = response.data.data;
+                            this.dataList = pageData.records;
+                            this.totalCount = pageData.total;
+                            this.totalPages = pageData.pages;
+                            this.jumpPage = this.currentPage;
+                        }
+                    } catch (error) {
+                        this.showToast('加载数据失败', 'error');
+                        console.error(error);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                
+                async loadCount() {
+                    try {
+                        const response = await axios.get('/api/dict/count');
+                        if (response.data.code === 200) {
+                            this.totalCount = response.data.data;
+                        }
+                    } catch (error) {
+                        console.error('加载统计失败', error);
+                    }
+                },
+                
+                handleFileSelect(event) {
+                    const file = event.target.files[0];
+                    if (file) {
+                        if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
+                            this.showToast('请选择Excel文件', 'error');
+                            return;
+                        }
+                        this.selectedFile = file;
+                    }
+                },
+                
+                async uploadFile() {
+                    if (!this.selectedFile) {
+                        this.showToast('请先选择文件', 'error');
+                        return;
+                    }
+                    
+                    this.uploading = true;
+                    this.progress.show = true;
+                    this.progress.percentage = 0;
+                    this.progress.message = '正在连接服务器...';
+                    
+                    // 建立SSE连接接收进度
+                    this.connectProgressStream();
+                    
+                    // 弹出对话框输入口令
+                    const password = prompt('请输入6位数字导入口令：');
+                    if (!password || password.length !== 6 || !/^\d{6}$/.test(password)) {
+                        alert('口令错误，请输入正确的6位数字口令');
+                        return;
+                    }
+                    
+                    const formData = new FormData();
+                    formData.append('file', this.selectedFile);
+                    formData.append('clientId', this.clientId);
+                    formData.append('password', password);
+                    
+                    try {
+                        console.log('开始上传文件:', this.selectedFile.name);
+                        console.log('客户端ID:', this.clientId);
+                        
+                        const response = await axios.post('/api/dict/import', formData, {
+                            headers: {
+                                'Content-Type': 'multipart/form-data'
+                            },
+                            timeout: 300000, // 5分钟超时
+                        });
+                        
+                        console.log('服务器响应:', response.data);
+                        
+                        if (response.data.code === 200) {
+                            // 等待一下让进度条完成动画
+                            setTimeout(() => {
+                                this.showToast(response.data.message, 'success');
+                                this.selectedFile = null;
+                                // 重置文件输入框
+                                const fileInput = document.querySelector('input[type="file"]');
+                                if (fileInput) fileInput.value = '';
+                                
+                                this.currentPage = 1;
+                                this.loadData();
+                                this.loadCount();
+                            }, 1000);
+                        } else {
+                            this.showToast(response.data.message || '导入失败', 'error');
+                            this.progress.show = false;
+                        }
+                    } catch (error) {
+                        console.error('上传错误:', error);
+                        this.progress.show = false;
+                        
+                        if (error.code === 'ECONNABORTED') {
+                            this.showToast('上传超时，请检查文件大小或网络连接', 'error');
+                        } else if (error.response) {
+                            const errorMsg = error.response.data?.message || error.response.statusText || '服务器错误';
+                            this.showToast('上传失败: ' + errorMsg, 'error');
+                        } else if (error.request) {
+                            this.showToast('无法连接到服务器，请检查网络或后台是否启动', 'error');
+                        } else {
+                            this.showToast('上传失败: ' + error.message, 'error');
+                        }
+                    } finally {
+                        this.uploading = false;
+                        // 关闭SSE连接
+                        if (this.eventSource) {
+                            this.eventSource.close();
+                            this.eventSource = null;
+                        }
+                    }
+                },
+                
+                connectProgressStream() {
+                    // 关闭之前的连接
+                    if (this.eventSource) {
+                        this.eventSource.close();
+                    }
+                    
+                    // 建立新的SSE连接
+                    this.eventSource = new EventSource(`/api/dict/progress/${this.clientId}`);
+                    
+                    this.eventSource.addEventListener('progress', (event) => {
+                        const progressData = JSON.parse(event.data);
+                        console.log('收到进度更新:', progressData);
+                        
+                        this.progress.percentage = progressData.percentage;
+                        this.progress.message = progressData.message;
+                        this.progress.status = progressData.status;
+                        
+                        // 如果完成或错误，2秒后隐藏进度条
+                        if (progressData.status === 'completed' || progressData.status === 'error') {
+                            setTimeout(() => {
+                                this.progress.show = false;
+                            }, 2000);
+                        }
+                    });
+                    
+                    this.eventSource.onerror = (error) => {
+                        console.error('SSE连接错误:', error);
+                        if (this.eventSource) {
+                            this.eventSource.close();
+                            this.eventSource = null;
+                        }
+                    };
+                },
+                
+                async clearData() {
+                    if (!confirm('确定要清空所有数据吗？此操作不可恢复！')) {
+                        return;
+                    }
+                    
+                    this.loading = true;
+                    try {
+                        const response = await axios.delete('/api/dict/truncate');
+                        if (response.data.code === 200) {
+                            this.showToast('清空成功', 'success');
+                            this.currentPage = 1;
+                            await this.loadData();
+                            await this.loadCount();
+                        } else {
+                            this.showToast(response.data.message, 'error');
+                        }
+                    } catch (error) {
+                        this.showToast('清空失败', 'error');
+                        console.error(error);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                
+                toggleSearchPanel() {
+                    this.showSearchPanel = !this.showSearchPanel;
+                },
+                
+                hasSearchConditions() {
+                    return Object.values(this.searchConditions).some(val => val && val.trim() !== '');
+                },
+                
+                resetSearch() {
+                    this.searchConditions = {
+                        dataItemCode: '',
+                        englishAbbr: '',
+                        englishName: '',
+                        chineseName: '',
+                        dictAttr: '',
+                        domainChineseName: '',
+                        dataType: '',
+                        dataFormat: '',
+                        valueRange: '',
+                        javaEsfName: '',
+                        esfDataFormat: '',
+                        gaussdbDataFormat: '',
+                        goldendbDataFormat: ''
+                    };
+                    this.search();
+                },
+                
+                search() {
+                    this.currentPage = 1;
+                    this.loadData();
+                },
+                
+                goToPage(page) {
+                    if (page >= 1 && page <= this.totalPages) {
+                        this.currentPage = page;
+                        this.loadData();
+                    }
+                },
+                
+                jumpToPage() {
+                    if (this.jumpPage >= 1 && this.jumpPage <= this.totalPages) {
+                        this.goToPage(this.jumpPage);
+                    }
+                },
+                
+                // 编辑数据项
+                editItem(item) {
+                    this.currentItem = JSON.parse(JSON.stringify(item));
+                    this.currentAction = 'edit';
+                    this.editForm = JSON.parse(JSON.stringify(item));
+                    this.showPasswordModal = true;
+                    this.password = '';
+                },
+                
+                // 删除数据项
+                deleteItem(item) {
+                    this.currentItem = item;
+                    this.currentAction = 'delete';
+                    this.showPasswordModal = true;
+                    this.password = '';
+                },
+                
+                // 确认口令
+                async confirmPassword() {
+                    if (!this.password || this.password.trim() === '') {
+                        this.showToast('请输入口令', 'error');
+                        return;
+                    }
+                    
+                    if (this.currentAction === 'delete') {
+                        await this.performDelete();
+                    } else if (this.currentAction === 'edit') {
+                        this.showPasswordModal = false;
+                        this.showEditModal = true;
+                    }
+                },
+                
+                // 执行删除
+                async performDelete() {
+                    try {
+                        const prefix = this.dataSource === 'ing' ? 
+                            (this.activeTab === 'dict' ? '/api/dict-ing' : 
+                             this.activeTab === 'domain' ? '/api/domain-ing' : '/api/code-extension-ing') :
+                            (this.activeTab === 'dict' ? '/api/dict' : 
+                             this.activeTab === 'domain' ? '/api/domain' : '/api/code-extension');
+                        
+                        const url = `${prefix}/delete-with-password/${this.currentItem.id}?password=${encodeURIComponent(this.password)}`;
+                        const response = await axios.delete(url);
+                        
+                        if (response.data.code === 200) {
+                            this.showToast('删除成功', 'success');
+                            this.showPasswordModal = false;
+                            this.password = '';
+                            this.currentItem = null;
+                            this.currentAction = null;
+                            this.loadData();
+                            this.loadAllCounts();
+                        } else {
+                            this.showToast(response.data.message || '删除失败', 'error');
+                        }
+                    } catch (error) {
+                        this.showToast(error.response?.data?.message || '删除失败', 'error');
+                    }
+                },
+                
+                // 保存编辑
+                async saveEdit() {
+                    try {
+                        const prefix = this.dataSource === 'ing' ? 
+                            (this.activeTab === 'dict' ? '/api/dict-ing' : 
+                             this.activeTab === 'domain' ? '/api/domain-ing' : '/api/code-extension-ing') :
+                            (this.activeTab === 'dict' ? '/api/dict' : 
+                             this.activeTab === 'domain' ? '/api/domain' : '/api/code-extension');
+                        
+                        const url = `${prefix}/update-with-password?password=${encodeURIComponent(this.password)}`;
+                        const response = await axios.put(url, this.editForm);
+                        
+                        if (response.data.code === 200) {
+                            this.showToast('更新成功', 'success');
+                            this.showEditModal = false;
+                            this.password = '';
+                            this.currentItem = null;
+                            this.currentAction = null;
+                            this.editForm = {};
+                            this.loadData();
+                        } else {
+                            this.showToast(response.data.message || '更新失败', 'error');
+                        }
+                    } catch (error) {
+                        this.showToast(error.response?.data?.message || '更新失败', 'error');
+                    }
+                },
+                
+                // 取消操作
+                cancelOperation() {
+                    this.showPasswordModal = false;
+                    this.showEditModal = false;
+                    this.password = '';
+                    this.currentItem = null;
+                    this.currentAction = null;
+                    this.editForm = {};
+                },
+                
+                showToast(message, type = 'success') {
+                    this.toast.message = message;
+                    this.toast.type = type;
+                    this.toast.show = true;
+                    
+                    setTimeout(() => {
+                        this.toast.show = false;
+                    }, 3000);
+                },
+                
+                async generateRelationshipReport() {
+                    if (this.generatingReport) {
+                        return;
+                    }
+                    
+                    this.generatingReport = true;
+                    
+                    try {
+                        const response = await axios.get('/api/relationship/check', {
+                            responseType: 'blob'  // 期望返回文件
+                        });
+                        
+                        // 检查响应类型
+                        const contentType = response.headers['content-type'];
+                        
+                        if (contentType && contentType.includes('application/json')) {
+                            // 返回的是JSON，说明检查通过
+                            const reader = new FileReader();
+                            reader.onload = () => {
+                                const result = JSON.parse(reader.result);
+                                if (result.code === 200) {
+                                    alert('✅ 关联性分析结果-关联成功');
+                                } else {
+                                    alert('❌ ' + result.message);
+                                }
+                            };
+                            reader.readAsText(response.data);
+                        } else {
+                            // 返回的是Excel文件
+                            const blob = new Blob([response.data], {
+                                type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                            });
+                            const url = window.URL.createObjectURL(blob);
+                            const link = document.createElement('a');
+                            link.href = url;
+                            link.download = '关联性检查.xlsx';
+                            document.body.appendChild(link);
+                            link.click();
+                            document.body.removeChild(link);
+                            window.URL.revokeObjectURL(url);
+                            
+                            alert('⚠️ 发现关联性问题，已生成检查报告，请查看下载的Excel文件');
+                        }
+                    } catch (error) {
+                        console.error('生成关联性报告失败:', error);
+                        alert('❌ 生成关联性报告失败: ' + (error.response?.data?.message || error.message));
+                    } finally {
+                        this.generatingReport = false;
+                    }
+                },
+                
+            }
+        });
+        
+        // 挂载应用并保存实例
+        const vm = app.mount('#app');
+        
+        // 将 switchView 方法暴露到全局，供 iframe 调用
+        window.switchView = function(view) {
+            if (vm && vm.switchView) {
+                vm.switchView(view);
+            } else {
+                console.error('无法找到 switchView 方法');
+            }
+        };
+    </script>
+</body>
+</html>
+

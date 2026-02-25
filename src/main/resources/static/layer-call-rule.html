@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>分层调用规则配置 - 字典管理系统</title>
+    <script src="/js/vue.global.js"></script>
+    <script src="/js/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        #app {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header .subtitle {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            padding: 30px;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 5px;
+            font-weight: 600;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #059669;
+        }
+
+        .rule-list {
+            margin-top: 20px;
+        }
+
+        .rule-item {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            transition: all 0.3s;
+        }
+
+        .rule-item:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .rule-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .rule-name {
+            font-size: 18px;
+            font-weight: bold;
+            color: #374151;
+        }
+
+        .rule-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .rule-content {
+            margin-top: 10px;
+        }
+
+        .rule-constraint {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            background: white;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #374151;
+        }
+
+        .layer-badge {
+            padding: 4px 12px;
+            background: #667eea;
+            color: white;
+            border-radius: 4px;
+            font-weight: 500;
+            margin: 0 8px;
+        }
+
+        .domain-badge {
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-weight: 500;
+            margin-left: 8px;
+        }
+
+        .domain-badge.same {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .domain-badge.cross {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            font-size: 24px;
+            font-weight: bold;
+            color: #374151;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #374151;
+            font-size: 14px;
+        }
+
+        .form-group input[type="text"],
+        .form-group select {
+            width: 100%;
+            padding: 10px 15px;
+            border: 2px solid #e5e7eb;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .form-group input[type="text"]:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .constraint-item {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 10px;
+            padding: 10px;
+            background: #f9fafb;
+            border-radius: 6px;
+        }
+
+        .constraint-item select {
+            flex: 1;
+        }
+
+        .remove-btn {
+            padding: 6px 12px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .remove-btn:hover {
+            background: #dc2626;
+        }
+
+        .add-constraint-btn {
+            margin-top: 10px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+
+        .spinner {
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="header">
+            <h1>⚙️ 分层调用规则配置</h1>
+            <p class="subtitle">配置不同分层之间的调用规则</p>
+        </div>
+
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="color: #374151;">规则列表</h2>
+                <button class="btn btn-primary" @click="showCreateModal">
+                    ➕ 创建新规则
+                </button>
+            </div>
+
+            <div v-if="loading" class="loading">
+                <div class="spinner"></div>
+                <p>加载中...</p>
+            </div>
+
+            <div v-else-if="rules.length === 0" style="text-align: center; padding: 40px; color: #9ca3af;">
+                <p>暂无规则，点击"创建新规则"开始配置</p>
+            </div>
+
+            <div v-else class="rule-list">
+                <div v-for="rule in rules" :key="rule.id" class="rule-item">
+                    <div class="rule-header">
+                        <div class="rule-name">{{ rule.ruleName }}</div>
+                        <div class="rule-actions">
+                            <button class="btn btn-secondary" @click="editRule(rule)">编辑</button>
+                            <button class="btn btn-danger" @click="deleteRule(rule.id)">删除</button>
+                        </div>
+                    </div>
+                    <div class="rule-content">
+                        <div v-for="(item, index) in rule.items" :key="index" class="rule-constraint">
+                            <span class="layer-badge">{{ item.callerLayer }}</span>
+                            <span>可调用</span>
+                            <span class="layer-badge">{{ item.calleeLayer }}</span>
+                            <span :class="['domain-badge', item.domainConstraint === 'same_domain' ? 'same' : 'cross']">
+                                {{ item.domainConstraint === 'same_domain' ? '本领域' : '可跨领域' }}
+                            </span>
+                            <span v-if="index < rule.items.length - 1" style="margin-left: 10px; color: #667eea;">（或）</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 创建/编辑规则弹窗 -->
+        <div v-if="showModal" class="modal" @click.self="closeModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    {{ editingRule ? '编辑规则' : '创建新规则' }}
+                </div>
+
+                <div class="form-group">
+                    <label>规则名称 <span style="color: #ef4444;">*</span></label>
+                    <input type="text" v-model="form.ruleName" placeholder="如：pbf领域调用规范">
+                </div>
+
+                <div class="form-group">
+                    <label>规则描述</label>
+                    <input type="text" v-model="form.ruleDescription" placeholder="规则描述（可选）">
+                </div>
+
+                <div class="form-group">
+                    <label>调用规则 <span style="color: #ef4444;">*</span></label>
+                    <div v-for="(constraint, index) in form.constraints" :key="index" class="constraint-item">
+                        <select v-model="constraint.callerLayer">
+                            <option value="">选择调用方层级</option>
+                            <option v-for="layer in layers" :key="layer" :value="layer">{{ layer }}</option>
+                        </select>
+                        <span style="margin: 0 10px;">可调用</span>
+                        <select v-model="constraint.calleeLayer">
+                            <option value="">选择被调用方层级</option>
+                            <option v-for="layer in layers" :key="layer" :value="layer">{{ layer }}</option>
+                        </select>
+                        <select v-model="constraint.domainConstraint">
+                            <option value="same_domain">本领域</option>
+                            <option value="cross_domain">可跨领域</option>
+                        </select>
+                        <button class="remove-btn" @click="removeConstraint(index)">删除</button>
+                    </div>
+                    <button class="btn btn-secondary add-constraint-btn" @click="addConstraint">
+                        ➕ 添加调用规则
+                    </button>
+                </div>
+
+                <div style="text-align: right; margin-top: 30px;">
+                    <button class="btn btn-secondary" @click="closeModal">取消</button>
+                    <button class="btn btn-success" @click="saveRule">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    layers: ['pbf层', 'pbf方法层', 'pbs层', 'pcs层', 'pbcb层', 'pbcp层', 'pbcc层', 'pbct层'],
+                    rules: [],
+                    loading: false,
+                    showModal: false,
+                    editingRule: null,
+                    form: {
+                        ruleName: '',
+                        ruleDescription: '',
+                        constraints: [
+                            {
+                                callerLayer: '',
+                                calleeLayer: '',
+                                domainConstraint: 'same_domain'
+                            }
+                        ]
+                    }
+                };
+            },
+            mounted() {
+                this.loadRules();
+            },
+            methods: {
+                async loadRules() {
+                    this.loading = true;
+                    try {
+                        const response = await axios.get('/api/layer-call-rule/list');
+                        if (response.data.code === 200) {
+                            this.rules = response.data.data || [];
+                        } else {
+                            alert('加载规则失败: ' + response.data.message);
+                        }
+                    } catch (error) {
+                        console.error('加载规则失败:', error);
+                        alert('加载规则失败: ' + (error.response?.data?.message || error.message));
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                showCreateModal() {
+                    this.editingRule = null;
+                    this.form = {
+                        ruleName: '',
+                        ruleDescription: '',
+                        constraints: [
+                            {
+                                callerLayer: '',
+                                calleeLayer: '',
+                                domainConstraint: 'same_domain'
+                            }
+                        ]
+                    };
+                    this.showModal = true;
+                },
+                editRule(rule) {
+                    this.editingRule = rule;
+                    this.form = {
+                        ruleName: rule.ruleName,
+                        ruleDescription: rule.ruleDescription || '',
+                        constraints: rule.items.map(item => ({
+                            callerLayer: item.callerLayer,
+                            calleeLayer: item.calleeLayer,
+                            domainConstraint: item.domainConstraint
+                        }))
+                    };
+                    this.showModal = true;
+                },
+                closeModal() {
+                    this.showModal = false;
+                    this.editingRule = null;
+                },
+                addConstraint() {
+                    this.form.constraints.push({
+                        callerLayer: '',
+                        calleeLayer: '',
+                        domainConstraint: 'same_domain'
+                    });
+                },
+                removeConstraint(index) {
+                    this.form.constraints.splice(index, 1);
+                },
+                async saveRule() {
+                    // 验证
+                    if (!this.form.ruleName.trim()) {
+                        alert('请输入规则名称');
+                        return;
+                    }
+
+                    if (this.form.constraints.length === 0) {
+                        alert('请至少添加一条调用规则');
+                        return;
+                    }
+
+                    for (let i = 0; i < this.form.constraints.length; i++) {
+                        const c = this.form.constraints[i];
+                        if (!c.callerLayer || !c.calleeLayer) {
+                            alert(`第${i + 1}条规则的层级选择不完整`);
+                            return;
+                        }
+                    }
+
+                    try {
+                        const url = this.editingRule 
+                            ? `/api/layer-call-rule/update/${this.editingRule.id}`
+                            : '/api/layer-call-rule/create';
+                        
+                        const response = await axios.post(url, {
+                            ruleName: this.form.ruleName.trim(),
+                            ruleDescription: this.form.ruleDescription.trim(),
+                            constraints: this.form.constraints
+                        });
+
+                        if (response.data.code === 200) {
+                            alert(this.editingRule ? '更新成功' : '创建成功');
+                            this.closeModal();
+                            this.loadRules();
+                        } else {
+                            alert((this.editingRule ? '更新失败: ' : '创建失败: ') + response.data.message);
+                        }
+                    } catch (error) {
+                        console.error('保存规则失败:', error);
+                        alert('保存规则失败: ' + (error.response?.data?.message || error.message));
+                    }
+                },
+                async deleteRule(ruleId) {
+                    if (!confirm('确认删除此规则吗？')) {
+                        return;
+                    }
+
+                    try {
+                        const response = await axios.delete(`/api/layer-call-rule/delete/${ruleId}`);
+                        if (response.data.code === 200) {
+                            alert('删除成功');
+                            this.loadRules();
+                        } else {
+                            alert('删除失败: ' + response.data.message);
+                        }
+                    } catch (error) {
+                        console.error('删除规则失败:', error);
+                        alert('删除规则失败: ' + (error.response?.data?.message || error.message));
+                    }
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
+

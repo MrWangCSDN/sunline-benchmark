@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数据库表导出</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #333;
+            font-size: 16px;
+        }
+
+        .form-group select,
+        .form-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group select:focus,
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .config-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .config-section.show {
+            display: block;
+        }
+
+        .config-section h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .config-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .button-group {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin: 30px 0;
+        }
+
+        .btn {
+            padding: 12px 40px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+
+        .btn-primary {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #218838;
+            transform: translateY(-2px);
+        }
+
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+            transform: translateY(-2px);
+        }
+
+        .btn-config {
+            background: #17a2b8;
+            color: white;
+            padding: 8px 20px;
+            font-size: 14px;
+        }
+
+        .btn-config:hover {
+            background: #138496;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 30px;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .result-section {
+            display: none;
+            margin-top: 30px;
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 20px;
+            border-radius: 8px;
+        }
+
+        .result-section.show {
+            display: block;
+        }
+
+        .result-section h3 {
+            color: #155724;
+            margin-bottom: 15px;
+        }
+
+        .download-btn {
+            padding: 10px 25px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .download-btn:hover {
+            background: #0056b3;
+        }
+
+        .error-message {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        .tips {
+            background: #d1ecf1;
+            border-left: 4px solid #17a2b8;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+
+        .tips h4 {
+            color: #0c5460;
+            margin-bottom: 10px;
+        }
+
+        .tips ul {
+            color: #0c5460;
+            padding-left: 20px;
+        }
+
+        .tips li {
+            margin-bottom: 5px;
+        }
+
+        .admin-only {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            text-align: center;
+            color: #856404;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>💾 数据库表导出</h1>
+            <p>连接GaussDB数据库，导出所有表结构到Excel</p>
+        </div>
+
+        <div class="content">
+            <!-- 数据库类型 -->
+            <div class="form-group">
+                <label for="dbType">🗄️ 数据库类型</label>
+                <select id="dbType" disabled>
+                    <option value="gaussdb" selected>GaussDB</option>
+                </select>
+            </div>
+
+            <!-- 选择环境 -->
+            <div class="form-group">
+                <label for="environment">🌍 选择环境</label>
+                <select id="environment">
+                    <option value="">-- 请选择环境 --</option>
+                    <option value="dev">开发环境 (DEV)</option>
+                    <option value="sit">测试环境 (SIT)</option>
+                    <option value="uat">验收环境 (UAT)</option>
+                    <option value="base">母库 (BASE)</option>
+                </select>
+            </div>
+
+            <!-- 选择分组 -->
+            <div class="form-group">
+                <label>📂 选择表分组（可多选）</label>
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; border: 2px solid #ddd;">
+                    <div style="display: flex; flex-wrap: wrap; gap: 15px;">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="selectAll" style="margin-right: 8px;">
+                            <span style="font-weight: bold; color: #667eea;">全选</span>
+                        </label>
+                    </div>
+                    <hr style="margin: 10px 0; border: none; border-top: 1px solid #ddd;">
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" class="group-checkbox" value="deposit" style="margin-right: 8px;">
+                            <span>💰 存款组</span>
+                        </label>
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" class="group-checkbox" value="loan" style="margin-right: 8px;">
+                            <span>🏦 贷款组</span>
+                        </label>
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" class="group-checkbox" value="public" style="margin-right: 8px;">
+                            <span>🌐 公共组</span>
+                        </label>
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" class="group-checkbox" value="settlement" style="margin-right: 8px;">
+                            <span>💳 结算组</span>
+                        </label>
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" class="group-checkbox" value="platform" style="margin-right: 8px;">
+                            <span>🔧 平台组</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 分组配置按钮 -->
+            <div style="text-align: center; margin-bottom: 20px;">
+                <button class="btn btn-config" onclick="showGroupConfig()">
+                    ⚙️ 数据库表分组配置
+                </button>
+            </div>
+
+            <!-- 分组配置区域 -->
+            <div class="config-section" id="groupConfigSection">
+                <h3>⚙️ 数据库表分组配置</h3>
+                <div class="form-group">
+                    <label for="configGroup">选择分组</label>
+                    <select id="configGroup">
+                        <option value="deposit">存款组</option>
+                        <option value="loan">贷款组</option>
+                        <option value="public">公共组</option>
+                        <option value="settlement">结算组</option>
+                        <option value="platform">平台组</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="groupTables">表列表（每行一个表名）</label>
+                    <textarea id="groupTables" placeholder="请输入表名，每行一个&#10;例如：&#10;user_table&#10;account_info&#10;transaction_log"></textarea>
+                </div>
+                <div style="text-align: center;">
+                    <button class="btn btn-primary" onclick="saveGroupConfig()">💾 保存配置</button>
+                    <button class="btn btn-secondary" onclick="hideGroupConfig()">❌ 取消</button>
+                </div>
+            </div>
+
+            <!-- 提示信息 -->
+            <div class="admin-only">
+                💡 数据库连接配置在 application.yml 文件中，请联系管理员修改
+            </div>
+
+            <!-- 按钮组 -->
+            <div class="button-group">
+                <button class="btn btn-primary" id="exportBtn" disabled>
+                    📥 导出
+                </button>
+                <button class="btn btn-secondary" onclick="cancel()">
+                    ❌ 取消
+                </button>
+                <button class="btn btn-danger" onclick="resetForm()">
+                    🔄 重置
+                </button>
+            </div>
+
+            <!-- 加载中 -->
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>正在导出数据库表，请稍候...</p>
+            </div>
+
+            <!-- 错误信息 -->
+            <div class="error-message" id="errorMessage"></div>
+
+            <!-- 结果区域 -->
+            <div class="result-section" id="resultSection">
+                <h3>✅ 导出成功</h3>
+                <p id="resultInfo" style="margin: 15px 0; color: #155724;"></p>
+                <div id="downloadButtons"></div>
+            </div>
+
+            <!-- 使用提示 -->
+            <div class="tips">
+                <h4>💡 使用说明</h4>
+                <ul>
+                    <li><strong>选择环境：</strong>选择要导出的数据库环境（dev/sit/uat/base）</li>
+                    <li><strong>选择分组：</strong>可以单选、多选或全选表分组</li>
+                    <li><strong>分组配置：</strong>配置每个分组包含的表列表（保存为txt文件）</li>
+                    <li><strong>导出规则：</strong>
+                        <ul>
+                            <li>选择单个分组：导出1个Excel</li>
+                            <li>选择多个分组：导出多个Excel（每个分组一个）</li>
+                            <li>全选5个分组：导出6个Excel（5个分组 + 1个未分组表）</li>
+                        </ul>
+                    </li>
+                    <li><strong>Excel格式：</strong>
+                        <ul>
+                            <li>第一个sheet页：表总览（列出所有表，带超链接）</li>
+                            <li>每个表一个sheet页：包含字段详细信息</li>
+                            <li>双向超链接：总览↔具体表</li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let resultFileName = null;
+        let resultFiles = []; // 多个结果文件
+
+        // 环境选择change事件
+        document.getElementById('environment').addEventListener('change', checkFormReady);
+        
+        // 全选复选框事件
+        document.getElementById('selectAll').addEventListener('change', function() {
+            const checkboxes = document.querySelectorAll('.group-checkbox');
+            checkboxes.forEach(cb => cb.checked = this.checked);
+            checkFormReady();
+        });
+        
+        // 分组复选框事件
+        document.querySelectorAll('.group-checkbox').forEach(cb => {
+            cb.addEventListener('change', function() {
+                // 更新全选状态
+                const all = document.querySelectorAll('.group-checkbox');
+                const checked = document.querySelectorAll('.group-checkbox:checked');
+                document.getElementById('selectAll').checked = all.length === checked.length;
+                checkFormReady();
+            });
+        });
+        
+        // 检查表单是否准备好
+        function checkFormReady() {
+            const env = document.getElementById('environment').value;
+            const checked = document.querySelectorAll('.group-checkbox:checked');
+            const exportBtn = document.getElementById('exportBtn');
+            exportBtn.disabled = !env || checked.length === 0;
+        }
+        
+        // 显示分组配置
+        function showGroupConfig() {
+            document.getElementById('groupConfigSection').classList.add('show');
+            loadGroupConfig();
+        }
+        
+        // 隐藏分组配置
+        function hideGroupConfig() {
+            document.getElementById('groupConfigSection').classList.remove('show');
+        }
+        
+        // 加载分组配置
+        async function loadGroupConfig() {
+            const group = document.getElementById('configGroup').value;
+            try {
+                const response = await fetch('/api/db-export/group-config/' + group);
+                const result = await response.json();
+                if (result.code === 200 && result.data) {
+                    document.getElementById('groupTables').value = result.data.tables || '';
+                }
+            } catch (error) {
+                console.error('加载分组配置失败', error);
+            }
+        }
+        
+        // 分组配置change事件
+        document.getElementById('configGroup').addEventListener('change', loadGroupConfig);
+        
+        // 保存分组配置
+        async function saveGroupConfig() {
+            const group = document.getElementById('configGroup').value;
+            const tables = document.getElementById('groupTables').value.trim();
+            
+            try {
+                const response = await fetch('/api/db-export/group-config/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ group: group, tables: tables })
+                });
+                
+                const result = await response.json();
+                if (result.code === 200) {
+                    alert('分组配置保存成功');
+                    hideGroupConfig();
+                } else {
+                    showError(result.message || '保存失败');
+                }
+            } catch (error) {
+                console.error('保存分组配置失败', error);
+                showError('保存失败：' + error.message);
+            }
+        }
+
+        // 显示配置区域
+        function showConfigSection() {
+            document.getElementById('configSection').classList.add('show');
+            loadConfig();
+        }
+
+        // 隐藏配置区域
+        function hideConfigSection() {
+            document.getElementById('configSection').classList.remove('show');
+        }
+
+        // 加载配置
+        async function loadConfig() {
+            const env = document.getElementById('configEnv').value;
+            try {
+                const response = await fetch('/api/db-config/' + env);
+                const result = await response.json();
+                if (result.code === 200 && result.data) {
+                    document.getElementById('configUrl').value = result.data.dbUrl || '';
+                    document.getElementById('configUsername').value = result.data.dbUsername || '';
+                    document.getElementById('configPassword').value = result.data.dbPassword || '';
+                }
+            } catch (error) {
+                console.error('加载配置失败', error);
+            }
+        }
+
+
+        // 导出
+        document.getElementById('exportBtn').addEventListener('click', async function() {
+            const env = document.getElementById('environment').value;
+            const checkedGroups = Array.from(document.querySelectorAll('.group-checkbox:checked'))
+                .map(cb => cb.value);
+            
+            if (!env) {
+                showError('请选择环境');
+                return;
+            }
+            
+            if (checkedGroups.length === 0) {
+                showError('请至少选择一个分组');
+                return;
+            }
+
+            // 显示加载
+            document.getElementById('loading').classList.add('show');
+            document.getElementById('resultSection').classList.remove('show');
+            document.getElementById('errorMessage').classList.remove('show');
+
+            try {
+                const response = await fetch('/api/db-export/export-by-groups', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ 
+                        environment: env,
+                        groups: checkedGroups
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.code === 200) {
+                    // 显示结果
+                    resultFiles = result.data.files || [];
+                    showResult(result.data);
+                } else {
+                    showError(result.message || '导出失败');
+                }
+            } catch (error) {
+                console.error('导出失败', error);
+                showError('导出失败：' + error.message);
+            } finally {
+                document.getElementById('loading').classList.remove('show');
+            }
+        });
+
+        // 显示结果
+        function showResult(data) {
+            const resultInfo = document.getElementById('resultInfo');
+            const fileCount = data.files ? data.files.length : 0;
+            resultInfo.textContent = `成功导出 ${fileCount} 个Excel文件`;
+            
+            // 创建下载按钮
+            const downloadButtons = document.getElementById('downloadButtons');
+            downloadButtons.innerHTML = '';
+            
+            if (data.files && data.files.length > 0) {
+                data.files.forEach((file, index) => {
+                    const btn = document.createElement('button');
+                    btn.className = 'download-btn';
+                    btn.style.marginRight = '10px';
+                    btn.style.marginBottom = '10px';
+                    btn.textContent = `⬇️ ${file.groupName || ('文件' + (index + 1))} (${file.tableCount}个表)`;
+                    btn.onclick = () => downloadFile(file.fileName);
+                    downloadButtons.appendChild(btn);
+                });
+            }
+            
+            document.getElementById('resultSection').classList.add('show');
+        }
+
+        // 下载文件
+        function downloadFile(fileName) {
+            if (!fileName) {
+                showError('文件名无效');
+                return;
+            }
+            window.location.href = '/api/db-export/download/' + encodeURIComponent(fileName);
+        }
+
+        // 显示错误
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+
+            setTimeout(() => {
+                errorDiv.classList.remove('show');
+            }, 5000);
+        }
+
+        // 取消
+        function cancel() {
+            console.log('取消操作');
+        }
+
+        // 重置表单
+        function resetForm() {
+            document.getElementById('environment').value = '';
+            document.getElementById('selectAll').checked = false;
+            document.querySelectorAll('.group-checkbox').forEach(cb => cb.checked = false);
+            document.getElementById('exportBtn').disabled = true;
+            document.getElementById('resultSection').classList.remove('show');
+            document.getElementById('errorMessage').classList.remove('show');
+            hideGroupConfig();
+            resultFileName = null;
+            resultFiles = [];
+        }
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel导出 - 字典管理系统</title>
+    <script src="/js/vue.global.js"></script>
+    <script src="/js/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        #app {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header .subtitle {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            padding: 30px;
+            margin-bottom: 20px;
+        }
+
+        .export-section {
+            text-align: center;
+        }
+
+        .export-section h3 {
+            font-size: 24px;
+            color: #374151;
+            margin-bottom: 30px;
+        }
+
+        .export-options {
+            margin: 30px 0;
+            text-align: left;
+            display: inline-block;
+        }
+
+        .export-option {
+            display: block;
+            margin: 20px 0;
+            padding: 15px 20px;
+            background: #f9fafb;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .export-option:hover {
+            background: #f3f4f6;
+            border-color: #667eea;
+        }
+
+        .export-option input[type="radio"] {
+            margin-right: 12px;
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .export-option label {
+            font-size: 16px;
+            color: #374151;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .export-option input[type="radio"]:checked + label {
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .export-option:has(input[type="radio"]:checked) {
+            background: #f0f2ff;
+            border-color: #667eea;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 5px;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 600;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+
+        .spinner {
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .info-box {
+            background: #f0f9ff;
+            border: 1px solid #bae6fd;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+            color: #1e40af;
+        }
+
+        .info-box p {
+            margin: 5px 0;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="header">
+            <h1>📥 Excel导出</h1>
+            <p class="subtitle">选择导出类型并导出数据</p>
+        </div>
+
+        <div class="card">
+            <div class="export-section">
+                <h3>选择导出类型：</h3>
+                
+                <div class="export-options">
+                    <div class="export-option" @click="selectedExportType = 'standard'">
+                        <input 
+                            type="radio" 
+                            id="standard" 
+                            v-model="selectedExportType" 
+                            value="standard">
+                        <label for="standard">贯标数据（已贯标全量清单）</label>
+                    </div>
+                    <div class="export-option" @click="selectedExportType = 'ing'">
+                        <input 
+                            type="radio" 
+                            id="ing" 
+                            v-model="selectedExportType" 
+                            value="ing">
+                        <label for="ing">在途数据（在途数标全量清单）</label>
+                    </div>
+                    <div class="export-option" @click="selectedExportType = 'all'">
+                        <input 
+                            type="radio" 
+                            id="all" 
+                            v-model="selectedExportType" 
+                            value="all">
+                        <label for="all">全量数据（全量数标清单）</label>
+                    </div>
+                </div>
+
+                <div class="info-box" v-if="selectedExportType === 'all'">
+                    <p><strong>⚠️ 注意：</strong>全量数据导出前会进行数据校验，如果发现重复数据，将无法导出。</p>
+                </div>
+
+                <div style="margin-top: 30px;">
+                    <button 
+                        @click="exportAllData" 
+                        class="btn btn-primary" 
+                        :disabled="exporting">
+                        {{ exporting ? '⏳ 导出中...' : '📥 确认导出' }}
+                    </button>
+                </div>
+
+                <div v-if="exporting" class="loading">
+                    <div class="spinner"></div>
+                    <p>正在导出数据，请稍候...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    selectedExportType: 'all',  // 选择的导出类型: 'standard', 'ing', 'all'
+                    exporting: false  // Excel导出中
+                };
+            },
+            methods: {
+                async exportAllData() {
+                    if (this.exporting) {
+                        return;
+                    }
+                    
+                    // 如果是全量数据导出，先进行校验
+                    if (this.selectedExportType === 'all') {
+                        try {
+                            this.exporting = true;
+                            const validateResponse = await axios.get('/api/export/validate-all');
+                            
+                            if (validateResponse.data.code === 200) {
+                                const validationResult = validateResponse.data.data;
+                                
+                                if (validationResult.hasErrors && validationResult.errors && validationResult.errors.length > 0) {
+                                    // 有校验错误，显示错误信息
+                                    this.exporting = false;
+                                    this.showValidationErrors(validationResult.errors);
+                                    return;
+                                }
+                            } else {
+                                // 校验请求失败
+                                this.exporting = false;
+                                alert('❌ 数据校验失败: ' + (validateResponse.data.message || '未知错误'));
+                                return;
+                            }
+                        } catch (error) {
+                            this.exporting = false;
+                            console.error('校验失败:', error);
+                            alert('❌ 数据校验失败: ' + (error.response?.data?.message || error.message));
+                            return;
+                        }
+                    }
+                    
+                    // 校验通过或非全量数据导出，执行导出
+                    this.exporting = true;
+                    
+                    try {
+                        const response = await axios.get('/api/export/all', {
+                            params: {
+                                type: this.selectedExportType
+                            },
+                            responseType: 'blob'
+                        });
+                        
+                        // 根据导出类型设置文件名
+                        let fileName;
+                        if (this.selectedExportType === 'standard') {
+                            fileName = '已贯标全量清单.xlsx';
+                        } else if (this.selectedExportType === 'ing') {
+                            fileName = '在途数标全量清单.xlsx';
+                        } else {
+                            fileName = '全量数标清单.xlsx';
+                        }
+                        
+                        // 下载Excel文件
+                        const blob = new Blob([response.data], {
+                            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                        });
+                        const url = window.URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = fileName;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        window.URL.revokeObjectURL(url);
+                        
+                        alert('✅ 数据导出成功！');
+                    } catch (error) {
+                        console.error('导出失败:', error);
+                        alert('❌ 导出失败: ' + (error.response?.data?.message || error.message));
+                    } finally {
+                        this.exporting = false;
+                    }
+                },
+                
+                // 显示校验错误
+                showValidationErrors(errors) {
+                    let errorMessage = '❌ 数据校验失败，发现以下重复数据，请修复后再导出：\n\n';
+                    
+                    // 按Sheet分组显示错误
+                    const errorsBySheet = {};
+                    errors.forEach(error => {
+                        if (!errorsBySheet[error.sheetName]) {
+                            errorsBySheet[error.sheetName] = [];
+                        }
+                        errorsBySheet[error.sheetName].push(error);
+                    });
+                    
+                    for (const sheetName in errorsBySheet) {
+                        errorMessage += `【${sheetName}】\n`;
+                        errorsBySheet[sheetName].forEach(error => {
+                            const rows = error.rows ? error.rows.join('、') : '';
+                            errorMessage += `  • ${error.fieldName} 重复: 值 "${error.duplicateValue}" 出现在第 ${rows} 行\n`;
+                        });
+                        errorMessage += '\n';
+                    }
+                    
+                    alert(errorMessage);
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
+

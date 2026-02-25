@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>域清单映射关系维护</title>
+    <script src="/js/vue.global.js"></script>
+    <script src="/js/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+                'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        #app {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .header h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+        
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background: #059669;
+        }
+        
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+        
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .content {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .search-panel {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+            padding: 20px;
+            background: #f9fafb;
+            border-radius: 8px;
+        }
+        
+        .search-actions {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .search-item {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .search-item label {
+            font-size: 14px;
+            color: #374151;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        
+        .search-item input {
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .search-item input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .table-container {
+            overflow-x: auto;
+            margin-top: 20px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        th {
+            background: #f9fafb;
+            color: #374151;
+            font-weight: 600;
+        }
+        
+        tr:hover {
+            background: #f9fafb;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .actions button {
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+        
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .pagination button {
+            padding: 8px 15px;
+        }
+        
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f0f9ff;
+            border-radius: 8px;
+        }
+        
+        .stat-item {
+            font-size: 14px;
+            color: #1e40af;
+            font-weight: 500;
+        }
+        
+        /* 模态框样式 */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .modal-header h2 {
+            font-size: 20px;
+            color: #333;
+        }
+        
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #6b7280;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            color: #374151;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .form-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 30px;
+        }
+        
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 5px;
+            color: white;
+            font-size: 14px;
+            z-index: 2000;
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        .toast.success {
+            background: #10b981;
+        }
+        
+        .toast.error {
+            background: #ef4444;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6b7280;
+        }
+        
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+        
+        .empty-state-text {
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="header">
+            <h1>🗂️ 域清单映射关系维护</h1>
+            <p>管理非代码类的域英文简称和域中文名称的映射关系，用于自动填充导入数据</p>
+            
+            <div class="toolbar">
+                <div>
+                    <button class="btn btn-primary" @click="showAddModal">
+                        ➕ 新增映射
+                    </button>
+                    <input 
+                        type="file" 
+                        ref="excelFileInput" 
+                        accept=".xlsx,.xls" 
+                        style="display: none;" 
+                        @change="handleFileSelect">
+                    <button class="btn btn-success" @click="triggerFileUpload('full')" style="margin-left: 10px;">
+                        📥 全量Excel导入
+                    </button>
+                    <button class="btn btn-primary" @click="triggerFileUpload('incremental')" style="margin-left: 10px;">
+                        ➕ 增量Excel导入
+                    </button>
+                    <button class="btn btn-success" @click="exportExcel" :disabled="exporting" style="margin-left: 10px; background: #10b981;">
+                        {{ exporting ? '⏳ 导出中...' : '📥 Excel导出' }}
+                    </button>
+                </div>
+                <div>
+                    <button class="btn btn-success" @click="toggleSearch">
+                        {{ showSearch ? '🔼 收起搜索' : '🔍 高级搜索' }}
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="content">
+            <!-- 搜索面板 -->
+            <div v-if="showSearch" class="search-panel">
+                <div class="search-item">
+                    <label>域中文名称</label>
+                    <input 
+                        type="text" 
+                        v-model="searchConditions.domainChineseName" 
+                        placeholder="模糊搜索"
+                        @keyup.enter="search">
+                </div>
+                <div class="search-item">
+                    <label>域英文简称</label>
+                    <input 
+                        type="text" 
+                        v-model="searchConditions.domainEnglishAbbr" 
+                        placeholder="模糊搜索"
+                        @keyup.enter="search">
+                </div>
+            </div>
+            <!-- 搜索按钮行 -->
+            <div v-if="showSearch" class="search-actions">
+                <button class="btn btn-primary" @click="search">
+                    🔍 搜索
+                </button>
+                <button class="btn btn-secondary" @click="resetSearch">
+                    ✗ 清空
+                </button>
+            </div>
+            
+            <!-- 统计信息 -->
+            <div class="stats">
+                <div class="stat-item">
+                    📋 总记录数: {{ totalCount }}
+                </div>
+                <div class="stat-item">
+                    📄 当前页: {{ currentPage }} / {{ totalPages }}
+                </div>
+            </div>
+            
+            <!-- 数据表格 -->
+            <div class="table-container" v-if="dataList.length > 0">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>域中文名称</th>
+                            <th>域英文简称</th>
+                            <th>创建时间</th>
+                            <th style="width: 150px;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="item in dataList" :key="item.id">
+                            <td>{{ item.domainChineseName }}</td>
+                            <td>{{ item.domainEnglishAbbr || '-' }}</td>
+                            <td>{{ formatDateTime(item.createTime) }}</td>
+                            <td>
+                                <div class="actions">
+                                    <button class="btn btn-primary" @click="showEditModal(item)">
+                                        编辑
+                                    </button>
+                                    <button class="btn btn-danger" @click="deleteItem(item)">
+                                        删除
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- 空状态 -->
+            <div v-else class="empty-state">
+                <div class="empty-state-icon">📭</div>
+                <div class="empty-state-text">暂无数据</div>
+            </div>
+            
+            <!-- 分页 -->
+            <div class="pagination" v-if="totalPages > 1">
+                <button class="btn btn-secondary" @click="prevPage" :disabled="currentPage === 1">
+                    上一页
+                </button>
+                <span>第 {{ currentPage }} / {{ totalPages }} 页</span>
+                <button class="btn btn-secondary" @click="nextPage" :disabled="currentPage === totalPages">
+                    下一页
+                </button>
+            </div>
+        </div>
+        
+        <!-- 新增/编辑模态框 -->
+        <div v-if="showModal" class="modal" @click.self="closeModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>{{ isEdit ? '编辑映射关系' : '新增映射关系' }}</h2>
+                    <button class="close-btn" @click="closeModal">×</button>
+                </div>
+                
+                <div class="form-group">
+                    <label>域中文名称 <span style="color: red;">*</span></label>
+                    <input 
+                        type="text" 
+                        v-model="formData.domainChineseName" 
+                        placeholder="请输入域中文名称">
+                </div>
+                
+                <div class="form-group">
+                    <label>域英文简称</label>
+                    <input 
+                        type="text" 
+                        v-model="formData.domainEnglishAbbr" 
+                        placeholder="请输入域英文简称">
+                </div>
+                
+                <div class="form-actions">
+                    <button class="btn btn-secondary" @click="closeModal">
+                        取消
+                    </button>
+                    <button class="btn btn-success" @click="submitForm">
+                        {{ isEdit ? '更新' : '新增' }}
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 重复记录提示框 -->
+        <div v-if="showDuplicateModal" class="modal" @click.self="cancelDuplicate">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 v-if="duplicateType === 'name'">⚠️ 映射关系已存在</h2>
+                    <h2 v-else>⚠️ 域英文简称已被使用</h2>
+                    <button class="close-btn" @click="cancelDuplicate">×</button>
+                </div>
+                
+                <div style="padding: 20px 0;">
+                    <!-- 域中文名称重复 -->
+                    <template v-if="duplicateType === 'name'">
+                        <p style="margin-bottom: 20px; color: #666;">该域中文名称已存在映射关系：</p>
+                        
+                        <div style="background: #f9fafb; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+                            <div style="margin-bottom: 10px;">
+                                <strong>域中文名称：</strong>
+                                <span style="color: #333;">{{ existingMapping?.domainChineseName }}</span>
+                            </div>
+                            <div>
+                                <strong>域英文简称：</strong>
+                                <span style="color: #333;">{{ existingMapping?.domainEnglishAbbr || '-' }}</span>
+                            </div>
+                        </div>
+                        
+                        <p style="color: #666; font-size: 14px;">是否要继续修改，覆盖原有映射关系？</p>
+                    </template>
+                    
+                    <!-- 域英文简称重复 -->
+                    <template v-else>
+                        <p style="margin-bottom: 20px; color: #666; font-size: 16px; line-height: 1.6;">
+                            该 <strong style="color: #ef4444;">{{ existingMapping?.domainEnglishAbbr }}</strong> 域英文简称 
+                            被 <strong style="color: #ef4444;">{{ existingMapping?.domainChineseName }}</strong> 域中文名称使用，请换一个域英文简称吧
+                        </p>
+                    </template>
+                </div>
+                
+                <div class="form-actions">
+                    <template v-if="duplicateType === 'name'">
+                        <button class="btn btn-secondary" @click="cancelDuplicate">
+                            取消
+                        </button>
+                        <button class="btn btn-success" @click="continueUpdate">
+                            继续修改
+                        </button>
+                    </template>
+                    <template v-else>
+                        <button class="btn btn-primary" @click="cancelDuplicate" style="width: 100px;">
+                            确定
+                        </button>
+                    </template>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Toast提示 -->
+        <div v-if="toast.show" :class="['toast', toast.type]">
+            {{ toast.message }}
+        </div>
+    </div>
+    
+    <script>
+        const { createApp } = Vue;
+        
+        createApp({
+            data() {
+                return {
+                    dataList: [],
+                    currentPage: 1,
+                    pageSize: 20,
+                    totalCount: 0,
+                    totalPages: 0,
+                    showSearch: false,
+                    searchConditions: {
+                        domainChineseName: '',
+                        domainEnglishAbbr: ''
+                    },
+                    showModal: false,
+                    isEdit: false,
+                    formData: {
+                        id: null,
+                        domainChineseName: '',
+                        domainEnglishAbbr: ''
+                    },
+                    toast: {
+                        show: false,
+                        message: '',
+                        type: 'success'
+                    },
+                    importMode: 'incremental',
+                    isUploading: false,
+                    exporting: false,
+                    showDuplicateModal: false,
+                    existingMapping: null,
+                    duplicateType: 'name' // 'name' 表示域中文名称重复, 'abbr' 表示域英文简称重复
+                };
+            },
+            mounted() {
+                this.loadData();
+            },
+            methods: {
+                async loadData() {
+                    try {
+                        const params = {
+                            pageNum: this.currentPage,
+                            pageSize: this.pageSize,
+                            ...this.searchConditions
+                        };
+                        
+                        const response = await axios.get('/api/domain-mapping/page', { params });
+                        
+                        if (response.data.code === 200) {
+                            const pageData = response.data.data;
+                            this.dataList = pageData.records;
+                            this.totalCount = pageData.total;
+                            this.totalPages = pageData.pages;
+                        } else {
+                            this.showToast(response.data.message || '加载失败', 'error');
+                        }
+                    } catch (error) {
+                        console.error('加载数据失败:', error);
+                        this.showToast('加载数据失败', 'error');
+                    }
+                },
+                
+                search() {
+                    this.currentPage = 1;
+                    this.loadData();
+                },
+                
+                resetSearch() {
+                    this.searchConditions = {
+                        domainChineseName: '',
+                        domainEnglishAbbr: ''
+                    };
+                    this.search();
+                },
+                
+                toggleSearch() {
+                    this.showSearch = !this.showSearch;
+                },
+                
+                prevPage() {
+                    if (this.currentPage > 1) {
+                        this.currentPage--;
+                        this.loadData();
+                    }
+                },
+                
+                nextPage() {
+                    if (this.currentPage < this.totalPages) {
+                        this.currentPage++;
+                        this.loadData();
+                    }
+                },
+                
+                showAddModal() {
+                    this.isEdit = false;
+                    this.formData = {
+                        id: null,
+                        domainChineseName: '',
+                        domainEnglishAbbr: ''
+                    };
+                    this.showModal = true;
+                },
+                
+                showEditModal(item) {
+                    this.isEdit = true;
+                    this.formData = {
+                        id: item.id,
+                        domainChineseName: item.domainChineseName,
+                        domainEnglishAbbr: item.domainEnglishAbbr || ''
+                    };
+                    this.showModal = true;
+                },
+                
+                closeModal() {
+                    this.showModal = false;
+                },
+                
+                async submitForm() {
+                    if (!this.formData.domainChineseName || !this.formData.domainChineseName.trim()) {
+                        this.showToast('请输入域中文名称', 'error');
+                        return;
+                    }
+                    
+                    try {
+                        let response;
+                        if (this.isEdit) {
+                            response = await axios.put(`/api/domain-mapping/${this.formData.id}`, this.formData);
+                        } else {
+                            response = await axios.post('/api/domain-mapping', this.formData);
+                        }
+                        
+                        if (response.data.code === 200) {
+                            this.showToast(this.isEdit ? '更新成功' : '新增成功', 'success');
+                            this.closeModal();
+                            this.loadData();
+                        } else if (response.data.code === 400 && response.data.data) {
+                            // 域中文名称重复（新增或编辑时）
+                            this.duplicateType = 'name';
+                            this.existingMapping = response.data.data;
+                            this.showDuplicateModal = true;
+                        } else if (response.data.code === 401 && response.data.data) {
+                            // 域英文简称重复（新增或编辑时）
+                            this.duplicateType = 'abbr';
+                            this.existingMapping = response.data.data;
+                            this.showDuplicateModal = true;
+                        } else {
+                            this.showToast(response.data.message || '操作失败', 'error');
+                        }
+                    } catch (error) {
+                        console.error('提交失败:', error);
+                        this.showToast('操作失败', 'error');
+                    }
+                },
+                
+                async continueUpdate() {
+                    // 只有域中文名称重复时才允许继续修改
+                    if (this.duplicateType !== 'name') {
+                        return;
+                    }
+                    
+                    try {
+                        // 域中文名称重复：更新已存在的记录
+                        const updateData = {
+                            id: this.existingMapping.id,
+                            domainChineseName: this.formData.domainChineseName,
+                            domainEnglishAbbr: this.formData.domainEnglishAbbr
+                        };
+                        
+                        const response = await axios.put(`/api/domain-mapping/${this.existingMapping.id}`, updateData);
+                        
+                        if (response.data.code === 200) {
+                            this.showToast('更新成功', 'success');
+                            // 关闭所有模态框
+                            this.showDuplicateModal = false;
+                            this.closeModal();
+                            this.existingMapping = null;
+                            this.duplicateType = 'name';
+                            // 清空表单
+                            this.formData = {
+                                id: null,
+                                domainChineseName: '',
+                                domainEnglishAbbr: ''
+                            };
+                            this.loadData();
+                        } else {
+                            this.showToast(response.data.message || '更新失败', 'error');
+                        }
+                    } catch (error) {
+                        console.error('更新失败:', error);
+                        this.showToast('更新失败', 'error');
+                    }
+                },
+                
+                cancelDuplicate() {
+                    this.showDuplicateModal = false;
+                    this.existingMapping = null;
+                    this.duplicateType = 'name';
+                },
+                
+                async deleteItem(item) {
+                    if (!confirm(`确定要删除映射关系 "${item.domainChineseName}" 吗？`)) {
+                        return;
+                    }
+                    
+                    try {
+                        const response = await axios.delete(`/api/domain-mapping/${item.id}`);
+                        
+                        if (response.data.code === 200) {
+                            this.showToast('删除成功', 'success');
+                            this.loadData();
+                        } else {
+                            this.showToast(response.data.message || '删除失败', 'error');
+                        }
+                    } catch (error) {
+                        console.error('删除失败:', error);
+                        this.showToast('删除失败', 'error');
+                    }
+                },
+                
+                formatDateTime(dateTime) {
+                    if (!dateTime) return '-';
+                    return new Date(dateTime).toLocaleString('zh-CN');
+                },
+                
+                showToast(message, type = 'success') {
+                    this.toast = {
+                        show: true,
+                        message,
+                        type
+                    };
+                    
+                    setTimeout(() => {
+                        this.toast.show = false;
+                    }, 3000);
+                },
+                
+                
+                triggerFileUpload(mode) {
+                    this.importMode = mode;
+                    this.$refs.excelFileInput.click();
+                },
+                
+                async handleFileSelect(event) {
+                    const file = event.target.files[0];
+                    if (!file) {
+                        return;
+                    }
+                    
+                    // 弹出对话框输入口令
+                    const password = prompt('请输入6位数字导入口令：');
+                    if (!password || password.length !== 6 || !/^\d{6}$/.test(password)) {
+                        this.showToast('口令错误，请输入正确的6位数字口令', 'error');
+                        return;
+                    }
+                    
+                    this.isUploading = true;
+                    
+                    try {
+                        const formData = new FormData();
+                        formData.append('file', file);
+                        formData.append('mode', this.importMode);
+                        formData.append('password', password);
+                        
+                        const response = await axios.post('/api/domain-mapping/import-excel', formData, {
+                            headers: {
+                                'Content-Type': 'multipart/form-data'
+                            }
+                        });
+                        
+                        if (response.data.code === 200) {
+                            this.showToast(response.data.message || '导入成功', 'success');
+                            this.currentPage = 1;
+                            this.loadData();
+                        } else {
+                            this.showToast(response.data.message || '导入失败', 'error');
+                        }
+                    } catch (error) {
+                        console.error('上传失败:', error);
+                        this.showToast(error.response?.data?.message || '导入失败', 'error');
+                    } finally {
+                        this.isUploading = false;
+                        // 清空文件选择
+                        event.target.value = '';
+                    }
+                },
+                
+                async exportExcel() {
+                    if (this.exporting) {
+                        return;
+                    }
+                    
+                    this.exporting = true;
+                    
+                    try {
+                        const response = await axios.get('/api/domain-mapping/export', {
+                            responseType: 'blob'
+                        });
+                        
+                        const blob = new Blob([response.data], {
+                            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                        });
+                        const url = window.URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = '全量域清单映射关系维护.xlsx';
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        window.URL.revokeObjectURL(url);
+                        
+                        this.showToast('✅ Excel导出成功！', 'success');
+                    } catch (error) {
+                        console.error('导出失败:', error);
+                        this.showToast('❌ 导出失败: ' + (error.response?.data?.message || error.message), 'error');
+                    } finally {
+                        this.exporting = false;
+                    }
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
+

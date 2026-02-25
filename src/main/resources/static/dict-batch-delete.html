@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>在途字典批量删除 - 字典管理系统</title>
+    <script src="/js/vue.global.js"></script>
+    <script src="/js/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        #app {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header .subtitle {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            padding: 30px;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #374151;
+            font-size: 14px;
+        }
+
+        .file-upload-container {
+            border: 2px dashed #e5e7eb;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+            background: #f9fafb;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .file-upload-container:hover {
+            border-color: #667eea;
+            background: #f0f2ff;
+        }
+
+        .file-upload-container.has-file {
+            border-color: #10b981;
+            background: #d1fae5;
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px;
+            background: white;
+            border-radius: 6px;
+            margin-top: 10px;
+        }
+
+        .file-info .file-name {
+            font-weight: 500;
+            color: #374151;
+        }
+
+        .file-info .file-size {
+            font-size: 12px;
+            color: #6b7280;
+            margin-left: 10px;
+        }
+
+        .file-info .remove-btn {
+            padding: 4px 12px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .file-info .remove-btn:hover {
+            background: #dc2626;
+        }
+
+        .help-text {
+            margin-top: 5px;
+            font-size: 12px;
+            color: #6b7280;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 5px;
+            text-decoration: none;
+            display: inline-block;
+            font-weight: 600;
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background: #dc2626;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(239, 68, 68, 0.4);
+        }
+
+        .btn-danger:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+
+        .action-buttons {
+            text-align: center;
+            margin-top: 30px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+
+        .spinner {
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #ef4444;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .result-message {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .result-message.success {
+            background: #d1fae5;
+            border: 1px solid #10b981;
+            color: #065f46;
+        }
+
+        .result-message.warning {
+            background: #fef3c7;
+            border: 1px solid #f59e0b;
+            color: #92400e;
+        }
+
+        .result-message.error {
+            background: #fee2e2;
+            border: 1px solid #ef4444;
+            color: #991b1b;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px 0;
+            padding: 20px;
+            background: #f9fafb;
+            border-radius: 8px;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 32px;
+            font-weight: bold;
+            color: #374151;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: #6b7280;
+            margin-top: 5px;
+        }
+
+        .undeleted-list {
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+        }
+
+        .undeleted-item {
+            padding: 10px 15px;
+            border-bottom: 1px solid #e5e7eb;
+            background: white;
+        }
+
+        .undeleted-item:last-child {
+            border-bottom: none;
+        }
+
+        .undeleted-item:hover {
+            background: #f9fafb;
+        }
+
+        .warning-box {
+            background: #fef3c7;
+            border: 2px solid #f59e0b;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .warning-box .warning-title {
+            font-weight: bold;
+            color: #92400e;
+            margin-bottom: 8px;
+            font-size: 16px;
+        }
+
+        .warning-box .warning-text {
+            color: #92400e;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="header">
+            <h1>🗑️ 在途字典批量删除</h1>
+            <p class="subtitle">根据Excel文件批量删除在途字典数据</p>
+        </div>
+
+        <div class="card">
+            <div class="warning-box">
+                <div class="warning-title">⚠️ 警告</div>
+                <div class="warning-text">
+                    此操作将<strong>物理删除</strong>数据库中的在途字典数据，删除后<strong>无法恢复</strong>！<br>
+                    请确保已备份重要数据后再进行操作。
+                </div>
+            </div>
+
+            <form @submit.prevent="batchDelete">
+                <div class="form-group">
+                    <label>选择需要删除的字典文件 <span style="color: #ef4444;">*</span></label>
+                    <div class="file-upload-container" :class="{'has-file': dictFile}" @click="$refs.fileInput.click()">
+                        <input 
+                            type="file" 
+                            ref="fileInput"
+                            @change="handleFileSelect"
+                            accept=".xlsx,.xls"
+                            style="display: none;">
+                        <div v-if="!dictFile">
+                            <p style="font-size: 40px; margin-bottom: 10px;">📁</p>
+                            <p style="color: #6b7280;">点击选择字典Excel文件</p>
+                            <p style="font-size: 12px; color: #9ca3af; margin-top: 5px;">支持 .xlsx 和 .xls 格式</p>
+                        </div>
+                        <div v-else class="file-info" @click.stop>
+                            <div>
+                                <span class="file-name">{{ dictFile.name }}</span>
+                                <span class="file-size">({{ formatFileSize(dictFile.size) }})</span>
+                            </div>
+                            <button type="button" class="remove-btn" @click="removeFile">删除</button>
+                        </div>
+                    </div>
+                    <div class="help-text">
+                        系统将读取Excel第一个sheet的J列（JAVA/ESF规范命名），匹配在途数据并删除
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <button type="submit" class="btn btn-danger" :disabled="deleting || !dictFile">
+                        {{ deleting ? '⏳ 删除中...' : '🗑️ 一键删除' }}
+                    </button>
+                    <button type="button" class="btn btn-secondary" @click="resetForm" :disabled="deleting">
+                        🔄 重置
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="window.history.back()">
+                        ← 返回
+                    </button>
+                </div>
+            </form>
+
+            <div v-if="deleting" class="loading">
+                <div class="spinner"></div>
+                <p>正在删除数据，请稍候...</p>
+            </div>
+
+            <div v-if="result" class="result-message" :class="result.type">
+                <div class="stats">
+                    <div class="stat-item">
+                        <div class="stat-number">{{ result.totalCount || 0 }}</div>
+                        <div class="stat-label">Excel总数</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number" style="color: #10b981;">{{ result.deletedCount || 0 }}</div>
+                        <div class="stat-label">已删除</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-number" style="color: #f59e0b;">{{ result.notFoundCount || 0 }}</div>
+                        <div class="stat-label">未匹配</div>
+                    </div>
+                </div>
+
+                <div v-if="result.notFoundList && result.notFoundList.length > 0">
+                    <h4 style="margin-bottom: 10px; color: #92400e;">未匹配的数据（{{ result.notFoundList.length }}条）：</h4>
+                    <div class="undeleted-list">
+                        <div v-for="(item, index) in result.notFoundList" :key="index" class="undeleted-item">
+                            {{ index + 1 }}. {{ item }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    dictFile: null,
+                    deleting: false,
+                    result: null
+                };
+            },
+            methods: {
+                handleFileSelect(event) {
+                    const file = event.target.files[0];
+                    if (file) {
+                        this.dictFile = file;
+                        this.result = null; // 清除之前的结果
+                    }
+                },
+                removeFile() {
+                    this.dictFile = null;
+                    this.$refs.fileInput.value = '';
+                    this.result = null;
+                },
+                formatFileSize(bytes) {
+                    if (bytes === 0) return '0 Bytes';
+                    const k = 1024;
+                    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+                    const i = Math.floor(Math.log(bytes) / Math.log(k));
+                    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+                },
+                async batchDelete() {
+                    if (!this.dictFile) {
+                        alert('请先选择字典文件');
+                        return;
+                    }
+
+                    const confirmMsg = `⚠️ 警告：此操作将物理删除数据库中的在途字典数据！\n\n确认要删除文件"${this.dictFile.name}"中的所有数据吗？\n\n删除后无法恢复！`;
+                    if (!confirm(confirmMsg)) {
+                        return;
+                    }
+
+                    // 二次确认
+                    const doubleConfirm = confirm('请再次确认：您确定要执行批量删除操作吗？');
+                    if (!doubleConfirm) {
+                        return;
+                    }
+
+                    this.deleting = true;
+                    this.result = null;
+
+                    try {
+                        const formData = new FormData();
+                        formData.append('dictFile', this.dictFile);
+
+                        const response = await axios.post('/api/dict-batch-delete/delete', formData, {
+                            headers: {
+                                'Content-Type': 'multipart/form-data'
+                            }
+                        });
+
+                        if (response.data.code === 200) {
+                            const data = response.data.data;
+                            
+                            let resultType = 'success';
+                            if (data.notFoundCount > 0) {
+                                resultType = 'warning';
+                            }
+                            
+                            this.result = {
+                                type: resultType,
+                                totalCount: data.totalCount,
+                                deletedCount: data.deletedCount,
+                                notFoundCount: data.notFoundCount,
+                                notFoundList: data.notFoundList || []
+                            };
+
+                            // 删除成功后清除文件
+                            if (data.deletedCount > 0) {
+                                setTimeout(() => {
+                                    this.removeFile();
+                                }, 3000);
+                            }
+                        } else {
+                            this.result = {
+                                type: 'error',
+                                message: response.data.message || '删除失败'
+                            };
+                        }
+                    } catch (error) {
+                        console.error('批量删除失败:', error);
+                        this.result = {
+                            type: 'error',
+                            message: error.response?.data?.message || error.message || '网络错误'
+                        };
+                    } finally {
+                        this.deleting = false;
+                    }
+                },
+                resetForm() {
+                    this.dictFile = null;
+                    this.$refs.fileInput.value = '';
+                    this.result = null;
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
+

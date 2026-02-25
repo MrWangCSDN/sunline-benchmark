@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>变更历史 - 字典管理系统</title>
+    <script src="/js/vue.global.js"></script>
+    <script src="/js/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        #app {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header .subtitle {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            padding: 30px;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 5px;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #4b5563;
+            transform: translateY(-2px);
+        }
+
+        .filter-bar {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .filter-bar input {
+            padding: 10px 15px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-card h3 {
+            font-size: 14px;
+            margin-bottom: 10px;
+            opacity: 0.9;
+        }
+
+        .stat-card .number {
+            font-size: 32px;
+            font-weight: bold;
+        }
+
+        .history-list {
+            margin-top: 20px;
+        }
+
+        .history-card {
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            background: white;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .history-card:hover {
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+            transform: translateY(-2px);
+        }
+
+        .card-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 16px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .change-desc {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+        }
+
+        .desc-icon {
+            font-size: 20px;
+        }
+
+        .desc-text {
+            font-size: 16px;
+            font-weight: 600;
+            color: white;
+        }
+
+        .change-time {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 13px;
+            white-space: nowrap;
+        }
+
+        .card-body {
+            padding: 20px;
+            background: #fafafa;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            background: white;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .stat-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .stat-label {
+            font-size: 15px;
+            font-weight: 600;
+            color: #374151;
+            min-width: 140px;
+        }
+
+        .stat-values {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .stat-new {
+            color: #059669;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .stat-update {
+            color: #3b82f6;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .stat-delete {
+            color: #dc2626;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .card-footer {
+            padding: 12px 20px;
+            background: white;
+            border-top: 1px solid #e5e7eb;
+            text-align: center;
+        }
+
+        .detail-btn {
+            padding: 8px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .detail-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .detail-btn:active {
+            transform: scale(0.98);
+        }
+
+        .change-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .badge-new {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .badge-update {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .badge-delete {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .change-details {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f9fafb;
+            border-radius: 6px;
+        }
+
+        .detail-item {
+            padding: 8px 0;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            gap: 10px;
+        }
+
+        .detail-item:last-child {
+            border-bottom: none;
+        }
+
+        .detail-label {
+            font-weight: 600;
+            color: #374151;
+            min-width: 150px;
+        }
+
+        .detail-value {
+            color: #6b7280;
+            flex: 1;
+        }
+
+        .old-value {
+            text-decoration: line-through;
+            color: #ef4444;
+        }
+
+        .new-value {
+            color: #10b981;
+            font-weight: 500;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+
+        .empty {
+            text-align: center;
+            padding: 60px;
+            color: #9ca3af;
+        }
+
+        .empty-icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .pagination button {
+            padding: 8px 16px;
+            border: 1px solid #d1d5db;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .pagination button:hover:not(:disabled) {
+            background: #f3f4f6;
+            border-color: #667eea;
+        }
+
+        .pagination button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .pagination .current-page {
+            padding: 8px 16px;
+            font-weight: 600;
+            color: #667eea;
+        }
+        
+        /* 详细变更样式 */
+        .detail-content {
+            padding: 20px;
+            background: #f9fafb;
+            border-top: 2px solid #e5e7eb;
+            animation: slideDown 0.3s ease;
+        }
+        
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                max-height: 0;
+            }
+            to {
+                opacity: 1;
+                max-height: 2000px;
+            }
+        }
+        
+        .detail-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .detail-header h4 {
+            margin: 0;
+            color: #374151;
+            font-size: 16px;
+        }
+        
+        .detail-count {
+            background: #667eea;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        
+        .detail-loading {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+            font-size: 15px;
+        }
+        
+        .empty-detail {
+            text-align: center;
+            padding: 40px;
+            color: #9ca3af;
+        }
+        
+        .empty-detail p {
+            margin: 0;
+            font-size: 14px;
+        }
+        
+        .detail-table {
+            overflow-x: auto;
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .detail-table table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        
+        .detail-table th {
+            background: #f9fafb;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            color: #374151;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        
+        .detail-table td {
+            padding: 12px;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        
+        .detail-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .detail-table tr:hover {
+            background: #f9fafb;
+        }
+        
+        .value-cell {
+            color: #6b7280;
+            font-family: monospace;
+            font-size: 12px;
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        /* 详情Tab样式 */
+        .detail-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        
+        .detail-tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: 14px;
+            font-weight: 500;
+            color: #6b7280;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+        }
+        
+        .detail-tab:hover {
+            color: #667eea;
+        }
+        
+        .detail-tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+        
+        .detail-tab-badge {
+            display: inline-block;
+            margin-left: 8px;
+            padding: 2px 8px;
+            background: #e5e7eb;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .detail-tab.active .detail-tab-badge {
+            background: #667eea;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="header">
+            <h1>📜 变更历史</h1>
+            <p class="subtitle">查看所有数据变更记录</p>
+        </div>
+
+        <div class="card">
+            <div class="filter-bar">
+                <input 
+                    type="text" 
+                    v-model="searchKeyword" 
+                    placeholder="搜索变更说明..."
+                    @keyup.enter="loadHistory">
+                <button class="btn btn-secondary" @click="loadHistory">🔍 搜索</button>
+                <button class="btn btn-secondary" @click="resetSearch">清空</button>
+            </div>
+
+            <div v-if="loading" class="loading">
+                ⏳ 加载中...
+            </div>
+
+            <div v-else-if="historyList.length === 0" class="empty">
+                <div class="empty-icon">📭</div>
+                <p>暂无变更历史记录</p>
+            </div>
+
+            <div v-else class="history-list">
+                <div v-for="item in historyList" :key="item.id" class="history-card">
+                    <!-- 卡片头部：变更说明 + 时间 -->
+                    <div class="card-header">
+                        <div class="change-desc">
+                            <span class="desc-icon">📝</span>
+                            <span class="desc-text">{{ item.changeDescription || '无变更说明' }}</span>
+                        </div>
+                        <div class="change-time">{{ formatTime(item.importTime) }}</div>
+                    </div>
+                    
+                    <!-- 卡片内容：三个表的统计 -->
+                    <div class="card-body">
+                        <div class="stat-row">
+                            <span class="stat-label">📚 字典</span>
+                            <span class="stat-values">
+                                <span class="stat-new">新增 {{ item.dictNewCount }}</span>
+                                <span class="stat-update">修改 {{ item.dictUpdateCount }}</span>
+                                <span class="stat-delete">删除 {{ item.dictDeleteCount }}</span>
+                            </span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label">🗂️ 域清单</span>
+                            <span class="stat-values">
+                                <span class="stat-new">新增 {{ item.domainNewCount }}</span>
+                                <span class="stat-update">修改 {{ item.domainUpdateCount }}</span>
+                                <span class="stat-delete">删除 {{ item.domainDeleteCount }}</span>
+                            </span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label">🔢 代码扩展清单</span>
+                            <span class="stat-values">
+                                <span class="stat-new">新增 {{ item.codeNewCount }}</span>
+                                <span class="stat-update">修改 {{ item.codeUpdateCount }}</span>
+                                <span class="stat-delete">删除 {{ item.codeDeleteCount }}</span>
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <!-- 卡片底部：详情按钮 -->
+                    <div class="card-footer">
+                        <button class="detail-btn" @click="toggleDetail(item.id)">
+                            <span v-if="!expandedItems.includes(item.id)">📋 查看详情</span>
+                            <span v-else>🔼 收起详情</span>
+                        </button>
+                    </div>
+                    
+                    <!-- 展开的详细变更明细 -->
+                    <div v-if="expandedItems.includes(item.id)" class="detail-content">
+                        <div class="detail-loading" v-if="loadingDetail === item.id">
+                            ⏳ 加载详细变更中...
+                        </div>
+                        <div v-else-if="detailData[item.id] && detailData[item.id].length > 0">
+                            <!-- Tab切换 -->
+                            <div class="detail-tabs">
+                                <button 
+                                    class="detail-tab" 
+                                    :class="{ active: getActiveDetailTab(item.id) === 'dict' }"
+                                    @click="switchDetailTab(item.id, 'dict')">
+                                    📚 字典
+                                    <span class="detail-tab-badge">{{ getDetailCount(item.id, 'dict') }}</span>
+                                </button>
+                                <button 
+                                    class="detail-tab" 
+                                    :class="{ active: getActiveDetailTab(item.id) === 'domain' }"
+                                    @click="switchDetailTab(item.id, 'domain')">
+                                    🗂️ 域清单
+                                    <span class="detail-tab-badge">{{ getDetailCount(item.id, 'domain') }}</span>
+                                </button>
+                                <button 
+                                    class="detail-tab" 
+                                    :class="{ active: getActiveDetailTab(item.id) === 'code' }"
+                                    @click="switchDetailTab(item.id, 'code')">
+                                    🔢 代码扩展清单
+                                    <span class="detail-tab-badge">{{ getDetailCount(item.id, 'code') }}</span>
+                                </button>
+                            </div>
+                            
+                            <!-- 字典明细 -->
+                            <div v-if="getActiveDetailTab(item.id) === 'dict'">
+                                <div class="detail-header">
+                                    <h4>字典变更明细</h4>
+                                    <span class="detail-count">共 {{ getDetailCount(item.id, 'dict') }} 条</span>
+                                </div>
+                                <div v-if="getDetailCount(item.id, 'dict') > 0" class="detail-table">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th width="80">类型</th>
+                                                <th width="150">数据项编号</th>
+                                                <th width="120">字段名</th>
+                                                <th>原值</th>
+                                                <th>新值</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr v-for="detail in detailData[item.id]" :key="detail.id">
+                                                <td>
+                                                    <span class="change-badge" :class="getChangeBadgeClass(detail.changeType)">
+                                                        {{ getChangeTypeText(detail.changeType) }}
+                                                    </span>
+                                                </td>
+                                                <td>{{ detail.dataItemCode }}</td>
+                                                <td>{{ detail.fieldName }}</td>
+                                                <td class="value-cell">{{ detail.oldValue || '-' }}</td>
+                                                <td class="value-cell">{{ detail.newValue || '-' }}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div v-else class="empty-detail">
+                                    <p>暂无字典变更记录</p>
+                                </div>
+                            </div>
+                            
+                            <!-- 域清单明细 -->
+                            <div v-if="getActiveDetailTab(item.id) === 'domain'">
+                                <div class="detail-header">
+                                    <h4>域清单变更明细</h4>
+                                    <span class="detail-count">共 {{ domainDetailData[item.id] ? domainDetailData[item.id].length : 0 }} 条</span>
+                                </div>
+                                <div v-if="domainDetailData[item.id] && domainDetailData[item.id].length > 0" class="detail-table">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th width="80">类型</th>
+                                                <th width="200">域中文名称</th>
+                                                <th width="120">字段名</th>
+                                                <th>原值</th>
+                                                <th>新值</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr v-for="detail in domainDetailData[item.id]" :key="detail.id">
+                                                <td>
+                                                    <span class="change-badge" :class="getChangeBadgeClass(detail.changeType)">
+                                                        {{ getChangeTypeText(detail.changeType) }}
+                                                    </span>
+                                                </td>
+                                                <td>{{ detail.chineseName }}</td>
+                                                <td>{{ detail.fieldName }}</td>
+                                                <td class="value-cell">{{ detail.oldValue || '-' }}</td>
+                                                <td class="value-cell">{{ detail.newValue || '-' }}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div v-else class="empty-detail">
+                                    <p>暂无域清单变更记录</p>
+                                </div>
+                            </div>
+                            
+                            <!-- 代码扩展清单明细 -->
+                            <div v-if="getActiveDetailTab(item.id) === 'code'">
+                                <div class="detail-header">
+                                    <h4>代码扩展清单变更明细</h4>
+                                    <span class="detail-count">共 {{ codeDetailData[item.id] ? codeDetailData[item.id].length : 0 }} 条</span>
+                                </div>
+                                <div v-if="codeDetailData[item.id] && codeDetailData[item.id].length > 0" class="detail-table">
+                                    <table>
+                                        <thead>
+                                            <tr>
+                                                <th width="80">类型</th>
+                                                <th width="200">代码域中文名称</th>
+                                                <th width="120">代码取值</th>
+                                                <th width="120">字段名</th>
+                                                <th>原值</th>
+                                                <th>新值</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr v-for="detail in codeDetailData[item.id]" :key="detail.id">
+                                                <td>
+                                                    <span class="change-badge" :class="getChangeBadgeClass(detail.changeType)">
+                                                        {{ getChangeTypeText(detail.changeType) }}
+                                                    </span>
+                                                </td>
+                                                <td>{{ detail.codeDomainChineseName }}</td>
+                                                <td>{{ detail.codeValue }}</td>
+                                                <td>{{ detail.fieldName }}</td>
+                                                <td class="value-cell">{{ detail.oldValue || '-' }}</td>
+                                                <td class="value-cell">{{ detail.newValue || '-' }}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div v-else class="empty-detail">
+                                    <p>暂无代码扩展清单变更记录</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-else class="empty-detail">
+                            <p>暂无详细变更记录</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pagination" v-if="totalPages > 1">
+                <button @click="prevPage" :disabled="currentPage === 1">上一页</button>
+                <span class="current-page">{{ currentPage }} / {{ totalPages }}</span>
+                <button @click="nextPage" :disabled="currentPage === totalPages">下一页</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    historyList: [],
+                    loading: false,
+                    searchKeyword: '',
+                    currentPage: 1,
+                    pageSize: 20,
+                    totalPages: 0,
+                    totalChanges: 0,
+                    totalNew: 0,
+                    totalUpdate: 0,
+                    totalDelete: 0,
+                    lastImportTime: '-',
+                    expandedItems: [],  // 展开的项目ID列表
+                    detailData: {},     // 字典详细数据缓存
+                    domainDetailData: {},  // 域清单详细数据缓存
+                    codeDetailData: {},    // 代码扩展清单详细数据缓存
+                    loadingDetail: null, // 正在加载详情的ID
+                    activeDetailTabs: {} // 每个导入记录的活动Tab，格式：{ importId: 'dict' }
+                };
+            },
+            mounted() {
+                this.loadHistory();
+            },
+            methods: {
+                async loadHistory() {
+                    this.loading = true;
+                    try {
+                        const params = {
+                            current: this.currentPage,
+                            size: this.pageSize
+                        };
+
+                        if (this.searchKeyword) {
+                            params.changeDescription = this.searchKeyword;
+                        }
+
+                        const response = await axios.get('/api/dict/change-log/page', { params });
+
+                        if (response.data.code === 200) {
+                            const pageData = response.data.data;
+                            this.historyList = pageData.records || [];
+                            this.totalPages = pageData.pages || 0;
+                        }
+                    } catch (error) {
+                        console.error('加载导入历史失败:', error);
+                        alert('加载失败: ' + (error.response?.data?.message || error.message));
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+                resetSearch() {
+                    this.searchKeyword = '';
+                    this.currentPage = 1;
+                    this.loadHistory();
+                },
+                prevPage() {
+                    if (this.currentPage > 1) {
+                        this.currentPage--;
+                        this.loadHistory();
+                    }
+                },
+                nextPage() {
+                    if (this.currentPage < this.totalPages) {
+                        this.currentPage++;
+                        this.loadHistory();
+                    }
+                },
+                formatTime(time) {
+                    if (!time) return '';
+                    const date = new Date(time);
+                    return date.toLocaleString('zh-CN');
+                },
+                async toggleDetail(importId) {
+                    // 如果已经展开，则收起
+                    if (this.expandedItems.includes(importId)) {
+                        this.expandedItems = this.expandedItems.filter(id => id !== importId);
+                        return;
+                    }
+                    
+                    // 展开
+                    this.expandedItems.push(importId);
+                    
+                    // 初始化该导入记录的活动Tab为'dict'
+                    if (!this.activeDetailTabs[importId]) {
+                        this.activeDetailTabs[importId] = 'dict';
+                    }
+                    
+                    // 如果已经加载过数据，直接显示
+                    if (this.detailData[importId] && this.domainDetailData[importId] && this.codeDetailData[importId]) {
+                        return;
+                    }
+                    
+                    // 加载详细数据
+                    this.loadingDetail = importId;
+                    try {
+                        // 并行加载三个表的变更详情
+                        const [dictResponse, domainResponse, codeResponse] = await Promise.all([
+                            axios.get(`/api/dict/change-log/detail/${importId}`),
+                            axios.get(`/api/dict/change-log/domain-detail/${importId}`),
+                            axios.get(`/api/dict/change-log/code-detail/${importId}`)
+                        ]);
+                        
+                        // 字典变更详情
+                        if (dictResponse.data.code === 200) {
+                            this.detailData[importId] = dictResponse.data.data || [];
+                        }
+                        
+                        // 域清单变更详情
+                        if (domainResponse.data.code === 200) {
+                            this.domainDetailData[importId] = domainResponse.data.data || [];
+                        }
+                        
+                        // 代码扩展清单变更详情
+                        if (codeResponse.data.code === 200) {
+                            this.codeDetailData[importId] = codeResponse.data.data || [];
+                        }
+                        
+                        console.log('变更详情加载成功:', {
+                            dict: this.detailData[importId].length,
+                            domain: this.domainDetailData[importId].length,
+                            code: this.codeDetailData[importId].length
+                        });
+                        
+                    } catch (error) {
+                        console.error('加载详情失败:', error);
+                        alert('加载详情失败: ' + (error.response?.data?.message || error.message));
+                    } finally {
+                        this.loadingDetail = null;
+                    }
+                },
+                switchDetailTab(importId, tab) {
+                    this.activeDetailTabs[importId] = tab;
+                },
+                getActiveDetailTab(importId) {
+                    return this.activeDetailTabs[importId] || 'dict';
+                },
+                getDetailCount(importId, type) {
+                    // 优先返回实际加载的明细数量（字段变更数）
+                    // 如果未加载，则返回统计数量（记录数）
+                    if (type === 'dict') {
+                        if (this.detailData[importId]) {
+                            return this.detailData[importId].length;
+                        }
+                    } else if (type === 'domain') {
+                        if (this.domainDetailData[importId]) {
+                            return this.domainDetailData[importId].length;
+                        }
+                    } else if (type === 'code') {
+                        if (this.codeDetailData[importId]) {
+                            return this.codeDetailData[importId].length;
+                        }
+                    }
+                    
+                    // 未加载时，返回统计数量作为预估
+                    const item = this.historyList.find(h => h.id === importId);
+                    if (!item) return 0;
+                    
+                    if (type === 'dict') {
+                        return (item.dictNewCount || 0) + (item.dictUpdateCount || 0) + (item.dictDeleteCount || 0);
+                    } else if (type === 'domain') {
+                        return (item.domainNewCount || 0) + (item.domainUpdateCount || 0) + (item.domainDeleteCount || 0);
+                    } else if (type === 'code') {
+                        return (item.codeNewCount || 0) + (item.codeUpdateCount || 0) + (item.codeDeleteCount || 0);
+                    }
+                    return 0;
+                },
+                getChangeTypeText(type) {
+                    const map = {
+                        'NEW': '新增',
+                        'UPDATE': '修改',
+                        'DELETE': '删除'
+                    };
+                    return map[type] || type;
+                },
+                getChangeBadgeClass(type) {
+                    const map = {
+                        'NEW': 'badge-new',
+                        'UPDATE': 'badge-update',
+                        'DELETE': 'badge-delete'
+                    };
+                    return map[type] || '';
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
+

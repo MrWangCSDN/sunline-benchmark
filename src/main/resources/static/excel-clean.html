@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel数据清洗</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: bold;
+            color: #333;
+            font-size: 16px;
+        }
+
+        .form-group textarea {
+            width: 100%;
+            min-height: 150px;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+            resize: vertical;
+            transition: border-color 0.3s;
+        }
+
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .upload-box {
+            border: 2px dashed #ddd;
+            border-radius: 10px;
+            padding: 30px;
+            text-align: center;
+            transition: all 0.3s;
+            background: #f8f9fa;
+            cursor: pointer;
+        }
+
+        .upload-box:hover {
+            border-color: #667eea;
+            background: #f0f4ff;
+        }
+
+        .upload-box.has-file {
+            border-color: #28a745;
+            background: #f0fff4;
+        }
+
+        .upload-box input[type="file"] {
+            display: none;
+        }
+
+        .upload-btn {
+            display: inline-block;
+            padding: 12px 30px;
+            background: #667eea;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+
+        .upload-btn:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+        }
+
+        .file-info {
+            margin-top: 15px;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+            display: none;
+        }
+
+        .file-info.show {
+            display: block;
+        }
+
+        .file-info .file-name {
+            color: #333;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .file-info .file-size {
+            color: #666;
+            font-size: 12px;
+        }
+
+        .remove-file {
+            margin-top: 10px;
+            padding: 6px 15px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .remove-file:hover {
+            background: #c82333;
+        }
+
+        .button-group {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin: 30px 0;
+        }
+
+        .btn {
+            padding: 12px 40px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+
+        .btn-primary {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #218838;
+            transform: translateY(-2px);
+        }
+
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+            transform: translateY(-2px);
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 30px;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .result-section {
+            display: none;
+            margin-top: 30px;
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+        }
+
+        .result-section.show {
+            display: block;
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .result-header h3 {
+            color: #333;
+            font-size: 18px;
+        }
+
+        .download-btn {
+            padding: 10px 25px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .download-btn:hover {
+            background: #0056b3;
+        }
+
+        .result-info {
+            background: #d1ecf1;
+            border-left: 4px solid #17a2b8;
+            padding: 15px;
+            border-radius: 5px;
+        }
+
+        .result-info h4 {
+            color: #0c5460;
+            margin-bottom: 10px;
+        }
+
+        .result-info ul {
+            color: #0c5460;
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .result-info li {
+            padding: 5px 0;
+        }
+
+        .error-message {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        .tips {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+
+        .tips h4 {
+            color: #856404;
+            margin-bottom: 10px;
+        }
+
+        .tips ul {
+            color: #856404;
+            padding-left: 20px;
+        }
+
+        .tips li {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧹 Excel数据清洗</h1>
+            <p>根据保留规则清洗Excel文件，删除不需要的sheet页和数据行</p>
+        </div>
+
+        <div class="content">
+            <!-- 保留Sheet页名称 -->
+            <div class="form-group">
+                <label for="sheetNames">📋 保留的Sheet页名称（每行一个，忽略大小写，可选）</label>
+                <textarea id="sheetNames" placeholder="请输入要保留的sheet页名称，每行一个&#10;例如：&#10;user_table&#10;order_table&#10;product_table"></textarea>
+            </div>
+            
+            <!-- Sheet页名称替换规则 -->
+            <div class="form-group">
+                <label for="renameRules">🔄 Sheet页名称替换规则（每行一个，格式：旧名称 --> 新名称，可选）</label>
+                <textarea id="renameRules" placeholder="请输入sheet页名称替换规则，每行一个，使用 --> 分隔&#10;格式：旧名称 --> 新名称&#10;例如：&#10;user_info --> user_info_new&#10;order_list --> order_list_v2&#10;product --> product_detail"></textarea>
+            </div>
+
+            <!-- Excel文件上传 -->
+            <div class="form-group">
+                <label>📄 选择Excel文件</label>
+                <div class="upload-box" id="uploadBox">
+                    <input type="file" id="excelFile" accept=".xlsx,.xls">
+                    <label for="excelFile" class="upload-btn">选择文件</label>
+                    <div class="file-info" id="fileInfo">
+                        <div class="file-name" id="fileName"></div>
+                        <div class="file-size" id="fileSize"></div>
+                        <button class="remove-file" onclick="removeFile()">移除</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 按钮组 -->
+            <div class="button-group">
+                <button class="btn btn-primary" id="cleanBtn" disabled>
+                    🧹 开始清洗
+                </button>
+                <button class="btn btn-secondary" onclick="cancelClean()">
+                    ❌ 取消
+                </button>
+                <button class="btn btn-danger" onclick="resetForm()">
+                    🔄 重置
+                </button>
+            </div>
+
+            <!-- 加载中 -->
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>正在清洗数据，请稍候...</p>
+            </div>
+
+            <!-- 错误信息 -->
+            <div class="error-message" id="errorMessage"></div>
+
+            <!-- 结果区域 -->
+            <div class="result-section" id="resultSection">
+                <div class="result-header">
+                    <h3>✅ 清洗完成</h3>
+                    <button class="download-btn" onclick="downloadResult()">
+                        ⬇️ 下载清洗后的文件
+                    </button>
+                </div>
+
+                <div class="result-info" id="resultInfo"></div>
+            </div>
+
+            <!-- 使用提示 -->
+            <div class="tips">
+                <h4>💡 使用说明</h4>
+                <ul>
+                    <li><strong>功能1 - 保留Sheet页（可选）：</strong>
+                        <ul>
+                            <li>输入需要保留的sheet页名称，每行一个（忽略大小写）</li>
+                            <li>删除不在保留列表中的sheet页</li>
+                            <li>清洗总览表：根据总览表的B列与保留的sheet页名称匹配，删除不匹配的数据行</li>
+                            <li>自动修复双向超链接</li>
+                        </ul>
+                    </li>
+                    <li><strong>功能2 - 替换Sheet页名称（可选）：</strong>
+                        <ul>
+                            <li>输入sheet页名称替换规则，每行一个</li>
+                            <li>格式：<code>旧名称 --> 新名称</code></li>
+                            <li>示例：<code>user_info --> user_info_new</code></li>
+                            <li>旧名称匹配时忽略大小写（例如：USER_INFO、user_info、User_Info都会匹配）</li>
+                            <li>替换后自动更新总览表B列和所有相关超链接</li>
+                        </ul>
+                    </li>
+                    <li><strong>功能组合：</strong>
+                        <ul>
+                            <li>可以单独使用"保留Sheet页"功能</li>
+                            <li>可以单独使用"替换Sheet页名称"功能</li>
+                            <li>可以同时使用两个功能（先执行保留，再执行替换）</li>
+                        </ul>
+                    </li>
+                    <li><strong>注意事项：</strong>
+                        <ul>
+                            <li>第一个sheet页（总览表）始终会保留</li>
+                            <li>总览表的第一行（表头）不会被删除</li>
+                            <li>在原Excel文件上操作，保留原有样式和格式</li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let uploadedFile = null;
+        let resultFileName = null;
+
+        // 文件选择事件
+        document.getElementById('excelFile').addEventListener('change', function(e) {
+            handleFileSelect(e);
+        });
+
+        // Sheet名称输入框变化事件
+        document.getElementById('sheetNames').addEventListener('input', function() {
+            checkFormReady();
+        });
+        
+        // Sheet重命名规则输入框变化事件
+        document.getElementById('renameRules').addEventListener('input', function() {
+            checkFormReady();
+        });
+
+        // 处理文件选择
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            uploadedFile = file;
+            document.getElementById('fileName').textContent = file.name;
+            document.getElementById('fileSize').textContent = formatFileSize(file.size);
+            document.getElementById('fileInfo').classList.add('show');
+            document.getElementById('uploadBox').classList.add('has-file');
+
+            checkFormReady();
+        }
+
+        // 移除文件
+        function removeFile() {
+            uploadedFile = null;
+            document.getElementById('excelFile').value = '';
+            document.getElementById('fileInfo').classList.remove('show');
+            document.getElementById('uploadBox').classList.remove('has-file');
+            checkFormReady();
+        }
+
+        // 检查表单是否准备好
+        function checkFormReady() {
+            const sheetNames = document.getElementById('sheetNames').value.trim();
+            const renameRules = document.getElementById('renameRules').value.trim();
+            const cleanBtn = document.getElementById('cleanBtn');
+            
+            // 只要上传了文件，且至少有一个功能（保留或替换）被配置，就启用按钮
+            if (uploadedFile && (sheetNames || renameRules)) {
+                cleanBtn.disabled = false;
+            } else {
+                cleanBtn.disabled = true;
+            }
+        }
+
+        // 格式化文件大小
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        }
+
+        // 开始清洗
+        document.getElementById('cleanBtn').addEventListener('click', async function() {
+            const sheetNames = document.getElementById('sheetNames').value.trim();
+            const renameRules = document.getElementById('renameRules').value.trim();
+            
+            if (!uploadedFile || (!sheetNames && !renameRules)) {
+                showError('请至少配置一个功能（保留Sheet页或替换Sheet页名称）并上传Excel文件');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('excelFile', uploadedFile);
+            formData.append('sheetNames', sheetNames || '');
+            formData.append('renameRules', renameRules || '');
+
+            // 显示加载
+            document.getElementById('loading').classList.add('show');
+            document.getElementById('resultSection').classList.remove('show');
+            document.getElementById('errorMessage').classList.remove('show');
+
+            try {
+                const response = await fetch('/api/excel/clean', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.code === 200) {
+                    // 显示结果
+                    resultFileName = result.data.fileName;
+                    showResult(result.data);
+                } else {
+                    showError(result.message || '清洗失败');
+                }
+            } catch (error) {
+                console.error('清洗失败', error);
+                showError('清洗失败：' + error.message);
+            } finally {
+                document.getElementById('loading').classList.remove('show');
+            }
+        });
+
+        // 显示结果
+        function showResult(data) {
+            const resultInfo = document.getElementById('resultInfo');
+            const html = `
+                <h4>📊 清洗统计</h4>
+                <ul>
+                    <li>📄 原始Sheet页数：${data.originalSheetCount || 0} 个</li>
+                    <li>🗑️ 删除Sheet页数：${data.deletedSheetCount || 0} 个</li>
+                    <li>🔄 重命名Sheet页数：${data.renamedSheetCount || 0} 个</li>
+                    <li>✅ 保留Sheet页数：${data.remainingSheetCount || 0} 个</li>
+                    <li>📝 总览表删除行数：${data.deletedRowCount || 0} 行</li>
+                </ul>
+            `;
+            resultInfo.innerHTML = html;
+            document.getElementById('resultSection').classList.add('show');
+        }
+
+        // 下载结果
+        function downloadResult() {
+            if (!resultFileName) {
+                showError('没有可下载的结果');
+                return;
+            }
+
+            window.location.href = '/api/excel/clean/download/' + encodeURIComponent(resultFileName);
+        }
+
+        // 显示错误
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+
+            setTimeout(() => {
+                errorDiv.classList.remove('show');
+            }, 5000);
+        }
+
+        // 取消清洗
+        function cancelClean() {
+            console.log('取消清洗');
+        }
+
+        // 重置表单
+        function resetForm() {
+            document.getElementById('sheetNames').value = '';
+            document.getElementById('renameRules').value = '';
+            removeFile();
+            document.getElementById('resultSection').classList.remove('show');
+            document.getElementById('errorMessage').classList.remove('show');
+            resultFileName = null;
+        }
+    </script>
+</body>
+</html>
+

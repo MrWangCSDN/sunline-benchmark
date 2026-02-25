@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POM依赖树检查</title>
+    <script src="/js/vue.global.js"></script>
+    <script src="/js/axios.min.js"></script>
+    <script src="/js/echarts.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 24px;
+        }
+        
+        .header {
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 2px solid #e8e8e8;
+        }
+        
+        .header h2 {
+            color: #333;
+            font-size: 20px;
+            font-weight: 600;
+        }
+        
+        .form-section {
+            display: flex;
+            gap: 16px;
+            align-items: flex-start;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+        
+        .form-item {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .form-item label {
+            font-weight: 500;
+            color: #333;
+            font-size: 14px;
+        }
+        
+        .form-item input[type="text"] {
+            padding: 8px 12px;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            font-size: 14px;
+            min-width: 200px;
+        }
+        
+        .form-item input[type="text"]:focus {
+            outline: none;
+            border-color: #1890ff;
+            box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+        }
+        
+        .projects-container {
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            padding: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            background: #fafafa;
+            min-width: 400px;
+        }
+        
+        .select-all {
+            margin-bottom: 12px;
+            padding: 6px 12px;
+            background: #1890ff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .select-all:hover {
+            background: #40a9ff;
+        }
+        
+        .project-item {
+            display: flex;
+            align-items: center;
+            padding: 8px;
+            margin-bottom: 4px;
+        }
+        
+        .project-item input[type="checkbox"] {
+            margin-right: 8px;
+        }
+        
+        .project-item label {
+            cursor: pointer;
+            font-size: 14px;
+            color: #333;
+        }
+        
+        .help-text {
+            font-size: 12px;
+            color: #999;
+            margin-top: 4px;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+        }
+        
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: #1890ff;
+            color: white;
+        }
+        
+        .btn-primary:hover:not(:disabled) {
+            background: #40a9ff;
+        }
+        
+        .btn-primary:disabled {
+            background: #d9d9d9;
+            cursor: not-allowed;
+        }
+        
+        .btn-default {
+            background: #fff;
+            color: #333;
+            border: 1px solid #d9d9d9;
+        }
+        
+        .btn-default:hover {
+            border-color: #1890ff;
+            color: #1890ff;
+        }
+        
+        .error-message {
+            background: #fff2f0;
+            border: 1px solid #ffccc7;
+            color: #ff4d4f;
+            padding: 12px 16px;
+            border-radius: 4px;
+            margin-bottom: 16px;
+        }
+        
+        .success-message {
+            background: #f6ffed;
+            border: 1px solid #b7eb8f;
+            color: #52c41a;
+            padding: 12px 16px;
+            border-radius: 4px;
+            margin-bottom: 16px;
+        }
+        
+        .result-section {
+            margin-top: 24px;
+        }
+        
+        .project-tabs {
+            display: flex;
+            gap: 8px;
+            border-bottom: 2px solid #e8e8e8;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        
+        .project-tab {
+            padding: 8px 16px;
+            background: #f5f5f5;
+            border: none;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            font-size: 14px;
+            color: #666;
+            transition: all 0.3s;
+        }
+        
+        .project-tab.active {
+            background: white;
+            color: #1890ff;
+            border-bottom-color: #1890ff;
+        }
+        
+        .project-tab:hover {
+            color: #1890ff;
+        }
+        
+        .result-tabs {
+            display: flex;
+            gap: 8px;
+            border-bottom: 1px solid #e8e8e8;
+            margin-bottom: 16px;
+        }
+        
+        .tab {
+            padding: 8px 16px;
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            font-size: 14px;
+            color: #666;
+            transition: all 0.3s;
+        }
+        
+        .tab.active {
+            color: #1890ff;
+            border-bottom-color: #1890ff;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .chart-container {
+            width: 100%;
+            height: 800px;
+            border: 1px solid #e8e8e8;
+            border-radius: 4px;
+        }
+        
+        .json-viewer {
+            background: #f5f5f5;
+            border: 1px solid #e8e8e8;
+            border-radius: 4px;
+            padding: 16px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-height: 800px;
+            overflow-y: auto;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #1890ff;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <div class="header">
+                <h2>📦 POM依赖树检查</h2>
+            </div>
+            
+            <div class="form-section">
+                <div class="form-item">
+                    <label>分支</label>
+                    <input type="text" v-model="branch" placeholder="请输入分支名" />
+                </div>
+                
+                <div class="form-item">
+                    <label>选择Git工程 <span style="color: #ef4444;">*</span></label>
+                    <div class="projects-container">
+                        <button type="button" class="select-all" @click="toggleSelectAll">
+                            {{ allSelected ? '取消全选' : '全选' }}
+                        </button>
+                        <div v-if="loadingProjects" class="loading">
+                            <div class="spinner"></div>
+                            <p>正在加载Git工程列表...</p>
+                        </div>
+                        <div v-else-if="projects.length === 0" style="text-align: center; padding: 40px; color: #9ca3af;">
+                            <p>暂无Git工程</p>
+                        </div>
+                        <div v-else>
+                            <div v-for="project in projects" :key="project.id" class="project-item">
+                                <input 
+                                    type="checkbox" 
+                                    :id="'project-' + project.id"
+                                    :value="project.id"
+                                    v-model="selectedProjects">
+                                <label :for="'project-' + project.id">
+                                    {{ project.name }}
+                                    <span style="color: #999; font-size: 12px;" v-if="project.path">({{ project.path }})</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="help-text">已选择 {{ selectedProjects.length }} 个工程</div>
+                </div>
+                
+                <div class="button-group">
+                    <button class="btn btn-primary" @click="generateTrees" :disabled="!canGenerate || generating">
+                        {{ generating ? '生成中...' : '生成' }}
+                    </button>
+                    <button class="btn btn-default" @click="reset">重置</button>
+                </div>
+            </div>
+            
+            <div v-if="errorMessage" class="error-message">
+                {{ errorMessage }}
+            </div>
+            
+            <div v-if="successMessage" class="success-message">
+                {{ successMessage }}
+            </div>
+            
+            <div v-if="dependencyTrees.length > 0" class="result-section">
+                <div class="project-tabs">
+                    <button 
+                        v-for="(tree, index) in dependencyTrees" 
+                        :key="index"
+                        class="project-tab"
+                        :class="{active: activeProjectIndex === index}"
+                        @click="activeProjectIndex = index">
+                        {{ tree.projectName }}
+                    </button>
+                </div>
+                
+                <div v-for="(tree, index) in dependencyTrees" :key="index" v-show="activeProjectIndex === index">
+                    <div class="result-tabs">
+                        <button class="tab" :class="{active: tree.activeTab === 'chart'}" @click="switchTab(index, 'chart')">
+                            依赖树图
+                        </button>
+                        <button class="tab" :class="{active: tree.activeTab === 'json'}" @click="switchTab(index, 'json')">
+                            JSON格式
+                        </button>
+                    </div>
+                    
+                    <div class="tab-content" :class="{active: tree.activeTab === 'chart'}">
+                        <div :id="'chartContainer-' + index" class="chart-container"></div>
+                    </div>
+                    
+                    <div class="tab-content" :class="{active: tree.activeTab === 'json'}">
+                        <div class="json-viewer">{{ tree.jsonString }}</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div v-if="generating && dependencyTrees.length === 0" class="loading">
+                <div class="spinner"></div>
+                <p>正在生成POM依赖树...</p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const { createApp } = Vue;
+        
+        createApp({
+            data() {
+                return {
+                    branch: '',
+                    projects: [],
+                    selectedProjects: [],
+                    loadingProjects: false,
+                    generating: false,
+                    dependencyTrees: [],
+                    activeProjectIndex: 0,
+                    errorMessage: '',
+                    successMessage: '',
+                    charts: {},
+                    _resizeHandlers: {}
+                };
+            },
+            computed: {
+                allSelected() {
+                    return this.projects.length > 0 && this.selectedProjects.length === this.projects.length;
+                },
+                canGenerate() {
+                    return this.branch.trim() && this.selectedProjects.length > 0;
+                }
+            },
+            watch: {
+                activeProjectIndex(newIndex, oldIndex) {
+                    // Tab切换时，确保图表正确显示
+                    this.$nextTick(() => {
+                        const currentTree = this.dependencyTrees[newIndex];
+                        if (currentTree && currentTree.activeTab === 'chart') {
+                            const chartId = 'chartContainer-' + newIndex;
+                            const chart = this.charts[chartId];
+                            if (chart) {
+                                // 如果图表已存在，resize确保正确显示
+                                setTimeout(() => {
+                                    chart.resize();
+                                }, 100);
+                            } else {
+                                // 如果图表不存在，重新渲染
+                                this.renderChart(newIndex, currentTree.dependencyTree);
+                            }
+                        }
+                    });
+                }
+            },
+            mounted() {
+                this.loadProjects();
+            },
+            methods: {
+                async loadProjects() {
+                    this.loadingProjects = true;
+                    try {
+                        const response = await axios.get('/api/git/projects');
+                        if (response.data.code === 200) {
+                            this.projects = response.data.data || [];
+                        } else {
+                            this.errorMessage = '加载Git工程列表失败: ' + response.data.message;
+                        }
+                    } catch (error) {
+                        console.error('加载Git工程列表失败:', error);
+                        this.errorMessage = '加载Git工程列表失败: ' + (error.response?.data?.message || error.message);
+                    } finally {
+                        this.loadingProjects = false;
+                    }
+                },
+                
+                toggleSelectAll() {
+                    if (this.allSelected) {
+                        this.selectedProjects = [];
+                    } else {
+                        this.selectedProjects = this.projects.map(p => p.id);
+                    }
+                },
+                
+                async generateTrees() {
+                    if (!this.canGenerate) {
+                        this.errorMessage = '请填写分支名称并至少选择一个Git工程';
+                        return;
+                    }
+                    
+                    this.generating = true;
+                    this.errorMessage = '';
+                    this.successMessage = '';
+                    this.dependencyTrees = [];
+                    
+                    // 销毁所有图表
+                    Object.values(this.charts).forEach(chart => {
+                        if (chart) {
+                            chart.dispose();
+                        }
+                    });
+                    this.charts = {};
+                    
+                    const results = [];
+                    const errors = [];
+                    
+                    // 遍历选中的工程，逐个生成依赖树
+                    for (const projectId of this.selectedProjects) {
+                        const project = this.projects.find(p => p.id === projectId);
+                        if (!project) continue;
+                        
+                        try {
+                            const response = await axios.post('/api/pom-dependency-tree/build', {
+                                projectId: projectId,
+                                branch: this.branch.trim(),
+                                projectName: project.name
+                            });
+                            
+                            if (response.data.code === 200) {
+                                const data = response.data.data;
+                                results.push({
+                                    projectId: projectId,
+                                    projectName: project.name,
+                                    dependencyTree: data.dependencyTree,
+                                    filePath: data.filePath,
+                                    activeTab: 'chart',
+                                    jsonString: JSON.stringify(data.dependencyTree, null, 2)
+                                });
+                            } else {
+                                errors.push(`${project.name}: ${response.data.message}`);
+                            }
+                        } catch (error) {
+                            console.error(`生成${project.name}的依赖树失败:`, error);
+                            errors.push(`${project.name}: ${error.response?.data?.message || error.message}`);
+                        }
+                    }
+                    
+                    this.generating = false;
+                    
+                    if (results.length > 0) {
+                        this.dependencyTrees = results;
+                        this.activeProjectIndex = 0;
+                        this.successMessage = `成功生成 ${results.length} 个工程的依赖树`;
+                        
+                        // 渲染所有图表
+                        this.$nextTick(() => {
+                            results.forEach((tree, index) => {
+                                this.renderChart(index, tree.dependencyTree);
+                            });
+                        });
+                    }
+                    
+                    if (errors.length > 0) {
+                        this.errorMessage = '部分工程生成失败:\n' + errors.join('\n');
+                    }
+                },
+                
+                reset() {
+                    this.branch = '';
+                    this.selectedProjects = [];
+                    this.dependencyTrees = [];
+                    this.errorMessage = '';
+                    this.successMessage = '';
+                    // 清理所有图表和resize handlers
+                    Object.values(this.charts).forEach(chart => {
+                        if (chart) {
+                            chart.dispose();
+                        }
+                    });
+                    if (this._resizeHandlers) {
+                        Object.values(this._resizeHandlers).forEach(handler => {
+                            window.removeEventListener('resize', handler);
+                        });
+                    }
+                    this.charts = {};
+                    this._resizeHandlers = {};
+                },
+                
+                switchTab(index, tab) {
+                    const tree = this.dependencyTrees[index];
+                    if (tree) {
+                        tree.activeTab = tab;
+                        // 切换到图表Tab时，确保图表正确显示
+                        if (tab === 'chart') {
+                            this.$nextTick(() => {
+                                const chartId = 'chartContainer-' + index;
+                                const chart = this.charts[chartId];
+                                if (chart) {
+                                    // 图表已存在，resize确保正确显示
+                                    setTimeout(() => {
+                                        chart.resize();
+                                    }, 100);
+                                } else {
+                                    // 图表不存在，重新渲染
+                                    this.renderChart(index, tree.dependencyTree);
+                                }
+                            });
+                        }
+                    }
+                },
+                
+                renderChart(index, dependencyTree) {
+                    const chartId = 'chartContainer-' + index;
+                    const chartDom = document.getElementById(chartId);
+                    if (!chartDom) {
+                        return;
+                    }
+                    
+                    // 确保容器可见后再初始化图表
+                    const container = chartDom.parentElement;
+                    if (container && container.style.display === 'none') {
+                        // 如果容器隐藏，先显示再初始化
+                        container.style.display = 'block';
+                        setTimeout(() => {
+                            this.initChart(index, dependencyTree, chartId, chartDom);
+                        }, 50);
+                    } else {
+                        this.initChart(index, dependencyTree, chartId, chartDom);
+                    }
+                },
+                
+                initChart(index, dependencyTree, chartId, chartDom) {
+                    // 销毁旧图表
+                    if (this.charts[chartId]) {
+                        this.charts[chartId].dispose();
+                    }
+                    
+                    // 构建树形图数据
+                    const treeData = this.buildTreeData(dependencyTree);
+                    
+                    // 初始化图表
+                    this.charts[chartId] = echarts.init(chartDom);
+                    
+                    const option = {
+                        tooltip: {
+                            trigger: 'item',
+                            triggerOn: 'mousemove',
+                            formatter: function(info) {
+                                const data = info.data;
+                                let html = `<div style="font-weight: bold; margin-bottom: 6px;">${data.name}</div>`;
+                                if (data.nodeType) {
+                                    html += `<div style="margin-bottom: 4px;">类型: ${data.nodeType}</div>`;
+                                }
+                                if (data.parent) {
+                                    html += `<div style="margin-bottom: 4px;">父节点: ${data.parent}</div>`;
+                                }
+                                if (data.dependencies && data.dependencies.length > 0) {
+                                    html += `<div style="margin-bottom: 4px;">依赖数: ${data.dependencies.length}</div>`;
+                                }
+                                return html;
+                            }
+                        },
+                        series: [{
+                            type: 'tree',
+                            data: [treeData],
+                            left: '3%',
+                            right: '3%',
+                            top: '5%',
+                            bottom: '5%',
+                            symbol: 'rect',
+                            symbolSize: function(value, params) {
+                                const depth = params.data.depth || 0;
+                                if (depth === 0) {
+                                    return [140, 50];
+                                }
+                                return [120, 40];
+                            },
+                            orient: 'LR',
+                            initialTreeDepth: -1,
+                            layout: 'orthogonal',
+                            roam: true,
+                            label: {
+                                position: 'inside',
+                                formatter: function(params) {
+                                    const name = params.data.name || '';
+                                    if (name.includes('\n')) {
+                                        const lines = name.split('\n');
+                                        if (lines.length > 2) {
+                                            return lines[0] + '\n' + lines[1];
+                                        }
+                                        return name;
+                                    }
+                                    if (name.length > 20) {
+                                        return name.substring(0, 20) + '...';
+                                    }
+                                    return name;
+                                },
+                                fontSize: 11,
+                                color: '#333',
+                                lineHeight: 14
+                            },
+                            leaves: {
+                                label: {
+                                    position: 'inside',
+                                    fontSize: 11
+                                }
+                            },
+                            emphasis: {
+                                focus: 'descendant',
+                                itemStyle: {
+                                    borderWidth: 3,
+                                    shadowBlur: 10
+                                },
+                                label: {
+                                    fontSize: 12
+                                }
+                            },
+                            expandAndCollapse: true,
+                            animationDuration: 550,
+                            animationDurationUpdate: 750,
+                            lineStyle: {
+                                color: '#91cc75',
+                                width: 2,
+                                curveness: 0.2
+                            },
+                            itemStyle: {
+                                borderColor: '#91cc75',
+                                borderWidth: 2,
+                                color: '#fff'
+                            }
+                        }]
+                    };
+                    
+                    this.charts[chartId].setOption(option);
+                    
+                    // 响应式调整
+                    const resizeHandler = () => {
+                        if (this.charts[chartId]) {
+                            this.charts[chartId].resize();
+                        }
+                    };
+                    window.addEventListener('resize', resizeHandler);
+                    
+                    // 保存resize handler以便后续清理
+                    if (!this._resizeHandlers) {
+                        this._resizeHandlers = {};
+                    }
+                    this._resizeHandlers[chartId] = resizeHandler;
+                },
+                
+                buildTreeData(dependencyTree) {
+                    const root = {
+                        name: 'Root POM',
+                        value: 'root',
+                        nodeType: 'root',
+                        children: []
+                    };
+                    
+                    // 添加parent节点
+                    if (dependencyTree.current_parent) {
+                        root.children.push({
+                            name: `Parent\n${dependencyTree.current_parent}`,
+                            value: dependencyTree.current_parent,
+                            nodeType: 'parent',
+                            parent: dependencyTree.current_parent,
+                            itemStyle: {
+                                borderColor: '#1890ff',
+                                borderWidth: 2,
+                                color: '#fff'
+                            }
+                        });
+                    }
+                    
+                    // 添加dependencies节点
+                    if (dependencyTree.current_depend && dependencyTree.current_depend.length > 0) {
+                        const dependNode = {
+                            name: `Dependencies\n(${dependencyTree.current_depend.length})`,
+                            value: 'dependencies',
+                            nodeType: 'dependencies',
+                            dependencies: dependencyTree.current_depend,
+                            children: []
+                        };
+                        
+                        dependencyTree.current_depend.forEach(dep => {
+                            dependNode.children.push({
+                                name: dep,
+                                value: dep,
+                                nodeType: 'dependency',
+                                itemStyle: {
+                                    borderColor: '#52c41a',
+                                    borderWidth: 2,
+                                    color: '#fff'
+                                }
+                            });
+                        });
+                        
+                        root.children.push(dependNode);
+                    }
+                    
+                    // 添加modules节点（递归）
+                    if (dependencyTree.current_modules && dependencyTree.current_modules.length > 0) {
+                        dependencyTree.current_modules.forEach(module => {
+                            const moduleNode = this.buildModuleNode(module);
+                            if (moduleNode) {
+                                root.children.push(moduleNode);
+                            }
+                        });
+                    }
+                    
+                    return root;
+                },
+                
+                buildModuleNode(module) {
+                    const moduleName = module.module_name || 'Unknown';
+                    const moduleNode = {
+                        name: `Module\n${moduleName}`,
+                        value: moduleName,
+                        nodeType: 'module',
+                        children: [],
+                        itemStyle: {
+                            borderColor: '#722ed1',
+                            borderWidth: 2,
+                            color: '#fff'
+                        }
+                    };
+                    
+                    // 添加module_parent
+                    if (module.module_parent) {
+                        moduleNode.children.push({
+                            name: `Parent\n${module.module_parent}`,
+                            value: module.module_parent,
+                            nodeType: 'module_parent',
+                            parent: module.module_parent,
+                            itemStyle: {
+                                borderColor: '#1890ff',
+                                borderWidth: 2,
+                                color: '#fff'
+                            }
+                        });
+                    }
+                    
+                    // 添加module_depend
+                    if (module.module_depend && module.module_depend.length > 0) {
+                        const dependNode = {
+                            name: `Dependencies\n(${module.module_depend.length})`,
+                            value: 'module_dependencies',
+                            nodeType: 'module_dependencies',
+                            dependencies: module.module_depend,
+                            children: []
+                        };
+                        
+                        module.module_depend.forEach(dep => {
+                            dependNode.children.push({
+                                name: dep,
+                                value: dep,
+                                nodeType: 'module_dependency',
+                                itemStyle: {
+                                    borderColor: '#52c41a',
+                                    borderWidth: 2,
+                                    color: '#fff'
+                                }
+                            });
+                        });
+                        
+                        moduleNode.children.push(dependNode);
+                    }
+                    
+                    // 递归处理子模块
+                    if (module.sub_modules && module.sub_modules.length > 0) {
+                        module.sub_modules.forEach(subModule => {
+                            const subModuleNode = this.buildModuleNode(subModule);
+                            if (subModuleNode) {
+                                moduleNode.children.push(subModuleNode);
+                            }
+                        });
+                    }
+                    
+                    return moduleNode;
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
+

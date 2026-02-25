@@ -1,0 +1,1094 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>交易树查询</title>
+    <script src="/js/vue.global.js"></script>
+    <script src="/js/axios.min.js"></script>
+    <script src="/js/echarts.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            padding: 24px;
+        }
+        
+        .header {
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 2px solid #e8e8e8;
+        }
+        
+        .header h2 {
+            color: #333;
+            font-size: 20px;
+            font-weight: 600;
+        }
+        
+        .form-section {
+            display: flex;
+            gap: 16px;
+            align-items: flex-end;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+        
+        .form-item {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .form-item label {
+            font-size: 14px;
+            color: #666;
+            font-weight: 500;
+        }
+        
+        .select-input {
+            padding: 8px 12px;
+            border: 1px solid #d9d9d9;
+            border-radius: 4px;
+            font-size: 14px;
+            min-width: 200px;
+            transition: border-color 0.3s;
+            width: 100%;
+        }
+        
+        .select-input:focus {
+            outline: none;
+            border-color: #1890ff;
+            box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+        }
+        
+        .searchable-select-wrapper {
+            position: relative;
+            width: 100%;
+        }
+        
+        .search-input {
+            width: 100%;
+        }
+        
+        .select-loading {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            padding: 8px 12px;
+            background: white;
+            border: 1px solid #d9d9d9;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            color: #999;
+            font-size: 12px;
+            z-index: 1000;
+        }
+        
+        .select-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            max-height: 300px;
+            overflow-y: auto;
+            background: white;
+            border: 1px solid #d9d9d9;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+            display: block !important;
+        }
+        
+        .select-dropdown.empty {
+            padding: 12px;
+            color: #999;
+            text-align: center;
+        }
+        
+        .select-option {
+            padding: 10px 12px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background-color 0.2s;
+        }
+        
+        .select-option:hover,
+        .select-option.active {
+            background-color: #f5f7fa;
+        }
+        
+        .flow-id {
+            font-weight: 500;
+            color: #333;
+        }
+        
+        .flow-name {
+            color: #8492a6;
+            font-size: 13px;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 12px;
+        }
+        
+        .btn {
+            padding: 8px 24px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+        
+        .btn-primary {
+            background-color: #1890ff;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background-color: #40a9ff;
+        }
+        
+        .btn-primary:disabled {
+            background-color: #d9d9d9;
+            cursor: not-allowed;
+        }
+        
+        .btn-default {
+            background-color: #fff;
+            color: #333;
+            border: 1px solid #d9d9d9;
+        }
+        
+        .btn-default:hover {
+            border-color: #40a9ff;
+            color: #40a9ff;
+        }
+        
+        .result-section {
+            margin-top: 24px;
+        }
+        
+        .result-tabs {
+            display: flex;
+            gap: 8px;
+            border-bottom: 2px solid #e8e8e8;
+            margin-bottom: 16px;
+        }
+        
+        .tab {
+            padding: 12px 24px;
+            cursor: pointer;
+            border: none;
+            background: none;
+            font-size: 14px;
+            color: #666;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.3s;
+        }
+        
+        .tab.active {
+            color: #1890ff;
+            border-bottom-color: #1890ff;
+            font-weight: 600;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .json-viewer {
+            background: #f5f5f5;
+            border: 1px solid #e8e8e8;
+            border-radius: 4px;
+            padding: 16px;
+            max-height: 600px;
+            overflow: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .chart-container {
+            width: 100%;
+            min-height: 1000px;
+            height: 1000px;
+            border: 1px solid #e8e8e8;
+            border-radius: 4px;
+            overflow: hidden; /* 允许图表超出容器时滚动 */
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+        
+        .error-message {
+            background: #fff2f0;
+            border: 1px solid #ffccc7;
+            color: #a8071a;
+            padding: 12px 16px;
+            border-radius: 4px;
+            margin-bottom: 16px;
+        }
+        
+        .empty-message {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="container">
+            <div class="header">
+                <h2>🌳 交易树查询</h2>
+            </div>
+            
+            <div class="form-section">
+                <div class="form-item">
+                    <label>选择领域</label>
+                    <select v-model="selectedDomain" @change="onDomainChange" class="select-input">
+                        <option value="">请选择领域</option>
+                        <option value="comm">comm</option>
+                        <option value="dept">dept</option>
+                        <option value="sett">sett</option>
+                        <option value="loan">loan</option>
+                    </select>
+                </div>
+                
+                <div class="form-item" style="flex: 1; min-width: 400px;">
+                    <label>选择交易</label>
+                    <div class="searchable-select-wrapper">
+                        <input 
+                            type="text" 
+                            v-model="searchKeyword"
+                            @input="filterFlows"
+                            @focus="handleFocus"
+                            @blur="handleBlur"
+                            @click="handleFocus"
+                            placeholder="请选择交易（点击输入框选择，可输入搜索）"
+                            :disabled="!selectedDomain || loadingFlows"
+                            class="select-input search-input"
+                            autocomplete="off"
+                        />
+                        <div v-if="loadingFlows" class="select-loading">加载中...</div>
+                        <div 
+                            v-if="showDropdown && !loadingFlows && filteredFlows.length > 0" 
+                            class="select-dropdown"
+                            @mousedown.prevent
+                        >
+                            <div 
+                                v-for="flow in filteredFlows" 
+                                :key="flow.id"
+                                @mousedown.prevent="selectFlow(flow.id)"
+                                @click.prevent="selectFlow(flow.id)"
+                                class="select-option"
+                                :class="{active: selectedFlowId === flow.id}"
+                            >
+                                <span class="flow-id">{{ flow.id }}</span>
+                                <span class="flow-name">{{ flow.longname }}</span>
+                            </div>
+                        </div>
+                        <div v-if="showDropdown && !loadingFlows && filteredFlows.length === 0 && selectedDomain && flows.length > 0" 
+                             class="select-dropdown empty">
+                            未找到匹配的交易
+                        </div>
+                        <div v-if="showDropdown && !loadingFlows && flows.length === 0 && selectedDomain && !loadingFlows" 
+                             class="select-dropdown empty">
+                            该领域下暂无交易数据
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="button-group">
+                    <button class="btn btn-primary" @click="generateTree" :disabled="!selectedFlowId || generating">
+                        {{ generating ? '生成中...' : '生成' }}
+                    </button>
+                    <button class="btn btn-success" @click="generateAllTrees" :disabled="generating" style="background: #10b981;">
+                        {{ generating ? '生成中...' : '全量生成' }}
+                    </button>
+                    <button class="btn btn-default" @click="cancel">取消</button>
+                </div>
+            </div>
+            
+            <div v-if="errorMessage" class="error-message">
+                {{ errorMessage }}
+            </div>
+            
+            <div v-if="successMessage" style="background: #f6ffed; border: 1px solid #b7eb8f; color: #52c41a; padding: 12px 16px; border-radius: 4px; margin-bottom: 16px;">
+                {{ successMessage }}
+            </div>
+            
+            <div v-if="flowTree" class="result-section">
+                <div class="result-tabs">
+                    <button class="tab" :class="{active: activeTab === 'chart'}" @click="activeTab = 'chart'">
+                        链路调用关系图
+                    </button>
+                    <button class="tab" :class="{active: activeTab === 'json'}" @click="activeTab = 'json'">
+                        JSON格式
+                    </button>
+                </div>
+                
+                <div class="tab-content" :class="{active: activeTab === 'chart'}">
+                    <!-- 颜色图例说明 -->
+                    <div style="padding: 12px; background: #f5f5f5; border-radius: 4px; margin-bottom: 12px; display: flex; gap: 24px; align-items: center; flex-wrap: wrap;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 20px; height: 20px; background: #1890ff; border-radius: 2px; border: 1px solid #1890ff;"></div>
+                            <span style="font-size: 14px;">comm公共</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 20px; height: 20px; background: #52c41a; border-radius: 2px; border: 1px solid #52c41a;"></div>
+                            <span style="font-size: 14px;">loan贷款</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 20px; height: 20px; background: #ff4d4f; border-radius: 2px; border: 1px solid #ff4d4f;"></div>
+                            <span style="font-size: 14px;">dept存款</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 20px; height: 20px; background: #722ed1; border-radius: 2px; border: 1px solid #722ed1;"></div>
+                            <span style="font-size: 14px;">sett结算</span>
+                        </div>
+                    </div>
+                    <div id="chartContainer" class="chart-container" style="height: 1000px;"></div>
+                </div>
+                
+                <div class="tab-content" :class="{active: activeTab === 'json'}">
+                    <div class="json-viewer">{{ jsonString }}</div>
+                </div>
+            </div>
+            
+            <div v-if="generating && !flowTree" class="loading">
+                正在生成交易树...
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const { createApp } = Vue;
+        
+        createApp({
+            data() {
+                return {
+                    selectedDomain: '',
+                    selectedFlowId: '',
+                    searchKeyword: '',
+                    flows: [],
+                    filteredFlows: [],
+                    loadingFlows: false,
+                    showDropdown: false,
+                    generating: false,
+                    flowTree: null,
+                    activeTab: 'chart',
+                    errorMessage: '',
+                    successMessage: '',
+                    chart: null
+                };
+            },
+            computed: {
+                jsonString() {
+                    return this.flowTree ? JSON.stringify(this.flowTree, null, 2) : '';
+                }
+            },
+            watch: {
+                activeTab(newTab) {
+                    if (newTab === 'chart' && this.flowTree) {
+                        this.$nextTick(() => {
+                            this.renderChart();
+                        });
+                    }
+                }
+            },
+            methods: {
+                onDomainChange() {
+                    this.selectedFlowId = '';
+                    this.searchKeyword = '';
+                    this.flows = [];
+                    this.filteredFlows = [];
+                    this.flowTree = null;
+                    this.errorMessage = '';
+                    this.successMessage = '';
+                    this.showDropdown = false;
+                    
+                    if (this.selectedDomain) {
+                        this.loadFlows();
+                    }
+                },
+                
+                async loadFlows() {
+                    this.loadingFlows = true;
+                    this.errorMessage = '';
+                    this.showDropdown = false;
+                    
+                    try {
+                        const response = await axios.get(`/api/flow-tree/flows/${this.selectedDomain}`);
+                        console.log('加载交易列表响应:', response.data);
+                        console.log('响应code:', response.data?.code);
+                        console.log('响应message:', response.data?.message);
+                        console.log('响应data:', response.data?.data);
+                        
+                        // Result类的结构：{code: 200, message: "操作成功", data: [...], timestamp: ...}
+                        if (response.data && response.data.code === 200) {
+                            const data = response.data.data || [];
+                            console.log('原始数据:', data);
+                            console.log('数据数量:', data.length);
+                            
+                            // 确保数据是数组
+                            if (Array.isArray(data)) {
+                                this.flows = data;
+                                this.filteredFlows = [...data]; // 使用展开运算符确保响应式
+                                console.log('flows赋值后:', this.flows);
+                                console.log('filteredFlows赋值后:', this.filteredFlows);
+                                console.log('flows长度:', this.flows.length);
+                                console.log('filteredFlows长度:', this.filteredFlows.length);
+                                console.log('showDropdown:', this.showDropdown);
+                            } else {
+                                console.error('返回的数据不是数组:', data);
+                                this.flows = [];
+                                this.filteredFlows = [];
+                            }
+                        } else {
+                            console.error('响应数据格式错误或code不是200:', response.data);
+                            this.errorMessage = response.data?.message || '加载交易列表失败';
+                            this.flows = [];
+                            this.filteredFlows = [];
+                        }
+                    } catch (error) {
+                        console.error('加载交易列表失败', error);
+                        this.errorMessage = '加载交易列表失败：' + (error.response?.data?.message || error.message);
+                        this.flows = [];
+                        this.filteredFlows = [];
+                    } finally {
+                        this.loadingFlows = false;
+                        console.log('加载完成，最终状态:', {
+                            flows: this.flows.length,
+                            filteredFlows: this.filteredFlows.length,
+                            showDropdown: this.showDropdown,
+                            loadingFlows: this.loadingFlows
+                        });
+                    }
+                },
+                
+                handleFocus() {
+                    console.log('handleFocus被调用');
+                    console.log('当前flows长度:', this.flows.length);
+                    console.log('当前filteredFlows长度:', this.filteredFlows.length);
+                    console.log('当前showDropdown:', this.showDropdown);
+                    
+                    // 点击输入框时显示下拉框
+                    if (this.flows.length > 0) {
+                        this.showDropdown = true;
+                        // 如果输入框为空，显示所有交易
+                        if (!this.searchKeyword || !this.searchKeyword.trim()) {
+                            this.filteredFlows = [...this.flows];
+                        }
+                        console.log('设置后showDropdown:', this.showDropdown);
+                        console.log('设置后filteredFlows长度:', this.filteredFlows.length);
+                    } else {
+                        console.warn('flows为空，无法显示下拉框');
+                    }
+                },
+                
+                filterFlows() {
+                    this.showDropdown = true;
+                    
+                    if (!this.searchKeyword.trim()) {
+                        this.filteredFlows = this.flows;
+                        return;
+                    }
+                    
+                    const keyword = this.searchKeyword.toLowerCase();
+                    this.filteredFlows = this.flows.filter(flow => {
+                        const id = (flow.id || '').toLowerCase();
+                        const longname = (flow.longname || '').toLowerCase();
+                        return id.includes(keyword) || longname.includes(keyword);
+                    });
+                },
+                
+                selectFlow(flowId) {
+                    this.selectedFlowId = flowId;
+                    const selectedFlow = this.flows.find(f => f.id === flowId);
+                    if (selectedFlow) {
+                        this.searchKeyword = `${selectedFlow.id}（${selectedFlow.longname}）`;
+                    }
+                    this.showDropdown = false;
+                    
+                    // 自动加载已存在的JSON文件
+                    this.loadExistingTree(flowId);
+                },
+                
+                handleBlur() {
+                    // 延迟关闭下拉框，以便点击选项时能触发
+                    setTimeout(() => {
+                        this.showDropdown = false;
+                    }, 300);
+                },
+                
+                async loadExistingTree(flowId) {
+                    if (!flowId || !this.selectedDomain) {
+                        return;
+                    }
+                    
+                    // 尝试加载已存在的JSON文件
+                    try {
+                        const response = await axios.get(`/api/flow-tree/check/${flowId}`);
+                        if (response.data.code === 200 && response.data.data && response.data.data.exists) {
+                            // 文件存在，加载它
+                            const treeResponse = await axios.get(`/api/flow-tree/load/${flowId}`);
+                            if (treeResponse.data.code === 200) {
+                                this.flowTree = treeResponse.data.data;
+                                this.successMessage = '已加载已有的交易树文件';
+                                this.errorMessage = '';
+                                // 切换到图表Tab并渲染
+                                this.activeTab = 'chart';
+                                this.$nextTick(() => {
+                                    this.renderChart();
+                                });
+                            }
+                        } else {
+                            // 文件不存在，清空之前的数据
+                            this.flowTree = null;
+                        }
+                    } catch (error) {
+                        // 文件不存在或加载失败，不显示错误（用户可以点击生成）
+                        console.log('未找到已有交易树文件或加载失败', error);
+                        this.flowTree = null;
+                    }
+                },
+                
+                async generateTree() {
+                    if (!this.selectedFlowId) {
+                        this.errorMessage = '请先选择交易';
+                        return;
+                    }
+                    
+                    if (!this.selectedDomain) {
+                        this.errorMessage = '请先选择领域';
+                        return;
+                    }
+                    
+                    this.generating = true;
+                    this.errorMessage = '';
+                    this.flowTree = null;
+                    
+                    try {
+                        // 生成交易树
+                        const response = await axios.get(`/api/flow-tree/${this.selectedFlowId}`);
+                        if (response.data && response.data.code === 200) {
+                            this.flowTree = response.data.data;
+                            
+                            // 保存交易树到文件
+                            try {
+                                const saveResponse = await axios.post('/api/flow-tree/save', {
+                                    domain: this.selectedDomain,
+                                    flowId: this.selectedFlowId,
+                                    flowTree: this.flowTree
+                                });
+                                
+                                if (saveResponse.data && saveResponse.data.code === 200) {
+                                    const filePath = saveResponse.data.data.filePath;
+                                    const fileName = filePath.split(/[/\\]/).pop();
+                                    this.successMessage = `交易树已保存到文件：${fileName}`;
+                                    this.errorMessage = ''; // 清空错误信息
+                                    
+                                    // 3秒后自动清除成功提示
+                                    setTimeout(() => {
+                                        this.successMessage = '';
+                                    }, 3000);
+                                } else {
+                                    console.warn('保存交易树失败：', saveResponse.data.message);
+                                }
+                            } catch (saveError) {
+                                console.error('保存交易树到文件失败', saveError);
+                                // 保存失败不影响显示，只记录日志
+                            }
+                            
+                            this.activeTab = 'chart';
+                            this.successMessage = '生成成功！';
+                            this.$nextTick(() => {
+                                this.renderChart();
+                            });
+                        } else {
+                            this.errorMessage = response.data.message || '生成交易树失败';
+                        }
+                    } catch (error) {
+                        console.error('生成交易树失败', error);
+                        this.errorMessage = '生成交易树失败：' + (error.response?.data?.message || error.message);
+                    } finally {
+                        this.generating = false;
+                    }
+                },
+                
+                async generateAllTrees() {
+                    console.log('generateAllTrees 方法被调用');
+                    
+                    const confirmMsg = '确认要全量生成所有交易的JSON文件吗？\n\n这将生成所有领域的所有交易树，可能需要较长时间。';
+                    if (!confirm(confirmMsg)) {
+                        console.log('用户取消了全量生成');
+                        return;
+                    }
+                    
+                    console.log('开始全量生成...');
+                    this.generating = true;
+                    this.errorMessage = '';
+                    this.successMessage = '正在全量生成，请稍候...';
+                    
+                    try {
+                        console.log('调用API: /api/flow-tree/generate-all');
+                        const response = await axios.post('/api/flow-tree/generate-all');
+                        console.log('API响应:', response.data);
+                        
+                        if (response.data.code === 200) {
+                            const data = response.data.data;
+                            const msg = data.message || `全量生成成功！共生成 ${data.totalCount || 0} 个交易树文件`;
+                            const violationInfo = data.violationCount > 0 
+                                ? `\n发现 ${data.violationCount} 处违规调用` 
+                                : '';
+                            this.successMessage = msg + violationInfo;
+                            this.errorMessage = '';
+                        } else {
+                            this.errorMessage = response.data.message || '全量生成失败';
+                            this.successMessage = '';
+                        }
+                    } catch (error) {
+                        console.error('全量生成失败', error);
+                        this.errorMessage = '全量生成失败：' + (error.response?.data?.message || error.message);
+                        this.successMessage = '';
+                    } finally {
+                        this.generating = false;
+                    }
+                },
+                
+                cancel() {
+                    this.selectedFlowId = '';
+                    this.flowTree = null;
+                    this.errorMessage = '';
+                    this.successMessage = '';
+                    if (this.chart) {
+                        this.chart.dispose();
+                        this.chart = null;
+                    }
+                },
+                
+                renderChart() {
+                    if (!this.flowTree || !this.flowTree.flowList) {
+                        return;
+                    }
+                    
+                    // 销毁旧图表
+                    if (this.chart) {
+                        this.chart.dispose();
+                    }
+                    
+                    // 构建ECharts树形图数据
+                    const treeData = this.buildTreeData(this.flowTree);
+                    
+                    // 初始化图表
+                    const chartDom = document.getElementById('chartContainer');
+                    if (!chartDom) {
+                        return;
+                    }
+                    this.chart = echarts.init(chartDom);
+                    
+                    const self = this; // 保存this引用
+                    const option = {
+                        tooltip: {
+                            trigger: 'item',
+                            triggerOn: 'mousemove',
+                            backgroundColor: '#fff',
+                            borderWidth: 1,
+                            textStyle: {
+                                color: '#333'
+                            },
+                            formatter: function(info) {
+                                const data = info.data;
+                                const domain = data.domain || '';
+                                const domainColor = self.getDomainColor(domain);
+                                
+                                // 设置tooltip边框颜色与领域颜色一致
+                                const tooltipStyle = `border-color: ${domainColor}; border-width: 2px;`;
+                                
+                                let html = `<div style="font-weight: bold; margin-bottom: 6px; color: ${domainColor};">${data.name}</div>`;
+                                html += `<div style="margin-bottom: 4px;">类型: ${data.nodeType || ''}</div>`;
+                                
+                                // flow类型
+                                if (data.nodeType === 'flow') {
+                                    if (data.domain) {
+                                        html += `<div style="margin-bottom: 4px; color: ${domainColor};">领域: ${data.domain}</div>`;
+                                    }
+                                    if (data.layer) {
+                                        html += `<div style="margin-bottom: 4px;">分层: ${data.layer}</div>`;
+                                    }
+                                }
+                                // service类型
+                                else if (data.nodeType === 'service') {
+                                    html += `<div style="margin-bottom: 4px;">类型: 服务编排</div>`;
+                                    if (data.flowStep !== undefined && data.flowStep !== null) {
+                                        html += `<div style="margin-bottom: 4px;">流程步骤: ${data.flowStep}</div>`;
+                                    }
+                                    if (data.serviceTypeId) {
+                                        html += `<div style="margin-bottom: 4px;">接口: ${data.serviceTypeId}</div>`;
+                                    }
+                                    if (data.serviceTypeImplId) {
+                                        html += `<div style="margin-bottom: 4px;">接口实现: ${data.serviceTypeImplId}</div>`;
+                                    }
+                                    if (data.serviceName) {
+                                        html += `<div style="margin-bottom: 4px;">方法: ${data.serviceName}</div>`;
+                                    }
+                                    if (data.layer) {
+                                        html += `<div style="margin-bottom: 4px;">分层: ${data.layer}</div>`;
+                                    }
+                                    if (data.domain) {
+                                        html += `<div style="margin-bottom: 4px; color: ${domainColor};">领域: ${data.domain}</div>`;
+                                    }
+                                }
+                                // method类型
+                                else if (data.nodeType === 'method') {
+                                    html += `<div style="margin-bottom: 4px;">类型: 方法节点编排</div>`;
+                                    if (data.flowStep !== undefined && data.flowStep !== null) {
+                                        html += `<div style="margin-bottom: 4px;">流程步骤: ${data.flowStep}</div>`;
+                                    }
+                                    if (data.methodName) {
+                                        html += `<div style="margin-bottom: 4px;">方法: ${data.methodName}</div>`;
+                                    }
+                                    if (data.layer) {
+                                        html += `<div style="margin-bottom: 4px;">分层: ${data.layer}</div>`;
+                                    }
+                                    if (data.domain) {
+                                        html += `<div style="margin-bottom: 4px; color: ${domainColor};">领域: ${data.domain}</div>`;
+                                    }
+                                }
+                                // code_service类型
+                                else if (data.nodeType === 'code_service') {
+                                    html += `<div style="margin-bottom: 4px;">类型: 硬编码</div>`;
+                                    if (data.serviceTypeId) {
+                                        html += `<div style="margin-bottom: 4px;">接口: ${data.serviceTypeId}</div>`;
+                                    }
+                                    if (data.serviceTypeImplId) {
+                                        html += `<div style="margin-bottom: 4px;">接口实现: ${data.serviceTypeImplId}</div>`;
+                                    }
+                                    if (data.serviceName) {
+                                        html += `<div style="margin-bottom: 4px;">方法: ${data.serviceName}</div>`;
+                                    }
+                                    if (data.layer) {
+                                        html += `<div style="margin-bottom: 4px;">分层: ${data.layer}</div>`;
+                                    }
+                                    if (data.domain) {
+                                        html += `<div style="margin-bottom: 4px; color: ${domainColor};">领域: ${data.domain}</div>`;
+                                    }
+                                }
+                                
+                                return html;
+                            }
+                        },
+                        series: [{
+                            type: 'tree',
+                            data: [treeData],
+                            left: '3%',
+                            right: '3%',
+                            top: '15%', // 为图例留出空间
+                            bottom: '5%',
+                            symbol: 'rect',
+                            symbolSize: function(value, params) {
+                                // 根据节点层级动态调整节点大小
+                                const depth = params.data.depth || 0;
+                                if (depth === 0) {
+                                    return [140, 50]; // 根节点稍大
+                                }
+                                return [120, 40]; // 其他节点
+                            },
+                            orient: 'LR', // 横向布局：从左到右
+                            initialTreeDepth: -1, // 默认展开所有节点
+                            layout: 'orthogonal', // 正交布局
+                            roam: true, // 允许缩放和平移
+                            label: {
+                                position: 'inside',
+                                formatter: function(params) {
+                                    // 限制显示文本长度，避免节点过大
+                                    const name = params.data.name || '';
+                                    // 处理换行
+                                    if (name.includes('\n')) {
+                                        const lines = name.split('\n');
+                                        if (lines.length > 2) {
+                                            return lines[0] + '\n' + lines[1];
+                                        }
+                                        return name;
+                                    }
+                                    if (name.length > 20) {
+                                        return name.substring(0, 20) + '...';
+                                    }
+                                    return name;
+                                },
+                                fontSize: 11,
+                                color: '#333',
+                                lineHeight: 14
+                            },
+                            leaves: {
+                                label: {
+                                    position: 'inside',
+                                    fontSize: 11
+                                }
+                            },
+                            emphasis: {
+                                focus: 'descendant',
+                                itemStyle: {
+                                    borderWidth: 3,
+                                    shadowBlur: 10
+                                },
+                                label: {
+                                    fontSize: 12
+                                }
+                            },
+                            expandAndCollapse: true,
+                            animationDuration: 550,
+                            animationDurationUpdate: 750,
+                            lineStyle: {
+                                color: '#91cc75',
+                                width: 2,
+                                curveness: 0.2 // 减小弯曲度，使横向布局更清晰
+                            }
+                            // itemStyle在数据中已设置，不需要在这里设置
+                        }]
+                    };
+                    
+                    this.chart.setOption(option);
+                    
+                    // 监听tooltip显示事件，动态设置边框颜色
+                    this.chart.on('showTip', function(params) {
+                        const domain = params.data.domain || '';
+                        const domainColor = self.getDomainColor(domain);
+                        setTimeout(() => {
+                            const tooltipEl = document.querySelector('.echarts-tooltip');
+                            if (tooltipEl && domainColor) {
+                                tooltipEl.style.borderColor = domainColor;
+                                tooltipEl.style.borderWidth = '2px';
+                            }
+                        }, 10);
+                    });
+                    
+                    // 响应式调整
+                    const resizeHandler = () => {
+                        if (this.chart) {
+                            this.chart.resize();
+                        }
+                    };
+                    window.addEventListener('resize', resizeHandler);
+                    
+                    // 保存resize handler以便后续清理
+                    this._resizeHandler = resizeHandler;
+                },
+                
+                buildTreeData(flowTree) {
+                    // 提取领域：从flow_from_jar截取，如loan-bpf -> loan
+                    let domain = '';
+                    if (flowTree.flow_from_jar) {
+                        const parts = flowTree.flow_from_jar.split('-');
+                        if (parts.length > 0) {
+                            domain = parts[0];
+                        }
+                    }
+                    
+                    const domainColor = this.getDomainColor(domain);
+                    
+                    const root = {
+                        name: `${flowTree.flow_id}\n${flowTree.flow_long_name || ''}`,
+                        value: flowTree.flow_id,
+                        nodeType: 'flow',
+                        domain: domain,
+                        layer: 'pbf', // flow类型的分层固定为pbf
+                        itemStyle: {
+                            borderColor: domainColor,
+                            borderWidth: 2,
+                            color: '#fff'
+                        },
+                        children: []
+                    };
+                    
+                    if (flowTree.flowList && flowTree.flowList.length > 0) {
+                        for (const node of flowTree.flowList) {
+                            const child = this.buildNodeData(node, domain); // 传递flow的领域给子节点
+                            if (child) {
+                                root.children.push(child);
+                            }
+                        }
+                    }
+                    
+                    return root;
+                },
+                
+                buildNodeData(node, flowDomain) {
+                    // 构建节点显示名称
+                    let name = '';
+                    
+                    // Service节点：显示为"长名称（服务编排）"
+                    if (node.node_type === 'service') {
+                        name = (node.node_long_name || node.node_name || '') + '（服务编排）';
+                    }
+                    // Method节点：显示为"长名称（方法节点）"
+                    else if (node.node_type === 'method') {
+                        name = (node.node_long_name || node.node_name || '') + '（方法节点）';
+                    }
+                    // 其他节点：保持原样
+                    else {
+                        name = node.node_name || '';
+                        if (node.node_long_name) {
+                            name += '\n' + node.node_long_name;
+                        }
+                    }
+                    
+                    let domain = '';
+                    let domainColor = '#91cc75';
+                    
+                    const nodeData = {
+                        name: name,
+                        value: node.node_name,
+                        nodeType: node.node_type,
+                        step: node.step
+                    };
+                    
+                    // 如果是service节点
+                    if (node.node_type === 'service') {
+                        nodeData.flowStep = node.step; // 流程步骤
+                        nodeData.layer = node.service_type_kind; // 分层：service_type_kind
+                        
+                        // 提取接口：node_name的前半部分（点号之前）
+                        if (node.node_name && node.node_name.includes('.')) {
+                            const parts = node.node_name.split('.');
+                            nodeData.serviceTypeId = parts[0]; // 接口
+                        }
+                        
+                        // 接口实现
+                        if (node.service_type_impl_id) {
+                            nodeData.serviceTypeImplId = node.service_type_impl_id;
+                        }
+                        
+                        // 方法
+                        if (node.service_name) {
+                            nodeData.serviceName = node.service_name;
+                        }
+                        
+                        if (node.domain) {
+                            domain = node.domain;
+                            nodeData.domain = domain;
+                        }
+                        if (node.service_type_kind) {
+                            nodeData.kind = node.service_type_kind;
+                        }
+                    }
+                    // 如果是method节点
+                    else if (node.node_type === 'method') {
+                        domain = flowDomain; // 领域：和flow保持一致
+                        nodeData.domain = domain;
+                        nodeData.flowStep = node.step; // 流程步骤
+                        nodeData.methodName = node.node_name; // 方法名
+                        nodeData.layer = 'pbf'; // 分层：所有方法节点固定为pbf
+                    }
+                    
+                    // 设置节点颜色
+                    if (domain) {
+                        domainColor = this.getDomainColor(domain);
+                        nodeData.itemStyle = {
+                            borderColor: domainColor,
+                            borderWidth: 2,
+                            color: '#fff'
+                        };
+                    }
+                    
+                    // 处理code_service_list（递归）
+                    if (node.code_service_list && node.code_service_list.length > 0) {
+                        nodeData.children = [];
+                        for (const codeService of node.code_service_list) {
+                            const child = this.buildCodeServiceData(codeService);
+                            if (child) {
+                                nodeData.children.push(child);
+                            }
+                        }
+                    }
+                    
+                    return nodeData;
+                },
+                
+                buildCodeServiceData(codeService) {
+                    // 只显示长名称（简洁显示）
+                    let name = codeService.code_service_long_name || codeService.code_service_name || '';
+                    
+                    const domain = codeService.code_domain || '';
+                    const domainColor = this.getDomainColor(domain);
+                    
+                    const nodeData = {
+                        name: name,
+                        value: codeService.code_service_name,
+                        nodeType: 'code_service',
+                        serviceTypeId: codeService.code_service_type_id,  // 接口
+                        serviceTypeImplId: codeService.code_service_type_impl_id,  // 接口实现
+                        serviceName: codeService.code_service_name,
+                        domain: domain,
+                        layer: codeService.code_service_kind, // 分层：code_service_kind
+                        kind: codeService.code_service_kind,
+                        itemStyle: {
+                            borderColor: domainColor,
+                            borderWidth: 2,
+                            color: '#fff'
+                        }
+                    };
+                    
+                    // 递归处理code_service_list
+                    if (codeService.code_service_list && codeService.code_service_list.length > 0) {
+                        nodeData.children = [];
+                        for (const nestedCodeService of codeService.code_service_list) {
+                            const child = this.buildCodeServiceData(nestedCodeService);
+                            if (child) {
+                                nodeData.children.push(child);
+                            }
+                        }
+                    }
+                    
+                    return nodeData;
+                },
+                
+                // 获取领域对应的颜色
+                getDomainColor(domain) {
+                    const colorMap = {
+                        'comm': '#1890ff', // 蓝色
+                        'loan': '#52c41a', // 绿色
+                        'dept': '#ff4d4f', // 红色
+                        'sett': '#722ed1'  // 紫色
+                    };
+                    return colorMap[domain] || '#91cc75'; // 默认绿色
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
+

@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>枚举映射关系维护</title>
+    <script src="/js/vue.global.js"></script>
+    <script src="/js/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+                'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        #app {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .header h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+        
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background: #059669;
+        }
+        
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+        
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+        
+        .btn-link {
+            background: #3b82f6;
+            color: white;
+            text-decoration: none;
+        }
+        
+        .btn-link:hover {
+            background: #2563eb;
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .content {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .search-panel {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+            padding: 20px;
+            background: #f9fafb;
+            border-radius: 8px;
+        }
+        
+        .search-actions {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .search-item {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .search-item label {
+            font-size: 14px;
+            color: #374151;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        
+        .search-item input {
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .search-item input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .table-container {
+            overflow-x: auto;
+            margin-top: 20px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        th {
+            background: #f9fafb;
+            color: #374151;
+            font-weight: 600;
+        }
+        
+        tr:hover {
+            background: #f9fafb;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .actions button {
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+        
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .pagination button {
+            padding: 8px 15px;
+        }
+        
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f0f9ff;
+            border-radius: 8px;
+        }
+        
+        .stat-item {
+            font-size: 14px;
+            color: #1e40af;
+            font-weight: 500;
+        }
+        
+        /* 模态框样式 */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .modal-header h2 {
+            font-size: 20px;
+            color: #333;
+        }
+        
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #6b7280;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            color: #374151;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .form-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 30px;
+        }
+        
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 5px;
+            color: white;
+            font-size: 14px;
+            z-index: 2000;
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        .toast.success {
+            background: #10b981;
+        }
+        
+        .toast.error {
+            background: #ef4444;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #6b7280;
+        }
+        
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+        
+        .empty-state-text {
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="header">
+            <h1>🔗 枚举映射关系维护</h1>
+            <p>管理域英文简称和代码含义英文简称的映射关系，用于自动填充导入数据</p>
+            
+            <div class="toolbar">
+                <div>
+                    <input 
+                        type="file" 
+                        ref="excelFileInput" 
+                        accept=".xlsx,.xls" 
+                        style="display: none;" 
+                        @change="handleFileSelect">
+                    <button class="btn btn-success" @click="triggerFileUpload('full')">
+                        📥 全量Excel导入
+                    </button>
+                    <button class="btn btn-success" @click="exportExcel" :disabled="exporting" style="margin-left: 10px; background: #10b981;">
+                        {{ exporting ? '⏳ 导出中...' : '📥 Excel导出' }}
+                    </button>
+                </div>
+                <div>
+                    <button class="btn btn-success" @click="toggleSearch">
+                        {{ showSearch ? '🔼 收起搜索' : '🔍 高级搜索' }}
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="content">
+            <!-- 搜索面板 -->
+            <div v-if="showSearch" class="search-panel">
+                <div class="search-item">
+                    <label>域英文简称（枚举ID）</label>
+                    <input 
+                        type="text" 
+                        v-model="searchConditions.domainEnglishAbbr" 
+                        placeholder="模糊搜索"
+                        @keyup.enter="search">
+                </div>
+                <div class="search-item">
+                    <label>枚举字段ID</label>
+                    <input 
+                        type="text" 
+                        v-model="searchConditions.enumFieldId" 
+                        placeholder="模糊搜索"
+                        @keyup.enter="search">
+                </div>
+                <div class="search-item">
+                    <label>域中文名称</label>
+                    <input 
+                        type="text" 
+                        v-model="searchConditions.domainChineseName" 
+                        placeholder="模糊搜索"
+                        @keyup.enter="search">
+                </div>
+                <div class="search-item">
+                    <label>代码取值</label>
+                    <input 
+                        type="text" 
+                        v-model="searchConditions.codeValue" 
+                        placeholder="模糊搜索"
+                        @keyup.enter="search">
+                </div>
+                <div class="search-item">
+                    <label>取值含义中文名称</label>
+                    <input 
+                        type="text" 
+                        v-model="searchConditions.valueChineseName" 
+                        placeholder="模糊搜索"
+                        @keyup.enter="search">
+                </div>
+                <div class="search-item">
+                    <label>代码描述</label>
+                    <input 
+                        type="text" 
+                        v-model="searchConditions.codeDescription" 
+                        placeholder="模糊搜索"
+                        @keyup.enter="search">
+                </div>
+            </div>
+            <!-- 搜索按钮行 -->
+            <div v-if="showSearch" class="search-actions">
+                <button class="btn btn-primary" @click="search">
+                    🔍 搜索
+                </button>
+                <button class="btn btn-secondary" @click="resetSearch">
+                    ✗ 清空
+                </button>
+            </div>
+            
+            <!-- 导入信息显示 -->
+            <div v-if="latestHistory" class="import-info" style="margin-bottom: 15px; padding: 15px; background: #f0f9ff; border-radius: 8px; border-left: 4px solid #3b82f6;">
+                <div style="display: flex; flex-wrap: wrap; gap: 20px; font-size: 14px;">
+                    <div><strong>修改人：</strong>{{ latestHistory.modifier }}</div>
+                    <div><strong>修改内容：</strong>{{ latestHistory.modifyContent }}</div>
+                    <div><strong>修改的版本：</strong>{{ latestHistory.version }}</div>
+                    <div v-if="latestHistory.importTime" style="color: #666;">
+                        <strong>导入时间：</strong>{{ formatDateTime(latestHistory.importTime) }}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 统计信息 -->
+            <div class="stats">
+                <div class="stat-item">
+                    📋 总记录数: {{ totalCount }}
+                </div>
+                <div class="stat-item">
+                    📄 当前页: {{ currentPage }} / {{ totalPages }}
+                </div>
+            </div>
+            
+            <!-- 数据表格 -->
+            <div class="table-container" v-if="dataList.length > 0">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>域英文简称（枚举ID）</th>
+                            <th>枚举字段ID</th>
+                            <th>域中文名称</th>
+                            <th>代码取值</th>
+                            <th>取值含义中文名称</th>
+                            <th>代码描述</th>
+                            <th>创建时间</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="item in dataList" :key="item.id">
+                            <td>{{ item.domainEnglishAbbr || '-' }}</td>
+                            <td>{{ item.enumFieldId || '-' }}</td>
+                            <td>{{ item.domainChineseName || '-' }}</td>
+                            <td>{{ item.codeValue || '-' }}</td>
+                            <td>{{ item.valueChineseName || '-' }}</td>
+                            <td>{{ item.codeDescription || '-' }}</td>
+                            <td>{{ formatDateTime(item.createTime) }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- 空状态 -->
+            <div v-else class="empty-state">
+                <div class="empty-state-icon">📭</div>
+                <div class="empty-state-text">暂无数据</div>
+            </div>
+            
+            <!-- 分页 -->
+            <div class="pagination" v-if="totalPages > 1">
+                <button class="btn btn-secondary" @click="prevPage" :disabled="currentPage === 1">
+                    上一页
+                </button>
+                <span>第 {{ currentPage }} / {{ totalPages }} 页</span>
+                <button class="btn btn-secondary" @click="nextPage" :disabled="currentPage === totalPages">
+                    下一页
+                </button>
+            </div>
+        </div>
+        
+        <!-- 新增/编辑模态框 -->
+        <div v-if="showModal" class="modal" @click.self="closeModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>{{ isEdit ? '编辑映射关系' : '新增映射关系' }}</h2>
+                    <button class="close-btn" @click="closeModal">×</button>
+                </div>
+                
+                <div class="form-group">
+                    <label>域英文简称（枚举ID） <span style="color: red;">*</span></label>
+                    <input 
+                        type="text" 
+                        v-model="formData.domainEnglishAbbr" 
+                        placeholder="请输入域英文简称（枚举ID）">
+                </div>
+                
+                <div class="form-group">
+                    <label>枚举字段ID <span style="color: red;">*</span></label>
+                    <input 
+                        type="text" 
+                        v-model="formData.enumFieldId" 
+                        placeholder="请输入枚举字段ID（用于代码扩展清单映射）">
+                </div>
+                
+                <div class="form-group">
+                    <label>域中文名称 <span style="color: red;">*</span></label>
+                    <input 
+                        type="text" 
+                        v-model="formData.domainChineseName" 
+                        placeholder="请输入域中文名称">
+                </div>
+                
+                <div class="form-group">
+                    <label>代码取值 <span style="color: red;">*</span></label>
+                    <input 
+                        type="text" 
+                        v-model="formData.codeValue" 
+                        placeholder="请输入代码取值（用于代码扩展清单映射）">
+                </div>
+                
+                <div class="form-group">
+                    <label>取值含义中文名称</label>
+                    <input 
+                        type="text" 
+                        v-model="formData.valueChineseName" 
+                        placeholder="请输入取值含义中文名称">
+                </div>
+                
+                <div class="form-group">
+                    <label>代码描述</label>
+                    <textarea 
+                        rows="3"
+                        v-model="formData.codeDescription" 
+                        placeholder="请输入代码描述"></textarea>
+                </div>
+                
+                <div class="form-actions">
+                    <button class="btn btn-secondary" @click="closeModal">
+                        取消
+                    </button>
+                    <button class="btn btn-success" @click="submitForm">
+                        {{ isEdit ? '更新' : '新增' }}
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 全量导入对话框 -->
+        <div v-if="showImportModal" class="modal" @click.self="cancelFullImport">
+            <div class="modal-content" style="max-width: 500px;">
+                <div class="modal-header">
+                    <h2>全量Excel导入说明</h2>
+                    <button class="close-btn" @click="cancelFullImport">×</button>
+                </div>
+                
+                <div class="form-group">
+                    <label>修改人 <span style="color: red;">*</span></label>
+                    <input 
+                        type="text" 
+                        v-model="importModifier" 
+                        placeholder="请输入修改人"
+                        style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+                </div>
+                
+                <div class="form-group">
+                    <label>修改内容 <span style="color: red;">*</span></label>
+                    <textarea 
+                        v-model="importModifyContent" 
+                        placeholder="请输入修改内容"
+                        rows="4"
+                        style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;"></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label>修改的版本</label>
+                    <input 
+                        type="text" 
+                        v-model="importVersion" 
+                        disabled
+                        style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; background: #f5f5f5; color: #666;">
+                </div>
+                
+                <div style="margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
+                    <button class="btn btn-secondary" @click="cancelFullImport">
+                        取消
+                    </button>
+                    <button class="btn btn-primary" @click="confirmFullImport">
+                        确认导入
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Toast提示 -->
+        <div v-if="toast.show" :class="['toast', toast.type]">
+            {{ toast.message }}
+        </div>
+    </div>
+    
+    <script>
+        const { createApp } = Vue;
+        
+        createApp({
+            data() {
+                return {
+                    dataList: [],
+                    currentPage: 1,
+                    pageSize: 20,
+                    totalCount: 0,
+                    totalPages: 0,
+                    showSearch: false,
+                    searchConditions: {
+                        domainEnglishAbbr: '',
+                        enumFieldId: '',
+                        domainChineseName: '',
+                        codeValue: '',
+                        valueChineseName: '',
+                        codeDescription: ''
+                    },
+                    showModal: false,
+                    isEdit: false,
+                    formData: {
+                        id: null,
+                        domainEnglishAbbr: '',
+                        enumFieldId: '',
+                        domainChineseName: '',
+                        codeValue: '',
+                        valueChineseName: '',
+                        codeDescription: ''
+                    },
+                    toast: {
+                        show: false,
+                        message: '',
+                        type: 'success'
+                    },
+                    importMode: 'incremental', // 导入模式：full=全量，incremental=增量
+                    isUploading: false, // 上传状态
+                    exporting: false, // Excel导出中
+                    importPassword: '', // 导入口令
+                    showImportModal: false, // 显示导入对话框
+                    importModifier: '', // 修改人
+                    importModifyContent: '', // 修改内容
+                    importVersion: '', // 版本号
+                    latestHistory: null // 最新导入历史
+                };
+            },
+            mounted() {
+                this.loadData();
+                this.loadLatestHistory();
+            },
+            methods: {
+                async loadData() {
+                    try {
+                        const params = {
+                            pageNum: this.currentPage,
+                            pageSize: this.pageSize,
+                            ...this.searchConditions
+                        };
+                        
+                        const response = await axios.get('/api/enum-mapping/page', { params });
+                        
+                        if (response.data.code === 200) {
+                            const pageData = response.data.data;
+                            this.dataList = pageData.records;
+                            this.totalCount = pageData.total;
+                            this.totalPages = pageData.pages;
+                        } else {
+                            this.showToast(response.data.message || '加载失败', 'error');
+                        }
+                    } catch (error) {
+                        console.error('加载数据失败:', error);
+                        this.showToast('加载数据失败', 'error');
+                    }
+                },
+                
+                search() {
+                    this.currentPage = 1;
+                    this.loadData();
+                },
+                
+                resetSearch() {
+                    this.searchConditions = {
+                        domainEnglishAbbr: '',
+                        enumFieldId: '',
+                        domainChineseName: '',
+                        codeValue: '',
+                        valueChineseName: '',
+                        codeDescription: ''
+                    };
+                    this.search();
+                },
+                
+                toggleSearch() {
+                    this.showSearch = !this.showSearch;
+                },
+                
+                prevPage() {
+                    if (this.currentPage > 1) {
+                        this.currentPage--;
+                        this.loadData();
+                    }
+                },
+                
+                nextPage() {
+                    if (this.currentPage < this.totalPages) {
+                        this.currentPage++;
+                        this.loadData();
+                    }
+                },
+                
+                showAddModal() {
+                    this.isEdit = false;
+                    this.formData = {
+                        id: null,
+                        domainEnglishAbbr: '',
+                        enumFieldId: '',
+                        domainChineseName: '',
+                        codeValue: '',
+                        valueChineseName: '',
+                        codeDescription: ''
+                    };
+                    this.showModal = true;
+                },
+                
+                showEditModal(item) {
+                    this.isEdit = true;
+                    this.formData = {
+                        id: item.id,
+                        domainEnglishAbbr: item.domainEnglishAbbr || '',
+                        enumFieldId: item.enumFieldId || '',
+                        domainChineseName: item.domainChineseName || '',
+                        codeValue: item.codeValue || '',
+                        valueChineseName: item.valueChineseName || '',
+                        codeDescription: item.codeDescription || ''
+                    };
+                    this.showModal = true;
+                },
+                
+                closeModal() {
+                    this.showModal = false;
+                },
+                
+                async submitForm() {
+                    // 验证必填字段
+                    if (!this.formData.domainEnglishAbbr || !this.formData.domainEnglishAbbr.trim()) {
+                        this.showToast('请输入域英文简称（枚举ID）', 'error');
+                        return;
+                    }
+                    if (!this.formData.enumFieldId || !this.formData.enumFieldId.trim()) {
+                        this.showToast('请输入枚举字段ID', 'error');
+                        return;
+                    }
+                    if (!this.formData.domainChineseName || !this.formData.domainChineseName.trim()) {
+                        this.showToast('请输入域中文名称', 'error');
+                        return;
+                    }
+                    if (!this.formData.codeValue || !this.formData.codeValue.trim()) {
+                        this.showToast('请输入代码取值', 'error');
+                        return;
+                    }
+                    
+                    try {
+                        let response;
+                        if (this.isEdit) {
+                            response = await axios.put(`/api/enum-mapping/${this.formData.id}`, this.formData);
+                        } else {
+                            response = await axios.post('/api/enum-mapping', this.formData);
+                        }
+                        
+                        if (response.data.code === 200) {
+                            this.showToast(this.isEdit ? '更新成功' : '新增成功', 'success');
+                            this.closeModal();
+                            this.loadData();
+                        } else {
+                            this.showToast(response.data.message || '操作失败', 'error');
+                        }
+                    } catch (error) {
+                        console.error('提交失败:', error);
+                        this.showToast('操作失败', 'error');
+                    }
+                },
+                
+                async deleteItem(item) {
+                    if (!confirm(`确定要删除映射关系 "${item.domainChineseName}" 吗？`)) {
+                        return;
+                    }
+                    
+                    try {
+                        const response = await axios.delete(`/api/enum-mapping/${item.id}`);
+                        
+                        if (response.data.code === 200) {
+                            this.showToast('删除成功', 'success');
+                            this.loadData();
+                        } else {
+                            this.showToast(response.data.message || '删除失败', 'error');
+                        }
+                    } catch (error) {
+                        console.error('删除失败:', error);
+                        this.showToast('删除失败', 'error');
+                    }
+                },
+                
+                formatDateTime(dateTime) {
+                    if (!dateTime) return '-';
+                    return new Date(dateTime).toLocaleString('zh-CN');
+                },
+                
+                showToast(message, type = 'success') {
+                    this.toast = {
+                        show: true,
+                        message,
+                        type
+                    };
+                    
+                    setTimeout(() => {
+                        this.toast.show = false;
+                    }, 3000);
+                },
+                
+                
+                /**
+                 * 触发文件上传
+                 */
+                async triggerFileUpload(mode) {
+                    if (mode === 'full') {
+                        // 全量导入：先获取版本号，然后显示对话框
+                        try {
+                            const versionResponse = await axios.get('/api/enum-mapping/next-version');
+                            if (versionResponse.data.code === 200) {
+                                this.importVersion = versionResponse.data.data;
+                            } else {
+                                this.importVersion = 'V1';
+                            }
+                        } catch (error) {
+                            console.error('获取版本号失败:', error);
+                            this.importVersion = 'V1';
+                        }
+                        // 显示导入对话框
+                        this.importModifier = '';
+                        this.importModifyContent = '';
+                        this.showImportModal = true;
+                    } else {
+                        // 增量导入：直接选择文件
+                        this.importMode = mode;
+                        this.$refs.excelFileInput.click();
+                    }
+                },
+                
+                /**
+                 * 确认全量导入
+                 */
+                confirmFullImport() {
+                    if (!this.importModifier || !this.importModifier.trim()) {
+                        this.showToast('请输入修改人', 'error');
+                        return;
+                    }
+                    if (!this.importModifyContent || !this.importModifyContent.trim()) {
+                        this.showToast('请输入修改内容', 'error');
+                        return;
+                    }
+                    this.showImportModal = false;
+                    this.importMode = 'full';
+                    this.$refs.excelFileInput.click();
+                },
+                
+                /**
+                 * 取消全量导入
+                 */
+                cancelFullImport() {
+                    this.showImportModal = false;
+                    this.importModifier = '';
+                    this.importModifyContent = '';
+                    this.importVersion = '';
+                },
+                
+                /**
+                 * 加载最新导入历史
+                 */
+                async loadLatestHistory() {
+                    try {
+                        const response = await axios.get('/api/enum-mapping/latest-history');
+                        if (response.data.code === 200) {
+                            this.latestHistory = response.data.data;
+                        }
+                    } catch (error) {
+                        console.error('加载最新导入历史失败:', error);
+                    }
+                },
+                
+                /**
+                 * 处理文件选择
+                 */
+                async handleFileSelect(event) {
+                    const file = event.target.files[0];
+                    if (!file) {
+                        return;
+                    }
+                    
+                    // 验证文件类型
+                    const fileName = file.name.toLowerCase();
+                    if (!fileName.endsWith('.xlsx') && !fileName.endsWith('.xls')) {
+                        this.showToast('请选择Excel文件（.xlsx或.xls）', 'error');
+                        event.target.value = '';
+                        return;
+                    }
+                    
+                    // 验证文件大小（最大10MB）
+                    if (file.size > 10 * 1024 * 1024) {
+                        this.showToast('文件大小不能超过10MB', 'error');
+                        event.target.value = '';
+                        return;
+                    }
+                    
+                    // 全量导入时，检查文件名版本号
+                    if (this.importMode === 'full') {
+                        // 从文件名中提取版本号（格式：全量枚举映射关系维护_V2.xlsx）
+                        const fileNameOriginal = file.name;
+                        const versionMatch = fileNameOriginal.match(/_V(\d+)\.(xlsx|xls)$/i);
+                        if (versionMatch) {
+                            const fileVersion = 'V' + versionMatch[1];
+                            let num = parseInt(versionMatch[1])+1;
+                            const newFileVersion = 'V'+num;
+                            if (newFileVersion !== this.importVersion) {
+                                this.showToast(`文件名版本号[${fileVersion}]已经不是最新版本请基于最新版维护枚举`, 'error');
+                                event.target.value = '';
+                                return;
+                            }
+                        }
+                    }
+                    
+                    await this.uploadExcel(file);
+                    event.target.value = ''; // 清空文件选择，允许重复上传相同文件
+                },
+                
+                /**
+                 * 上传Excel文件
+                 */
+                async uploadExcel(file) {
+                    if (this.isUploading) {
+                        this.showToast('正在上传，请稍候...', 'error');
+                        return;
+                    }
+                    
+                    // 弹出对话框输入口令
+                    const password = prompt('请输入6位数字导入口令：');
+                    if (!password || password.length !== 6 || !/^\d{6}$/.test(password)) {
+                        this.showToast('口令错误，请输入正确的6位数字口令', 'error');
+                        return;
+                    }
+                    
+                    this.isUploading = true;
+                    
+                    try {
+                        const formData = new FormData();
+                        formData.append('file', file);
+                        formData.append('mode', this.importMode);
+                        formData.append('password', password);
+                        
+                        // 全量导入时添加导入信息
+                        if (this.importMode === 'full') {
+                            formData.append('modifier', this.importModifier);
+                            formData.append('modifyContent', this.importModifyContent);
+                            formData.append('version', this.importVersion);
+                        }
+                        
+                        const modeName = this.importMode === 'full' ? '全量导入' : '增量导入';
+                        this.showToast(`正在${modeName}，请稍候...`, 'success');
+                        
+                        const response = await axios.post('/api/enum-mapping/import-excel', formData, {
+                            headers: {
+                                'Content-Type': 'multipart/form-data'
+                            }
+                        });
+                        
+                        if (response.data.code === 200) {
+                            this.showToast(response.data.message || '导入成功', 'success');
+                            // 刷新列表和导入历史（延迟100ms确保数据库写入完成）
+                            this.currentPage = 1;
+                            setTimeout(() => {
+                                this.loadData();
+                                this.loadLatestHistory();
+                            }, 100);
+                        } else {
+                            // 显示详细错误信息（可能是多行）
+                            const errorMessage = response.data.message || '导入失败';
+                            // 如果是多行错误信息，使用alert展示，否则使用toast
+                            if (errorMessage.includes('\n') || errorMessage.length > 100) {
+                                alert(errorMessage);
+                            } else {
+                                this.showToast(errorMessage, 'error');
+                            }
+                        }
+                    } catch (error) {
+                        console.error('上传失败:', error);
+                        const errorMessage = error.response?.data?.message || '导入失败';
+                        // 如果是多行错误信息，使用alert展示
+                        if (errorMessage.includes('\n') || errorMessage.length > 100) {
+                            alert(errorMessage);
+                        } else {
+                            this.showToast(errorMessage, 'error');
+                        }
+                    } finally {
+                        this.isUploading = false;
+                    }
+                },
+                
+                async exportExcel() {
+                    if (this.exporting) {
+                        return;
+                    }
+                    
+                    this.exporting = true;
+                    
+                    try {
+                        // 获取版本号：优先使用已加载的latestHistory，否则请求接口获取
+                        let version = 'V1';
+                        if (this.latestHistory && this.latestHistory.version) {
+                            version = this.latestHistory.version;
+                        } else {
+                            try {
+                                const historyResponse = await axios.get('/api/enum-mapping/latest-history');
+                                if (historyResponse.data.code === 200 && historyResponse.data.data && historyResponse.data.data.version) {
+                                    version = historyResponse.data.data.version;
+                                    // 更新latestHistory
+                                    this.latestHistory = historyResponse.data.data;
+                                }
+                            } catch (error) {
+                                console.warn('获取版本号失败，使用默认版本V1:', error);
+                            }
+                        }
+                        
+                        console.log('导出文件名使用的版本号:', version);
+                        
+                        const response = await axios.get('/api/enum-mapping/export', {
+                            responseType: 'blob'
+                        });
+                        
+                        // 下载Excel文件，文件名拼接版本号
+                        const blob = new Blob([response.data], {
+                            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                        });
+                        const url = window.URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        const fileName = `全量枚举映射关系维护_${version}.xlsx`;
+                        console.log('下载文件名:', fileName);
+                        link.download = fileName;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        window.URL.revokeObjectURL(url);
+                        
+                        this.showToast('✅ Excel导出成功！', 'success');
+                    } catch (error) {
+                        console.error('导出失败:', error);
+                        this.showToast('❌ 导出失败: ' + (error.response?.data?.message || error.message), 'error');
+                    } finally {
+                        this.exporting = false;
+                    }
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
+
