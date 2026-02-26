@@ -5,6 +5,8 @@ import com.sunline.dict.entity.FlowStep;
 import com.sunline.dict.entity.Flowtran;
 import com.sunline.dict.mapper.FlowStepMapper;
 import com.sunline.dict.mapper.FlowtranMapper;
+import com.sunline.dict.service.ComplexXmlParseService;
+import com.sunline.dict.service.DictXmlParseService;
 import com.sunline.dict.service.FlowXmlParseService;
 import com.sunline.dict.service.WebhookService;
 import org.slf4j.Logger;
@@ -29,6 +31,12 @@ public class WebhookServiceImpl implements WebhookService {
     
     @Autowired
     private FlowXmlParseService flowXmlParseService;
+
+    @Autowired
+    private ComplexXmlParseService complexXmlParseService;
+
+    @Autowired
+    private DictXmlParseService dictXmlParseService;
     
     @Autowired
     private FlowtranMapper flowtranMapper;
@@ -69,17 +77,27 @@ public class WebhookServiceImpl implements WebhookService {
             return createResult(false, "没有commits信息", 0, 0);
         }
         
-        // 收集新增/修改 与 删除 的 .flowtrans.xml 文件
+        // 收集新增/修改 与 删除 的文件（flowtrans.xml / c_schema.xml / d_schema.xml 分开存）
         Set<String> flowtransFiles = new HashSet<>();
         Set<String> removedFlowtransFiles = new HashSet<>();
+        Set<String> schemaFiles = new HashSet<>();
+        Set<String> removedSchemaFiles = new HashSet<>();
+        Set<String> dictFiles = new HashSet<>();
+        Set<String> removedDictFiles = new HashSet<>();
         for (Map<String, Object> commit : commits) {
             collectFlowtransFiles(commit, flowtransFiles, removedFlowtransFiles);
+            collectSchemaFiles(commit, schemaFiles, removedSchemaFiles);
+            collectDictFiles(commit, dictFiles, removedDictFiles);
         }
         
-        log.info("找到 {} 个新增/修改的.flowtrans.xml文件，{} 个已删除", flowtransFiles.size(), removedFlowtransFiles.size());
+        log.info("找到 {} 个新增/修改的.flowtrans.xml，{} 个已删除；{} 个新增/修改的.c_schema.xml，{} 个已删除；{} 个新增/修改的.d_schema.xml，{} 个已删除",
+                flowtransFiles.size(), removedFlowtransFiles.size(), schemaFiles.size(), removedSchemaFiles.size(),
+                dictFiles.size(), removedDictFiles.size());
         
-        if (flowtransFiles.isEmpty() && removedFlowtransFiles.isEmpty()) {
-            return createResult(false, "没有找到.flowtrans.xml文件变更", 0, 0);
+        if (flowtransFiles.isEmpty() && removedFlowtransFiles.isEmpty()
+                && schemaFiles.isEmpty() && removedSchemaFiles.isEmpty()
+                && dictFiles.isEmpty() && removedDictFiles.isEmpty()) {
+            return createResult(false, "没有找到需要处理的文件变更", 0, 0);
         }
         
         @SuppressWarnings("unchecked")
@@ -90,14 +108,25 @@ public class WebhookServiceImpl implements WebhookService {
         int totalFlowtran = 0;
         int totalFlowStep = 0;
         
-        // 先处理删除：按来源删除 flowtran 及对应 flow_step
+        // 处理 flowtrans.xml 删除
         for (String filePath : removedFlowtransFiles) {
             String sourceInfo = projectName + ":" + filePath;
             int[] deleted = deleteFlowtranBySourceInfo(sourceInfo);
             totalFlowtran -= deleted[0];
             totalFlowStep -= deleted[1];
         }
+        // 处理 c_schema.xml 删除
+        for (String filePath : removedSchemaFiles) {
+            String sourceInfo = projectName + ":" + filePath;
+            complexXmlParseService.deleteBySourceInfo(sourceInfo);
+        }
+        // 处理 d_schema.xml 删除
+        for (String filePath : removedDictFiles) {
+            String sourceInfo = projectName + ":" + filePath;
+            dictXmlParseService.deleteBySourceInfo(sourceInfo);
+        }
         
+        // 处理 flowtrans.xml 新增/修改
         for (String filePath : flowtransFiles) {
             try {
                 String fileContent = downloadFileFromGit(gitUrl, filePath, ref);
@@ -108,7 +137,35 @@ public class WebhookServiceImpl implements WebhookService {
                     totalFlowStep += (int) parseResult.getOrDefault("flowStepCount", 0);
                 }
             } catch (Exception e) {
-                log.error("处理文件失败: {}", filePath, e);
+                log.error("处理 flowtrans.xml 失败: {}", filePath, e);
+            }
+        }
+        // 处理 c_schema.xml 新增/修改
+        for (String filePath : schemaFiles) {
+            try {
+                String fileContent = downloadFileFromGit(gitUrl, filePath, ref);
+                if (fileContent != null) {
+                    String sourceInfo = projectName + ":" + filePath;
+                    Map<String, Object> parseResult = complexXmlParseService.parseAndSave(fileContent, sourceInfo);
+                    log.info("c_schema.xml 解析完成：complex={}, detail={}, 来源={}",
+                            parseResult.get("complexCount"), parseResult.get("complexDetailCount"), filePath);
+                }
+            } catch (Exception e) {
+                log.error("处理 c_schema.xml 失败: {}", filePath, e);
+            }
+        }
+        // 处理 d_schema.xml 新增/修改
+        for (String filePath : dictFiles) {
+            try {
+                String fileContent = downloadFileFromGit(gitUrl, filePath, ref);
+                if (fileContent != null) {
+                    String sourceInfo = projectName + ":" + filePath;
+                    Map<String, Object> parseResult = dictXmlParseService.parseAndSave(fileContent, sourceInfo);
+                    log.info("d_schema.xml 解析完成：dict={}, detail={}, 来源={}",
+                            parseResult.get("dictCount"), parseResult.get("dictDetailCount"), filePath);
+                }
+            } catch (Exception e) {
+                log.error("处理 d_schema.xml 失败: {}", filePath, e);
             }
         }
         
@@ -156,17 +213,27 @@ public class WebhookServiceImpl implements WebhookService {
             return createResult(false, "没有commits信息", 0, 0);
         }
         
-        // 收集新增/修改 与 删除 的 .flowtrans.xml 文件
+        // 收集新增/修改 与 删除 的文件（flowtrans.xml / c_schema.xml / d_schema.xml 分开存）
         Set<String> flowtransFiles = new HashSet<>();
         Set<String> removedFlowtransFiles = new HashSet<>();
+        Set<String> schemaFiles = new HashSet<>();
+        Set<String> removedSchemaFiles = new HashSet<>();
+        Set<String> dictFiles = new HashSet<>();
+        Set<String> removedDictFiles = new HashSet<>();
         for (Map<String, Object> commit : commits) {
             collectFlowtransFiles(commit, flowtransFiles, removedFlowtransFiles);
+            collectSchemaFiles(commit, schemaFiles, removedSchemaFiles);
+            collectDictFiles(commit, dictFiles, removedDictFiles);
         }
         
-        log.info("找到 {} 个新增/修改的.flowtrans.xml文件，{} 个已删除", flowtransFiles.size(), removedFlowtransFiles.size());
+        log.info("找到 {} 个新增/修改的.flowtrans.xml，{} 个已删除；{} 个新增/修改的.c_schema.xml，{} 个已删除；{} 个新增/修改的.d_schema.xml，{} 个已删除",
+                flowtransFiles.size(), removedFlowtransFiles.size(), schemaFiles.size(), removedSchemaFiles.size(),
+                dictFiles.size(), removedDictFiles.size());
         
-        if (flowtransFiles.isEmpty() && removedFlowtransFiles.isEmpty()) {
-            return createResult(false, "没有找到.flowtrans.xml文件变更", 0, 0);
+        if (flowtransFiles.isEmpty() && removedFlowtransFiles.isEmpty()
+                && schemaFiles.isEmpty() && removedSchemaFiles.isEmpty()
+                && dictFiles.isEmpty() && removedDictFiles.isEmpty()) {
+            return createResult(false, "没有找到需要处理的文件变更", 0, 0);
         }
         
         String projectName = project != null ? (String) project.get("name") : "unknown";
@@ -174,14 +241,25 @@ public class WebhookServiceImpl implements WebhookService {
         int totalFlowtran = 0;
         int totalFlowStep = 0;
         
-        // 先处理删除：按来源删除 flowtran 及对应 flow_step
+        // 处理 flowtrans.xml 删除
         for (String filePath : removedFlowtransFiles) {
             String sourceInfo = projectName + ":master:" + filePath;
             int[] deleted = deleteFlowtranBySourceInfo(sourceInfo);
             totalFlowtran -= deleted[0];
             totalFlowStep -= deleted[1];
         }
+        // 处理 c_schema.xml 删除
+        for (String filePath : removedSchemaFiles) {
+            String sourceInfo = projectName + ":master:" + filePath;
+            complexXmlParseService.deleteBySourceInfo(sourceInfo);
+        }
+        // 处理 d_schema.xml 删除
+        for (String filePath : removedDictFiles) {
+            String sourceInfo = projectName + ":master:" + filePath;
+            dictXmlParseService.deleteBySourceInfo(sourceInfo);
+        }
         
+        // 处理 flowtrans.xml 新增/修改
         for (String filePath : flowtransFiles) {
             try {
                 String fileContent = downloadFileFromGitLab(gitlabUrl, projectId, pathWithNamespace, filePath, "master");
@@ -192,7 +270,35 @@ public class WebhookServiceImpl implements WebhookService {
                     totalFlowStep += (int) parseResult.getOrDefault("flowStepCount", 0);
                 }
             } catch (Exception e) {
-                log.error("处理文件失败: {}", filePath, e);
+                log.error("处理 flowtrans.xml 失败: {}", filePath, e);
+            }
+        }
+        // 处理 c_schema.xml 新增/修改
+        for (String filePath : schemaFiles) {
+            try {
+                String fileContent = downloadFileFromGitLab(gitlabUrl, projectId, pathWithNamespace, filePath, "master");
+                if (fileContent != null) {
+                    String sourceInfo = projectName + ":master:" + filePath;
+                    Map<String, Object> parseResult = complexXmlParseService.parseAndSave(fileContent, sourceInfo);
+                    log.info("c_schema.xml 解析完成：complex={}, detail={}, 来源={}",
+                            parseResult.get("complexCount"), parseResult.get("complexDetailCount"), filePath);
+                }
+            } catch (Exception e) {
+                log.error("处理 c_schema.xml 失败: {}", filePath, e);
+            }
+        }
+        // 处理 d_schema.xml 新增/修改
+        for (String filePath : dictFiles) {
+            try {
+                String fileContent = downloadFileFromGitLab(gitlabUrl, projectId, pathWithNamespace, filePath, "master");
+                if (fileContent != null) {
+                    String sourceInfo = projectName + ":master:" + filePath;
+                    Map<String, Object> parseResult = dictXmlParseService.parseAndSave(fileContent, sourceInfo);
+                    log.info("d_schema.xml 解析完成：dict={}, detail={}, 来源={}",
+                            parseResult.get("dictCount"), parseResult.get("dictDetailCount"), filePath);
+                }
+            } catch (Exception e) {
+                log.error("处理 d_schema.xml 失败: {}", filePath, e);
             }
         }
         
@@ -238,6 +344,80 @@ public class WebhookServiceImpl implements WebhookService {
         }
     }
     
+    /**
+     * 从 commit 中收集新增/修改 与 删除 的 .c_schema.xml 文件
+     */
+    private void collectSchemaFiles(Map<String, Object> commit, Set<String> schemaFiles, Set<String> removedSchemaFiles) {
+        @SuppressWarnings("unchecked")
+        List<String> added = (List<String>) commit.get("added");
+        @SuppressWarnings("unchecked")
+        List<String> modified = (List<String>) commit.get("modified");
+        @SuppressWarnings("unchecked")
+        List<String> removed = (List<String>) commit.get("removed");
+        
+        if (added != null) {
+            for (String file : added) {
+                if (file.endsWith(".c_schema.xml")) {
+                    schemaFiles.add(file);
+                    log.info("发现新增 c_schema.xml: {}", file);
+                }
+            }
+        }
+        if (modified != null) {
+            for (String file : modified) {
+                if (file.endsWith(".c_schema.xml")) {
+                    schemaFiles.add(file);
+                    log.info("发现修改 c_schema.xml: {}", file);
+                }
+            }
+        }
+        if (removed != null) {
+            for (String file : removed) {
+                if (file.endsWith(".c_schema.xml")) {
+                    removedSchemaFiles.add(file);
+                    log.info("发现删除 c_schema.xml: {}", file);
+                }
+            }
+        }
+    }
+    
+    /**
+     * 从 commit 中收集新增/修改 与 删除 的 .d_schema.xml 文件
+     */
+    private void collectDictFiles(Map<String, Object> commit, Set<String> dictFiles, Set<String> removedDictFiles) {
+        @SuppressWarnings("unchecked")
+        List<String> added = (List<String>) commit.get("added");
+        @SuppressWarnings("unchecked")
+        List<String> modified = (List<String>) commit.get("modified");
+        @SuppressWarnings("unchecked")
+        List<String> removed = (List<String>) commit.get("removed");
+
+        if (added != null) {
+            for (String file : added) {
+                if (file.endsWith(".d_schema.xml")) {
+                    dictFiles.add(file);
+                    log.info("发现新增 d_schema.xml: {}", file);
+                }
+            }
+        }
+        if (modified != null) {
+            for (String file : modified) {
+                if (file.endsWith(".d_schema.xml")) {
+                    dictFiles.add(file);
+                    log.info("发现修改 d_schema.xml: {}", file);
+                }
+            }
+        }
+        if (removed != null) {
+            for (String file : removed) {
+                if (file.endsWith(".d_schema.xml")) {
+                    removedDictFiles.add(file);
+                    log.info("发现删除 d_schema.xml: {}", file);
+                }
+            }
+        }
+    }
+
     /**
      * 按来源标识删除 flowtran 及关联的 flow_step（先删 flow_step 再删 flowtran）
      * @param sourceInfo 与 flowtran.from_jar 一致，如 projectName:master:filePath
