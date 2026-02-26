@@ -6,8 +6,14 @@ import com.sunline.dict.entity.Flowtran;
 import com.sunline.dict.mapper.FlowStepMapper;
 import com.sunline.dict.mapper.FlowtranMapper;
 import com.sunline.dict.service.ComplexXmlParseService;
+import com.sunline.dict.service.ComponentXmlParseService;
 import com.sunline.dict.service.DictXmlParseService;
+import com.sunline.dict.service.EschemaXmlParseService;
 import com.sunline.dict.service.FlowXmlParseService;
+import com.sunline.dict.service.ServiceFileXmlParseService;
+import com.sunline.dict.service.ServiceImplXmlParseService;
+import com.sunline.dict.service.TablesXmlParseService;
+import com.sunline.dict.service.UschemaXmlParseService;
 import com.sunline.dict.service.WebhookService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,6 +43,24 @@ public class WebhookServiceImpl implements WebhookService {
 
     @Autowired
     private DictXmlParseService dictXmlParseService;
+
+    @Autowired
+    private UschemaXmlParseService uschemaXmlParseService;
+
+    @Autowired
+    private EschemaXmlParseService eschemaXmlParseService;
+
+    @Autowired
+    private TablesXmlParseService tablesXmlParseService;
+
+    @Autowired
+    private ComponentXmlParseService componentXmlParseService;
+
+    @Autowired
+    private ServiceFileXmlParseService serviceFileXmlParseService;
+
+    @Autowired
+    private ServiceImplXmlParseService serviceImplXmlParseService;
     
     @Autowired
     private FlowtranMapper flowtranMapper;
@@ -77,26 +101,56 @@ public class WebhookServiceImpl implements WebhookService {
             return createResult(false, "没有commits信息", 0, 0);
         }
         
-        // 收集新增/修改 与 删除 的文件（flowtrans.xml / c_schema.xml / d_schema.xml 分开存）
+        // 收集新增/修改 与 删除 的文件（各类型分开存）
         Set<String> flowtransFiles = new HashSet<>();
         Set<String> removedFlowtransFiles = new HashSet<>();
         Set<String> schemaFiles = new HashSet<>();
         Set<String> removedSchemaFiles = new HashSet<>();
         Set<String> dictFiles = new HashSet<>();
         Set<String> removedDictFiles = new HashSet<>();
+        Set<String> uschemaFiles = new HashSet<>();
+        Set<String> removedUschemaFiles = new HashSet<>();
+        Set<String> eschemaFiles = new HashSet<>();
+        Set<String> removedEschemaFiles = new HashSet<>();
+        Set<String> tablesFiles = new HashSet<>();
+        Set<String> removedTablesFiles = new HashSet<>();
+        // key=filePath, value=componentType
+        Map<String, String> componentFiles = new HashMap<>();
+        Set<String> removedComponentFiles = new HashSet<>();
+        // key=filePath, value=serviceType
+        Map<String, String> serviceFiles = new HashMap<>();
+        Set<String> removedServiceFiles = new HashSet<>();
+        // key=filePath, value=serviceImplType
+        Map<String, String> serviceImplFiles = new HashMap<>();
+        Set<String> removedServiceImplFiles = new HashSet<>();
         for (Map<String, Object> commit : commits) {
             collectFlowtransFiles(commit, flowtransFiles, removedFlowtransFiles);
             collectSchemaFiles(commit, schemaFiles, removedSchemaFiles);
             collectDictFiles(commit, dictFiles, removedDictFiles);
+            collectUschemaFiles(commit, uschemaFiles, removedUschemaFiles);
+            collectEschemaFiles(commit, eschemaFiles, removedEschemaFiles);
+            collectTablesFiles(commit, tablesFiles, removedTablesFiles);
+            collectComponentFiles(commit, componentFiles, removedComponentFiles);
+            collectServiceFiles(commit, serviceFiles, removedServiceFiles);
+            collectServiceImplFiles(commit, serviceImplFiles, removedServiceImplFiles);
         }
         
-        log.info("找到 {} 个新增/修改的.flowtrans.xml，{} 个已删除；{} 个新增/修改的.c_schema.xml，{} 个已删除；{} 个新增/修改的.d_schema.xml，{} 个已删除",
+        log.info("找到 .flowtrans.xml {}/{}，.c_schema.xml {}/{}，.d_schema.xml {}/{}，.u_schema.xml {}/{}，.e_schema.xml {}/{}，.tables.xml {}/{}，构件文件 {}/{}，服务文件 {}/{}，服务实现文件 {}/{} (新增改/删除)",
                 flowtransFiles.size(), removedFlowtransFiles.size(), schemaFiles.size(), removedSchemaFiles.size(),
-                dictFiles.size(), removedDictFiles.size());
+                dictFiles.size(), removedDictFiles.size(), uschemaFiles.size(), removedUschemaFiles.size(),
+                eschemaFiles.size(), removedEschemaFiles.size(), tablesFiles.size(), removedTablesFiles.size(),
+                componentFiles.size(), removedComponentFiles.size(), serviceFiles.size(), removedServiceFiles.size(),
+                serviceImplFiles.size(), removedServiceImplFiles.size());
         
         if (flowtransFiles.isEmpty() && removedFlowtransFiles.isEmpty()
                 && schemaFiles.isEmpty() && removedSchemaFiles.isEmpty()
-                && dictFiles.isEmpty() && removedDictFiles.isEmpty()) {
+                && dictFiles.isEmpty() && removedDictFiles.isEmpty()
+                && uschemaFiles.isEmpty() && removedUschemaFiles.isEmpty()
+                && eschemaFiles.isEmpty() && removedEschemaFiles.isEmpty()
+                && tablesFiles.isEmpty() && removedTablesFiles.isEmpty()
+                && componentFiles.isEmpty() && removedComponentFiles.isEmpty()
+                && serviceFiles.isEmpty() && removedServiceFiles.isEmpty()
+                && serviceImplFiles.isEmpty() && removedServiceImplFiles.isEmpty()) {
             return createResult(false, "没有找到需要处理的文件变更", 0, 0);
         }
         
@@ -117,13 +171,35 @@ public class WebhookServiceImpl implements WebhookService {
         }
         // 处理 c_schema.xml 删除
         for (String filePath : removedSchemaFiles) {
-            String sourceInfo = projectName + ":" + filePath;
-            complexXmlParseService.deleteBySourceInfo(sourceInfo);
+            complexXmlParseService.deleteBySourceInfo(projectName + ":" + filePath);
         }
         // 处理 d_schema.xml 删除
         for (String filePath : removedDictFiles) {
-            String sourceInfo = projectName + ":" + filePath;
-            dictXmlParseService.deleteBySourceInfo(sourceInfo);
+            dictXmlParseService.deleteBySourceInfo(projectName + ":" + filePath);
+        }
+        // 处理 u_schema.xml 删除
+        for (String filePath : removedUschemaFiles) {
+            uschemaXmlParseService.deleteBySourceInfo(projectName + ":" + filePath);
+        }
+        // 处理 e_schema.xml 删除
+        for (String filePath : removedEschemaFiles) {
+            eschemaXmlParseService.deleteBySourceInfo(projectName + ":" + filePath);
+        }
+        // 处理 .tables.xml 删除
+        for (String filePath : removedTablesFiles) {
+            tablesXmlParseService.deleteBySourceInfo(projectName + ":" + filePath);
+        }
+        // 处理构件文件删除
+        for (String filePath : removedComponentFiles) {
+            componentXmlParseService.deleteBySourceInfo(projectName + ":" + filePath);
+        }
+        // 处理服务文件删除
+        for (String filePath : removedServiceFiles) {
+            serviceFileXmlParseService.deleteBySourceInfo(projectName + ":" + filePath);
+        }
+        // 处理服务实现文件删除
+        for (String filePath : removedServiceImplFiles) {
+            serviceImplXmlParseService.deleteBySourceInfo(projectName + ":" + filePath);
         }
         
         // 处理 flowtrans.xml 新增/修改
@@ -166,6 +242,97 @@ public class WebhookServiceImpl implements WebhookService {
                 }
             } catch (Exception e) {
                 log.error("处理 d_schema.xml 失败: {}", filePath, e);
+            }
+        }
+        // 处理 u_schema.xml 新增/修改
+        for (String filePath : uschemaFiles) {
+            try {
+                String fileContent = downloadFileFromGit(gitUrl, filePath, ref);
+                if (fileContent != null) {
+                    String sourceInfo = projectName + ":" + filePath;
+                    Map<String, Object> parseResult = uschemaXmlParseService.parseAndSave(fileContent, sourceInfo);
+                    log.info("u_schema.xml 解析完成：uschema={}, detail={}, 来源={}",
+                            parseResult.get("uschemaCount"), parseResult.get("uschemaDetailCount"), filePath);
+                }
+            } catch (Exception e) {
+                log.error("处理 u_schema.xml 失败: {}", filePath, e);
+            }
+        }
+        // 处理 e_schema.xml 新增/修改
+        for (String filePath : eschemaFiles) {
+            try {
+                String fileContent = downloadFileFromGit(gitUrl, filePath, ref);
+                if (fileContent != null) {
+                    String sourceInfo = projectName + ":" + filePath;
+                    Map<String, Object> parseResult = eschemaXmlParseService.parseAndSave(fileContent, sourceInfo);
+                    log.info("e_schema.xml 解析完成：eschema={}, detail={}, 来源={}",
+                            parseResult.get("eschemaCount"), parseResult.get("eschemaDetailCount"), filePath);
+                }
+            } catch (Exception e) {
+                log.error("处理 e_schema.xml 失败: {}", filePath, e);
+            }
+        }
+        // 处理 .tables.xml 新增/修改
+        for (String filePath : tablesFiles) {
+            try {
+                String fileContent = downloadFileFromGit(gitUrl, filePath, ref);
+                if (fileContent != null) {
+                    String sourceInfo = projectName + ":" + filePath;
+                    Map<String, Object> parseResult = tablesXmlParseService.parseAndSave(fileContent, sourceInfo);
+                    log.info(".tables.xml 解析完成：tables={}, detail={}, indexes={}, 来源={}",
+                            parseResult.get("tablesCount"), parseResult.get("detailCount"),
+                            parseResult.get("indexesCount"), filePath);
+                }
+            } catch (Exception e) {
+                log.error("处理 .tables.xml 失败: {}", filePath, e);
+            }
+        }
+        // 处理构件文件新增/修改
+        for (Map.Entry<String, String> entry : componentFiles.entrySet()) {
+            String filePath = entry.getKey();
+            String componentType = entry.getValue();
+            try {
+                String fileContent = downloadFileFromGit(gitUrl, filePath, ref);
+                if (fileContent != null) {
+                    String sourceInfo = projectName + ":" + filePath;
+                    Map<String, Object> parseResult = componentXmlParseService.parseAndSave(fileContent, sourceInfo, componentType);
+                    log.info("构件文件 ({}) 解析完成：component={}, detail={}, 来源={}",
+                            componentType, parseResult.get("componentCount"), parseResult.get("componentDetailCount"), filePath);
+                }
+            } catch (Exception e) {
+                log.error("处理构件文件 ({}) 失败: {}", componentType, filePath, e);
+            }
+        }
+        // 处理服务文件新增/修改
+        for (Map.Entry<String, String> entry : serviceFiles.entrySet()) {
+            String filePath = entry.getKey();
+            String svcType = entry.getValue();
+            try {
+                String fileContent = downloadFileFromGit(gitUrl, filePath, ref);
+                if (fileContent != null) {
+                    String sourceInfo = projectName + ":" + filePath;
+                    Map<String, Object> parseResult = serviceFileXmlParseService.parseAndSave(fileContent, sourceInfo, svcType);
+                    log.info("服务文件 ({}) 解析完成：service={}, detail={}, 来源={}",
+                            svcType, parseResult.get("serviceCount"), parseResult.get("serviceDetailCount"), filePath);
+                }
+            } catch (Exception e) {
+                log.error("处理服务文件 ({}) 失败: {}", svcType, filePath, e);
+            }
+        }
+        // 处理服务实现文件新增/修改
+        for (Map.Entry<String, String> entry : serviceImplFiles.entrySet()) {
+            String filePath = entry.getKey();
+            String implType = entry.getValue();
+            try {
+                String fileContent = downloadFileFromGit(gitUrl, filePath, ref);
+                if (fileContent != null) {
+                    String sourceInfo = projectName + ":" + filePath;
+                    Map<String, Object> parseResult = serviceImplXmlParseService.parseAndSave(fileContent, sourceInfo, implType);
+                    log.info("服务实现文件 ({}) 解析完成：count={}, 来源={}",
+                            implType, parseResult.get("serviceImplCount"), filePath);
+                }
+            } catch (Exception e) {
+                log.error("处理服务实现文件 ({}) 失败: {}", implType, filePath, e);
             }
         }
         
@@ -213,26 +380,53 @@ public class WebhookServiceImpl implements WebhookService {
             return createResult(false, "没有commits信息", 0, 0);
         }
         
-        // 收集新增/修改 与 删除 的文件（flowtrans.xml / c_schema.xml / d_schema.xml 分开存）
+        // 收集新增/修改 与 删除 的文件（各类型分开存）
         Set<String> flowtransFiles = new HashSet<>();
         Set<String> removedFlowtransFiles = new HashSet<>();
         Set<String> schemaFiles = new HashSet<>();
         Set<String> removedSchemaFiles = new HashSet<>();
         Set<String> dictFiles = new HashSet<>();
         Set<String> removedDictFiles = new HashSet<>();
+        Set<String> uschemaFiles = new HashSet<>();
+        Set<String> removedUschemaFiles = new HashSet<>();
+        Set<String> eschemaFiles = new HashSet<>();
+        Set<String> removedEschemaFiles = new HashSet<>();
+        Set<String> tablesFiles = new HashSet<>();
+        Set<String> removedTablesFiles = new HashSet<>();
+        Map<String, String> componentFiles = new HashMap<>();
+        Set<String> removedComponentFiles = new HashSet<>();
+        Map<String, String> serviceFiles = new HashMap<>();
+        Set<String> removedServiceFiles = new HashSet<>();
+        Map<String, String> serviceImplFiles = new HashMap<>();
+        Set<String> removedServiceImplFiles = new HashSet<>();
         for (Map<String, Object> commit : commits) {
             collectFlowtransFiles(commit, flowtransFiles, removedFlowtransFiles);
             collectSchemaFiles(commit, schemaFiles, removedSchemaFiles);
             collectDictFiles(commit, dictFiles, removedDictFiles);
+            collectUschemaFiles(commit, uschemaFiles, removedUschemaFiles);
+            collectEschemaFiles(commit, eschemaFiles, removedEschemaFiles);
+            collectTablesFiles(commit, tablesFiles, removedTablesFiles);
+            collectComponentFiles(commit, componentFiles, removedComponentFiles);
+            collectServiceFiles(commit, serviceFiles, removedServiceFiles);
+            collectServiceImplFiles(commit, serviceImplFiles, removedServiceImplFiles);
         }
         
-        log.info("找到 {} 个新增/修改的.flowtrans.xml，{} 个已删除；{} 个新增/修改的.c_schema.xml，{} 个已删除；{} 个新增/修改的.d_schema.xml，{} 个已删除",
+        log.info("找到 .flowtrans.xml {}/{}，.c_schema.xml {}/{}，.d_schema.xml {}/{}，.u_schema.xml {}/{}，.e_schema.xml {}/{}，.tables.xml {}/{}，构件文件 {}/{}，服务文件 {}/{}，服务实现文件 {}/{} (新增改/删除)",
                 flowtransFiles.size(), removedFlowtransFiles.size(), schemaFiles.size(), removedSchemaFiles.size(),
-                dictFiles.size(), removedDictFiles.size());
+                dictFiles.size(), removedDictFiles.size(), uschemaFiles.size(), removedUschemaFiles.size(),
+                eschemaFiles.size(), removedEschemaFiles.size(), tablesFiles.size(), removedTablesFiles.size(),
+                componentFiles.size(), removedComponentFiles.size(), serviceFiles.size(), removedServiceFiles.size(),
+                serviceImplFiles.size(), removedServiceImplFiles.size());
         
         if (flowtransFiles.isEmpty() && removedFlowtransFiles.isEmpty()
                 && schemaFiles.isEmpty() && removedSchemaFiles.isEmpty()
-                && dictFiles.isEmpty() && removedDictFiles.isEmpty()) {
+                && dictFiles.isEmpty() && removedDictFiles.isEmpty()
+                && uschemaFiles.isEmpty() && removedUschemaFiles.isEmpty()
+                && eschemaFiles.isEmpty() && removedEschemaFiles.isEmpty()
+                && tablesFiles.isEmpty() && removedTablesFiles.isEmpty()
+                && componentFiles.isEmpty() && removedComponentFiles.isEmpty()
+                && serviceFiles.isEmpty() && removedServiceFiles.isEmpty()
+                && serviceImplFiles.isEmpty() && removedServiceImplFiles.isEmpty()) {
             return createResult(false, "没有找到需要处理的文件变更", 0, 0);
         }
         
@@ -250,13 +444,35 @@ public class WebhookServiceImpl implements WebhookService {
         }
         // 处理 c_schema.xml 删除
         for (String filePath : removedSchemaFiles) {
-            String sourceInfo = projectName + ":master:" + filePath;
-            complexXmlParseService.deleteBySourceInfo(sourceInfo);
+            complexXmlParseService.deleteBySourceInfo(projectName + ":master:" + filePath);
         }
         // 处理 d_schema.xml 删除
         for (String filePath : removedDictFiles) {
-            String sourceInfo = projectName + ":master:" + filePath;
-            dictXmlParseService.deleteBySourceInfo(sourceInfo);
+            dictXmlParseService.deleteBySourceInfo(projectName + ":master:" + filePath);
+        }
+        // 处理 u_schema.xml 删除
+        for (String filePath : removedUschemaFiles) {
+            uschemaXmlParseService.deleteBySourceInfo(projectName + ":master:" + filePath);
+        }
+        // 处理 e_schema.xml 删除
+        for (String filePath : removedEschemaFiles) {
+            eschemaXmlParseService.deleteBySourceInfo(projectName + ":master:" + filePath);
+        }
+        // 处理 .tables.xml 删除
+        for (String filePath : removedTablesFiles) {
+            tablesXmlParseService.deleteBySourceInfo(projectName + ":master:" + filePath);
+        }
+        // 处理构件文件删除
+        for (String filePath : removedComponentFiles) {
+            componentXmlParseService.deleteBySourceInfo(projectName + ":master:" + filePath);
+        }
+        // 处理服务文件删除
+        for (String filePath : removedServiceFiles) {
+            serviceFileXmlParseService.deleteBySourceInfo(projectName + ":master:" + filePath);
+        }
+        // 处理服务实现文件删除
+        for (String filePath : removedServiceImplFiles) {
+            serviceImplXmlParseService.deleteBySourceInfo(projectName + ":master:" + filePath);
         }
         
         // 处理 flowtrans.xml 新增/修改
@@ -299,6 +515,97 @@ public class WebhookServiceImpl implements WebhookService {
                 }
             } catch (Exception e) {
                 log.error("处理 d_schema.xml 失败: {}", filePath, e);
+            }
+        }
+        // 处理 u_schema.xml 新增/修改
+        for (String filePath : uschemaFiles) {
+            try {
+                String fileContent = downloadFileFromGitLab(gitlabUrl, projectId, pathWithNamespace, filePath, "master");
+                if (fileContent != null) {
+                    String sourceInfo = projectName + ":master:" + filePath;
+                    Map<String, Object> parseResult = uschemaXmlParseService.parseAndSave(fileContent, sourceInfo);
+                    log.info("u_schema.xml 解析完成：uschema={}, detail={}, 来源={}",
+                            parseResult.get("uschemaCount"), parseResult.get("uschemaDetailCount"), filePath);
+                }
+            } catch (Exception e) {
+                log.error("处理 u_schema.xml 失败: {}", filePath, e);
+            }
+        }
+        // 处理 e_schema.xml 新增/修改
+        for (String filePath : eschemaFiles) {
+            try {
+                String fileContent = downloadFileFromGitLab(gitlabUrl, projectId, pathWithNamespace, filePath, "master");
+                if (fileContent != null) {
+                    String sourceInfo = projectName + ":master:" + filePath;
+                    Map<String, Object> parseResult = eschemaXmlParseService.parseAndSave(fileContent, sourceInfo);
+                    log.info("e_schema.xml 解析完成：eschema={}, detail={}, 来源={}",
+                            parseResult.get("eschemaCount"), parseResult.get("eschemaDetailCount"), filePath);
+                }
+            } catch (Exception e) {
+                log.error("处理 e_schema.xml 失败: {}", filePath, e);
+            }
+        }
+        // 处理 .tables.xml 新增/修改
+        for (String filePath : tablesFiles) {
+            try {
+                String fileContent = downloadFileFromGitLab(gitlabUrl, projectId, pathWithNamespace, filePath, "master");
+                if (fileContent != null) {
+                    String sourceInfo = projectName + ":master:" + filePath;
+                    Map<String, Object> parseResult = tablesXmlParseService.parseAndSave(fileContent, sourceInfo);
+                    log.info(".tables.xml 解析完成：tables={}, detail={}, indexes={}, 来源={}",
+                            parseResult.get("tablesCount"), parseResult.get("detailCount"),
+                            parseResult.get("indexesCount"), filePath);
+                }
+            } catch (Exception e) {
+                log.error("处理 .tables.xml 失败: {}", filePath, e);
+            }
+        }
+        // 处理构件文件新增/修改
+        for (Map.Entry<String, String> entry : componentFiles.entrySet()) {
+            String filePath = entry.getKey();
+            String componentType = entry.getValue();
+            try {
+                String fileContent = downloadFileFromGitLab(gitlabUrl, projectId, pathWithNamespace, filePath, "master");
+                if (fileContent != null) {
+                    String sourceInfo = projectName + ":master:" + filePath;
+                    Map<String, Object> parseResult = componentXmlParseService.parseAndSave(fileContent, sourceInfo, componentType);
+                    log.info("构件文件 ({}) 解析完成：component={}, detail={}, 来源={}",
+                            componentType, parseResult.get("componentCount"), parseResult.get("componentDetailCount"), filePath);
+                }
+            } catch (Exception e) {
+                log.error("处理构件文件 ({}) 失败: {}", componentType, filePath, e);
+            }
+        }
+        // 处理服务文件新增/修改
+        for (Map.Entry<String, String> entry : serviceFiles.entrySet()) {
+            String filePath = entry.getKey();
+            String svcType = entry.getValue();
+            try {
+                String fileContent = downloadFileFromGitLab(gitlabUrl, projectId, pathWithNamespace, filePath, "master");
+                if (fileContent != null) {
+                    String sourceInfo = projectName + ":master:" + filePath;
+                    Map<String, Object> parseResult = serviceFileXmlParseService.parseAndSave(fileContent, sourceInfo, svcType);
+                    log.info("服务文件 ({}) 解析完成：service={}, detail={}, 来源={}",
+                            svcType, parseResult.get("serviceCount"), parseResult.get("serviceDetailCount"), filePath);
+                }
+            } catch (Exception e) {
+                log.error("处理服务文件 ({}) 失败: {}", svcType, filePath, e);
+            }
+        }
+        // 处理服务实现文件新增/修改
+        for (Map.Entry<String, String> entry : serviceImplFiles.entrySet()) {
+            String filePath = entry.getKey();
+            String implType = entry.getValue();
+            try {
+                String fileContent = downloadFileFromGitLab(gitlabUrl, projectId, pathWithNamespace, filePath, "master");
+                if (fileContent != null) {
+                    String sourceInfo = projectName + ":master:" + filePath;
+                    Map<String, Object> parseResult = serviceImplXmlParseService.parseAndSave(fileContent, sourceInfo, implType);
+                    log.info("服务实现文件 ({}) 解析完成：count={}, 来源={}",
+                            implType, parseResult.get("serviceImplCount"), filePath);
+                }
+            } catch (Exception e) {
+                log.error("处理服务实现文件 ({}) 失败: {}", implType, filePath, e);
             }
         }
         
@@ -416,6 +723,272 @@ public class WebhookServiceImpl implements WebhookService {
                 }
             }
         }
+    }
+
+    /**
+     * 从 commit 中收集新增/修改 与 删除 的 .u_schema.xml 文件
+     */
+    private void collectUschemaFiles(Map<String, Object> commit, Set<String> uschemaFiles, Set<String> removedUschemaFiles) {
+        @SuppressWarnings("unchecked")
+        List<String> added = (List<String>) commit.get("added");
+        @SuppressWarnings("unchecked")
+        List<String> modified = (List<String>) commit.get("modified");
+        @SuppressWarnings("unchecked")
+        List<String> removed = (List<String>) commit.get("removed");
+
+        if (added != null) {
+            for (String file : added) {
+                if (file.endsWith(".u_schema.xml")) {
+                    uschemaFiles.add(file);
+                    log.info("发现新增 u_schema.xml: {}", file);
+                }
+            }
+        }
+        if (modified != null) {
+            for (String file : modified) {
+                if (file.endsWith(".u_schema.xml")) {
+                    uschemaFiles.add(file);
+                    log.info("发现修改 u_schema.xml: {}", file);
+                }
+            }
+        }
+        if (removed != null) {
+            for (String file : removed) {
+                if (file.endsWith(".u_schema.xml")) {
+                    removedUschemaFiles.add(file);
+                    log.info("发现删除 u_schema.xml: {}", file);
+                }
+            }
+        }
+    }
+
+    /**
+     * 从 commit 中收集新增/修改 与 删除 的 .e_schema.xml 文件
+     */
+    private void collectEschemaFiles(Map<String, Object> commit, Set<String> eschemaFiles, Set<String> removedEschemaFiles) {
+        @SuppressWarnings("unchecked")
+        List<String> added = (List<String>) commit.get("added");
+        @SuppressWarnings("unchecked")
+        List<String> modified = (List<String>) commit.get("modified");
+        @SuppressWarnings("unchecked")
+        List<String> removed = (List<String>) commit.get("removed");
+
+        if (added != null) {
+            for (String file : added) {
+                if (file.endsWith(".e_schema.xml")) {
+                    eschemaFiles.add(file);
+                    log.info("发现新增 e_schema.xml: {}", file);
+                }
+            }
+        }
+        if (modified != null) {
+            for (String file : modified) {
+                if (file.endsWith(".e_schema.xml")) {
+                    eschemaFiles.add(file);
+                    log.info("发现修改 e_schema.xml: {}", file);
+                }
+            }
+        }
+        if (removed != null) {
+            for (String file : removed) {
+                if (file.endsWith(".e_schema.xml")) {
+                    removedEschemaFiles.add(file);
+                    log.info("发现删除 e_schema.xml: {}", file);
+                }
+            }
+        }
+    }
+
+    /**
+     * 从 commit 中收集新增/修改 与 删除 的 .tables.xml 文件
+     */
+    private void collectTablesFiles(Map<String, Object> commit, Set<String> tablesFiles, Set<String> removedTablesFiles) {
+        @SuppressWarnings("unchecked")
+        List<String> added = (List<String>) commit.get("added");
+        @SuppressWarnings("unchecked")
+        List<String> modified = (List<String>) commit.get("modified");
+        @SuppressWarnings("unchecked")
+        List<String> removed = (List<String>) commit.get("removed");
+
+        if (added != null) {
+            for (String file : added) {
+                if (file.endsWith(".tables.xml")) {
+                    tablesFiles.add(file);
+                    log.info("发现新增 .tables.xml: {}", file);
+                }
+            }
+        }
+        if (modified != null) {
+            for (String file : modified) {
+                if (file.endsWith(".tables.xml")) {
+                    tablesFiles.add(file);
+                    log.info("发现修改 .tables.xml: {}", file);
+                }
+            }
+        }
+        if (removed != null) {
+            for (String file : removed) {
+                if (file.endsWith(".tables.xml")) {
+                    removedTablesFiles.add(file);
+                    log.info("发现删除 .tables.xml: {}", file);
+                }
+            }
+        }
+    }
+
+    /**
+     * 从 commit 中收集新增/修改 与 删除 的构件文件（.pbcb/.pbcp/.pbcc/.pbct.xml）
+     * @param componentFiles key=filePath, value=componentType（pbcb/pbcp/pbcc/pbct）
+     */
+    private void collectComponentFiles(Map<String, Object> commit, Map<String, String> componentFiles, Set<String> removedComponentFiles) {
+        @SuppressWarnings("unchecked")
+        List<String> added = (List<String>) commit.get("added");
+        @SuppressWarnings("unchecked")
+        List<String> modified = (List<String>) commit.get("modified");
+        @SuppressWarnings("unchecked")
+        List<String> removed = (List<String>) commit.get("removed");
+
+        if (added != null) {
+            for (String file : added) {
+                String type = resolveComponentType(file);
+                if (type != null) {
+                    componentFiles.put(file, type);
+                    log.info("发现新增构件文件 ({}): {}", type, file);
+                }
+            }
+        }
+        if (modified != null) {
+            for (String file : modified) {
+                String type = resolveComponentType(file);
+                if (type != null) {
+                    componentFiles.put(file, type);
+                    log.info("发现修改构件文件 ({}): {}", type, file);
+                }
+            }
+        }
+        if (removed != null) {
+            for (String file : removed) {
+                if (resolveComponentType(file) != null) {
+                    removedComponentFiles.add(file);
+                    log.info("发现删除构件文件: {}", file);
+                }
+            }
+        }
+    }
+
+    /**
+     * 根据文件名后缀解析构件类型，不匹配返回 null
+     */
+    private String resolveComponentType(String fileName) {
+        if (fileName.endsWith(".pbcb.xml")) return "pbcb";
+        if (fileName.endsWith(".pbcp.xml")) return "pbcp";
+        if (fileName.endsWith(".pbcc.xml")) return "pbcc";
+        if (fileName.endsWith(".pbct.xml")) return "pbct";
+        return null;
+    }
+
+    /**
+     * 从 commit 中收集新增/修改 与 删除 的服务文件（.pcs.xml / .pbs.xml）
+     * @param serviceFiles key=filePath, value=serviceType（pcs/pbs）
+     */
+    private void collectServiceFiles(Map<String, Object> commit, Map<String, String> serviceFiles, Set<String> removedServiceFiles) {
+        @SuppressWarnings("unchecked")
+        List<String> added = (List<String>) commit.get("added");
+        @SuppressWarnings("unchecked")
+        List<String> modified = (List<String>) commit.get("modified");
+        @SuppressWarnings("unchecked")
+        List<String> removed = (List<String>) commit.get("removed");
+
+        if (added != null) {
+            for (String file : added) {
+                String type = resolveServiceType(file);
+                if (type != null) {
+                    serviceFiles.put(file, type);
+                    log.info("发现新增服务文件 ({}): {}", type, file);
+                }
+            }
+        }
+        if (modified != null) {
+            for (String file : modified) {
+                String type = resolveServiceType(file);
+                if (type != null) {
+                    serviceFiles.put(file, type);
+                    log.info("发现修改服务文件 ({}): {}", type, file);
+                }
+            }
+        }
+        if (removed != null) {
+            for (String file : removed) {
+                if (resolveServiceType(file) != null) {
+                    removedServiceFiles.add(file);
+                    log.info("发现删除服务文件: {}", file);
+                }
+            }
+        }
+    }
+
+    /**
+     * 根据文件名后缀解析服务类型，不匹配返回 null
+     */
+    private String resolveServiceType(String fileName) {
+        if (fileName.endsWith(".pcs.xml")) return "pcs";
+        if (fileName.endsWith(".pbs.xml")) return "pbs";
+        return null;
+    }
+
+    /**
+     * 从 commit 中收集新增/修改 与 删除 的服务实现文件
+     * (.pcsImpl.xml/.pbsImpl.xml/.pbcbImpl.xml/.pbcpImpl.xml/.pbccImpl.xml/.pbctImpl.xml)
+     * @param serviceImplFiles key=filePath, value=serviceImplType
+     */
+    private void collectServiceImplFiles(Map<String, Object> commit, Map<String, String> serviceImplFiles, Set<String> removedServiceImplFiles) {
+        @SuppressWarnings("unchecked")
+        List<String> added = (List<String>) commit.get("added");
+        @SuppressWarnings("unchecked")
+        List<String> modified = (List<String>) commit.get("modified");
+        @SuppressWarnings("unchecked")
+        List<String> removed = (List<String>) commit.get("removed");
+
+        if (added != null) {
+            for (String file : added) {
+                String type = resolveServiceImplType(file);
+                if (type != null) {
+                    serviceImplFiles.put(file, type);
+                    log.info("发现新增服务实现文件 ({}): {}", type, file);
+                }
+            }
+        }
+        if (modified != null) {
+            for (String file : modified) {
+                String type = resolveServiceImplType(file);
+                if (type != null) {
+                    serviceImplFiles.put(file, type);
+                    log.info("发现修改服务实现文件 ({}): {}", type, file);
+                }
+            }
+        }
+        if (removed != null) {
+            for (String file : removed) {
+                if (resolveServiceImplType(file) != null) {
+                    removedServiceImplFiles.add(file);
+                    log.info("发现删除服务实现文件: {}", file);
+                }
+            }
+        }
+    }
+
+    /**
+     * 根据文件名后缀解析服务实现类型，不匹配返回 null
+     * 注意：需先匹配更长的后缀（如 .pbcbImpl.xml），避免被 .pbs.xml 等短后缀误判
+     */
+    private String resolveServiceImplType(String fileName) {
+        if (fileName.endsWith(".pcsImpl.xml"))  return "pcsImpl";
+        if (fileName.endsWith(".pbsImpl.xml"))  return "pbsImpl";
+        if (fileName.endsWith(".pbcbImpl.xml")) return "pbcbImpl";
+        if (fileName.endsWith(".pbcpImpl.xml")) return "pbcpImpl";
+        if (fileName.endsWith(".pbccImpl.xml")) return "pbccImpl";
+        if (fileName.endsWith(".pbctImpl.xml")) return "pbctImpl";
+        return null;
     }
 
     /**
