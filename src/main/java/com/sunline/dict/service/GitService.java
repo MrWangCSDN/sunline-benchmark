@@ -86,5 +86,14 @@ public interface GitService {
      * @return 克隆结果列表，每个元素包含project和message
      */
     List<Map<String, String>> cloneProjects(String branchName, String cloneDirectory, List<Integer> projectIds);
+
+    /**
+     * 一键代码推送：将本地文件夹内容强制覆盖推送到多个Git工程的指定分支
+     * @param sourceFolder 本地来源文件夹绝对路径
+     * @param commitMessage Git提交信息
+     * @param tasks 推送任务列表，每项包含 projectId 和 branch
+     * @return 推送结果列表，每项包含 project、branch、success、message
+     */
+    List<Map<String, Object>> pushCode(String sourceFolder, String commitMessage, List<Map<String, Object>> tasks);
 }
 

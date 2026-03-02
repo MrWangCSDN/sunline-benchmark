@@ -936,7 +936,7 @@
                 </div>
             </div>
             
-            <div class="menu-group" v-if="hasMenuPermission('git-management') || hasMenuPermission('git-branch-create') || hasMenuPermission('git-permission-manage') || hasMenuPermission('jar-scan-analysis') || hasMenuPermission('service-build-scan') || hasMenuPermission('service-impl-build-scan') || hasMenuPermission('method-stack-scan') || hasMenuPermission('flow-tree-query') || hasMenuPermission('pom-dependency-tree') || hasMenuPermission('batch-clone') || hasMenuPermission('excel-compare') || hasMenuPermission('excel-clean') || hasMenuPermission('db-table-export') || hasMenuPermission('xml-db-compare') || hasMenuPermission('esf-interface-compare') || hasMenuPermission('migration-table-compare') || hasMenuPermission('layer-call-rule')" :class="{ expanded: gitMenuExpanded }">
+            <div class="menu-group" v-if="hasMenuPermission('git-management') || hasMenuPermission('git-branch-create') || hasMenuPermission('git-permission-manage') || hasMenuPermission('jar-scan-analysis') || hasMenuPermission('service-build-scan') || hasMenuPermission('service-impl-build-scan') || hasMenuPermission('method-stack-scan') || hasMenuPermission('flow-tree-query') || hasMenuPermission('pom-dependency-tree') || hasMenuPermission('batch-clone') || hasMenuPermission('excel-compare') || hasMenuPermission('excel-clean') || hasMenuPermission('db-table-export') || hasMenuPermission('xml-db-compare') || hasMenuPermission('esf-interface-compare') || hasMenuPermission('migration-table-compare') || hasMenuPermission('layer-call-rule') || hasMenuPermission('code-push')" :class="{ expanded: gitMenuExpanded }">
                 <div class="menu-group-title" :class="{ collapsed: !gitMenuExpanded }" @click="toggleGitMenu">
                     <span>工具箱</span>
                     <span class="arrow">▼</span>
@@ -944,6 +944,9 @@
                 <div class="menu-items">
                     <div class="menu-item" v-if="hasMenuPermission('git-branch-create')" :class="{ active: currentView === 'git-branch-create' }" @click="switchView('git-branch-create')">
                         <span>🌿 分支创建</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('code-push')" :class="{ active: currentView === 'code-push' }" @click="switchView('code-push')">
+                        <span>🚀 一键代码推送</span>
                     </div>
                     <div class="menu-item" v-if="hasMenuPermission('git-permission-manage')" @click="switchView('git-permission-manage')" :class="{ active: currentView === 'git-permission-manage' }">
                         <span>👥 权限管理</span>
@@ -1038,6 +1041,7 @@
                 <iframe v-show="currentView === 'change-history'" src="/change-history.html"></iframe>
                 <iframe v-show="currentView === 'excel-export'" src="/excel-export.html"></iframe>
                 <iframe v-show="currentView === 'git-branch-create'" src="/git-branch-create.html"></iframe>
+                <iframe v-show="currentView === 'code-push'" src="/code-push.html"></iframe>
                 <iframe v-show="currentView === 'git-permission-manage'" src="/git-permission-manage.html"></iframe>
                 <iframe v-show="currentView === 'protected-branch-settings'" src="/protected-branch-settings.html"></iframe>
                 <iframe v-show="currentView === 'jar-scan-analysis'" src="/jar-scan-analysis.html"></iframe>
@@ -2109,6 +2113,7 @@
                         'change-history': '📜 变更历史',
                         'excel-export': '📥 Excel导出',
                         'git-branch-create': '🌿 分支创建',
+                        'code-push': '🚀 一键代码推送',
                         'git-permission-manage': '👥 权限管理',
                         'protected-branch-settings': '🛡️ 保护分支设置',
                         'jar-scan-analysis': '🔍 扫描分析',

@@ -641,13 +641,19 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
             } else {
                 // 字段存在：比对并映射
                 Row migrationRow = migrationSheet.getRow(migrationRowIndex);
+                List<String> changeDetails = new ArrayList<>();
                 boolean fieldChanged = createMigrationFieldRowWithCompare(
-                    resultRow, xmlRow, migrationRow, seqNum, styleCache, migrationSheet);
+                    resultRow, xmlRow, migrationRow, seqNum, styleCache, migrationSheet, changeDetails);
                 
                 if (fieldChanged) {
                     hasChanges = true;
+                    // 修订明细：字段名 + 每个发生变化的列的 旧值→新值
+                    String detail = fieldName + " 字段修改";
+                    if (!changeDetails.isEmpty()) {
+                        detail += "\n" + String.join("\n", changeDetails);
+                    }
                     revisionRecords.add(new RevisionRecord(
-                        tableName, "字段", "修改", fieldName + " 字段修改",
+                        tableName, "字段", "修改", detail,
                         tableName, resultRowNum
                     ));
                 }
@@ -726,44 +732,49 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
     /**
      * 创建迁移字段行并比对（存在的字段）
      * 字段映射：XML A/B/C/D/F/H -> 结果 B/C/D/E/F/H
-     * 修改：黄色显示最新值（不显示旧值->新值）
+     * 修改：黄色显示最新值，changeDetails记录每列的 旧值→新值
      * 未修改：白色显示
      * 补充M列往后的列
      */
-    private boolean createMigrationFieldRowWithCompare(Row resultRow, Row xmlRow, 
+    private boolean createMigrationFieldRowWithCompare(Row resultRow, Row xmlRow,
                                                        Row migrationRow, int seqNum,
-                                                       StyleCache styleCache, Sheet migrationSheet) {
+                                                       StyleCache styleCache, Sheet migrationSheet,
+                                                       List<String> changeDetails) {
         boolean hasChanges = false;
-        
+
         // A列：序号（总是用序号，不比对）
         Cell cell = resultRow.createCell(0);
         cell.setCellValue(seqNum);
         cell.setCellStyle(styleCache.normalWithBorder);
-        
-        // 定义映射关系：XML列 -> 结果列
-        int[][] mappings = {
-            {0, 1}, // XML A -> 结果 B（字段名）
-            {1, 2}, // XML B -> 结果 C（中文名）
-            {2, 3}, // XML C -> 结果 D（数据库类型）
-            {3, 4}, // XML D -> 结果 E（长度）
-            {5, 5}, // XML F -> 结果 F（空值）
-            {7, 7}  // XML H -> 结果 H（默认值）
+
+        // 定义映射关系：[XML列, 结果列, 列中文名]
+        Object[][] mappings = {
+            {0, 1, "字段名"},
+            {1, 2, "中文名"},
+            {2, 3, "数据库类型"},
+            {3, 4, "长度"},
+            {5, 5, "空值"},
+            {7, 7, "默认值"}
         };
-        
-        for (int[] mapping : mappings) {
-            int xmlCol = mapping[0];
-            int resultCol = mapping[1];
-            
+
+        for (Object[] mapping : mappings) {
+            int xmlCol = (int) mapping[0];
+            int resultCol = (int) mapping[1];
+            String colLabel = (String) mapping[2];
+
             String xmlValue = getCellValueAsString(xmlRow.getCell(xmlCol));
             String migrationValue = getCellValueAsString(migrationRow.getCell(resultCol));
-            
+
             Cell resultCell = resultRow.createCell(resultCol);
-            
+
             if (!Objects.equals(xmlValue, migrationValue)) {
-                // 值不同：黄色显示最新值（XML的值）
+                // 值不同：黄色显示最新值（XML的值），并记录 旧值→新值
                 resultCell.setCellValue(xmlValue);
                 resultCell.setCellStyle(styleCache.modifiedBgWithBorder);
                 hasChanges = true;
+                String oldVal = (migrationValue == null || migrationValue.isEmpty()) ? "（空）" : migrationValue;
+                String newVal = (xmlValue == null || xmlValue.isEmpty()) ? "（空）" : xmlValue;
+                changeDetails.add("  " + colLabel + ": " + oldVal + " → " + newVal);
             } else {
                 // 值相同：白色显示
                 resultCell.setCellValue(xmlValue);
@@ -856,21 +867,21 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
         revisionSheet.setColumnWidth(0, 6000);  // 表名
         revisionSheet.setColumnWidth(1, 3000);  // 修订级别
         revisionSheet.setColumnWidth(2, 3000);  // 修订方式
-        revisionSheet.setColumnWidth(3, 15000); // 修订明细
-        
+        revisionSheet.setColumnWidth(3, 20000); // 修订明细（扩大以容纳 A→B 变化内容）
+
         // 创建样式
         CellStyle addedStyle = createBorderStyle(workbook);
         addedStyle.setFillForegroundColor(IndexedColors.LIGHT_GREEN.getIndex());
         addedStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-        
+
         CellStyle deletedStyle = createBorderStyle(workbook);
         deletedStyle.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
         deletedStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-        
+
         CellStyle modifiedStyle = createBorderStyle(workbook);
         modifiedStyle.setFillForegroundColor(IndexedColors.YELLOW.getIndex());
         modifiedStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-        
+
         CellStyle borderStyle = createBorderStyle(workbook);
         CellStyle wrapStyle = createBorderStyle(workbook);
         wrapStyle.setWrapText(true);
@@ -904,20 +915,32 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
                 String address = "'" + record.targetSheet + "'!A" + (record.targetRow + 1);
                 link.setAddress(address);
                 detailCell.setHyperlink(link);
-                
-                // 设置超链接样式
+
+                // 修订明细包含多行变化内容时用黑色可读样式，仅首行字段名带超链接下划线蓝色
+                boolean hasChangeDetail = record.revisionDetail.contains("\n");
                 CellStyle linkStyle = workbook.createCellStyle();
                 linkStyle.cloneStyleFrom(wrapStyle);
                 Font linkFont = workbook.createFont();
-                linkFont.setColor(IndexedColors.BLUE.getIndex());
-                linkFont.setUnderline(Font.U_SINGLE);
+                if (hasChangeDetail) {
+                    // 有变化明细：黑色字体，便于多行阅读；靠超链接地址跳转
+                    linkFont.setColor(IndexedColors.BLACK1.getIndex());
+                } else {
+                    linkFont.setColor(IndexedColors.BLUE.getIndex());
+                    linkFont.setUnderline(Font.U_SINGLE);
+                }
                 linkStyle.setFont(linkFont);
                 detailCell.setCellStyle(linkStyle);
-                
+
+                // 行高自适应（每行约 300 height units）
+                int lineCount = record.revisionDetail.split("\n").length;
+                if (lineCount > 1) {
+                    row.setHeight((short) Math.min(lineCount * 320, 8000));
+                }
+
                 // 反向超链接：在目标sheet的A列添加链接返回修订记录
                 addBackLinkToRevision(workbook, record.targetSheet, record.targetRow, rowNum, "修订记录");
             }
-            
+
             rowNum++;
         }
         

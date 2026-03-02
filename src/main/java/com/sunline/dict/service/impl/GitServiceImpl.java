@@ -1231,4 +1231,214 @@ public class GitServiceImpl implements GitService {
             return httpUrlToRepo;
         }
     }
+
+    @Override
+    public List<Map<String, Object>> pushCode(String sourceFolder, String commitMessage,
+                                               List<Map<String, Object>> tasks) {
+        log.info("==================== 开始一键代码推送 ====================");
+        log.info("来源文件夹: {}", sourceFolder);
+        log.info("提交信息: {}", commitMessage);
+        log.info("推送任务数量: {}", tasks.size());
+
+        List<Map<String, Object>> results = new ArrayList<>();
+
+        // 校验来源文件夹
+        java.io.File sourceDir = new java.io.File(sourceFolder);
+        if (!sourceDir.exists() || !sourceDir.isDirectory()) {
+            log.error("来源文件夹不存在或不是目录: {}", sourceFolder);
+            Map<String, Object> errResult = new HashMap<>();
+            errResult.put("project", "系统");
+            errResult.put("branch", "-");
+            errResult.put("success", false);
+            errResult.put("message", "来源文件夹不存在或不是目录: " + sourceFolder);
+            results.add(errResult);
+            return results;
+        }
+
+        // 获取所有工程信息，建立 id -> project 映射
+        List<Map<String, Object>> allProjects = getProjects();
+        Map<Integer, Map<String, Object>> projectMap = new HashMap<>();
+        for (Map<String, Object> p : allProjects) {
+            projectMap.put((Integer) p.get("id"), p);
+        }
+
+        for (Map<String, Object> task : tasks) {
+            Integer projectId = null;
+            String branch = null;
+            try {
+                Object pidObj = task.get("projectId");
+                if (pidObj instanceof Integer) {
+                    projectId = (Integer) pidObj;
+                } else if (pidObj != null) {
+                    projectId = Integer.parseInt(pidObj.toString());
+                }
+                branch = (String) task.get("branch");
+            } catch (Exception e) {
+                log.error("解析任务参数失败: {}", task, e);
+            }
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("branch", branch != null ? branch : "-");
+
+            if (projectId == null || branch == null || branch.trim().isEmpty()) {
+                result.put("project", "未知工程");
+                result.put("success", false);
+                result.put("message", "任务参数无效（projectId 或 branch 为空）");
+                results.add(result);
+                continue;
+            }
+
+            Map<String, Object> project = projectMap.get(projectId);
+            if (project == null) {
+                result.put("project", "ID=" + projectId);
+                result.put("success", false);
+                result.put("message", "未找到对应工程（ID=" + projectId + "）");
+                results.add(result);
+                continue;
+            }
+
+            String projectName = (String) project.get("name");
+            result.put("project", projectName);
+            log.info("------------------------------------------------------------");
+            log.info("处理任务: 工程={} 分支={}", projectName, branch);
+
+            java.io.File tempDir = null;
+            try {
+                // 通过 GitLab API 获取工程克隆地址
+                String gitlabProjectId = String.valueOf(
+                        project.get("gitlabProjectId") != null ? project.get("gitlabProjectId") : project.get("id"));
+                JsonNode projectJson = executeApiRequest("/projects/" + gitlabProjectId);
+                String httpUrlToRepo = projectJson.get("http_url_to_repo").asText();
+                String authenticatedUrl = buildAuthenticatedGitUrl(httpUrlToRepo);
+
+                // 创建临时目录
+                tempDir = java.nio.file.Files.createTempDirectory("code-push-").toFile();
+                log.info("临时目录: {}", tempDir.getAbsolutePath());
+
+                // 克隆指定分支（浅克隆，depth=1）
+                log.info("克隆工程 {} 分支 {} ...", projectName, branch);
+                runGitCommand(tempDir.getParentFile(),
+                        "git", "clone", "--depth=1", "-b", branch, authenticatedUrl, tempDir.getAbsolutePath());
+
+                // 将来源文件夹的内容复制到克隆目录根目录（强制覆盖）
+                log.info("复制文件夹内容到工程根目录...");
+                copyDirectoryContents(sourceDir, tempDir);
+
+                // git config user 信息（避免部分环境缺少全局配置报错）
+                runGitCommand(tempDir, "git", "config", "user.email", gitlabUsername + "@push.local");
+                runGitCommand(tempDir, "git", "config", "user.name", gitlabUsername);
+
+                // git add all
+                runGitCommand(tempDir, "git", "add", "-A");
+
+                // git commit
+                String fullCommitMsg = commitMessage + " [auto push by sunline-benchmark]";
+                runGitCommand(tempDir, "git", "commit", "-m", fullCommitMsg);
+
+                // git push --force
+                log.info("强制推送到远端分支 {} ...", branch);
+                runGitCommand(tempDir, "git", "push", "--force", "origin", branch);
+
+                result.put("success", true);
+                result.put("message", "✅ 推送成功：" + projectName + " → " + branch);
+                log.info("✓ 工程 {} 分支 {} 推送成功", projectName, branch);
+
+            } catch (Exception e) {
+                String errMsg = e.getMessage();
+                // 若无文件变更，视为成功（nothing to commit）
+                if (errMsg != null && (errMsg.contains("nothing to commit") || errMsg.contains("nothing added to commit"))) {
+                    result.put("success", true);
+                    result.put("message", "✅ 无文件变更，跳过推送：" + projectName + " → " + branch);
+                    log.info("~ 工程 {} 分支 {} 无变更，跳过推送", projectName, branch);
+                } else {
+                    log.error("工程 {} 分支 {} 推送失败: {}", projectName, branch, errMsg, e);
+                    result.put("success", false);
+                    result.put("message", "❌ 推送失败：" + (errMsg != null ? errMsg : e.toString()));
+                }
+            } finally {
+                // 清理临时目录
+                if (tempDir != null && tempDir.exists()) {
+                    try {
+                        deleteDirectory(tempDir);
+                        log.debug("临时目录已清理: {}", tempDir.getAbsolutePath());
+                    } catch (Exception ex) {
+                        log.warn("清理临时目录失败: {}", tempDir.getAbsolutePath(), ex);
+                    }
+                }
+            }
+
+            results.add(result);
+        }
+
+        log.info("==================== 一键代码推送完成，共 {} 个任务 ====================", results.size());
+        return results;
+    }
+
+    /**
+     * 执行 git 命令，若退出码非 0 则抛出异常（携带命令输出）
+     */
+    private void runGitCommand(java.io.File workDir, String... command) throws Exception {
+        log.debug("执行命令: {} (workDir={})", String.join(" ", command), workDir);
+        ProcessBuilder pb = new ProcessBuilder(command);
+        pb.directory(workDir);
+        pb.redirectErrorStream(true);
+        Process process = pb.start();
+
+        StringBuilder output = new StringBuilder();
+        try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                new java.io.InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                output.append(line).append("\n");
+                log.debug("  > {}", line);
+            }
+        }
+
+        int exitCode = process.waitFor();
+        if (exitCode != 0) {
+            String outputStr = output.toString().trim();
+            throw new RuntimeException("命令执行失败(exit=" + exitCode + "): " + String.join(" ", command)
+                    + "\n" + outputStr);
+        }
+    }
+
+    /**
+     * 将来源目录中的所有文件/子目录递归复制到目标目录（强制覆盖）
+     * 不复制 .git 目录
+     */
+    private void copyDirectoryContents(java.io.File src, java.io.File dest) throws Exception {
+        if (!dest.exists()) {
+            dest.mkdirs();
+        }
+        java.io.File[] files = src.listFiles();
+        if (files == null) return;
+        for (java.io.File file : files) {
+            if (file.getName().equals(".git")) continue;
+            java.io.File target = new java.io.File(dest, file.getName());
+            if (file.isDirectory()) {
+                copyDirectoryContents(file, target);
+            } else {
+                java.nio.file.Files.copy(file.toPath(), target.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+    }
+
+    /**
+     * 递归删除目录
+     */
+    private void deleteDirectory(java.io.File dir) {
+        if (dir == null || !dir.exists()) return;
+        java.io.File[] files = dir.listFiles();
+        if (files != null) {
+            for (java.io.File f : files) {
+                if (f.isDirectory()) {
+                    deleteDirectory(f);
+                } else {
+                    f.delete();
+                }
+            }
+        }
+        dir.delete();
+    }
 }

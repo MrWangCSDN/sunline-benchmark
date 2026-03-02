@@ -257,6 +257,39 @@ public class GitController {
     }
     
     /**
+     * 一键代码推送
+     */
+    @PostMapping("/code-push")
+    public Result<List<Map<String, Object>>> pushCode(@RequestBody Map<String, Object> request) {
+        try {
+            String sourceFolder = (String) request.get("sourceFolder");
+            String commitMessage = (String) request.get("commitMessage");
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> tasks = (List<Map<String, Object>>) request.get("tasks");
+
+            if (sourceFolder == null || sourceFolder.trim().isEmpty()) {
+                return Result.error("来源文件夹路径不能为空");
+            }
+            if (commitMessage == null || commitMessage.trim().isEmpty()) {
+                return Result.error("提交信息不能为空");
+            }
+            if (tasks == null || tasks.isEmpty()) {
+                return Result.error("推送任务列表不能为空");
+            }
+
+            List<Map<String, Object>> results = gitService.pushCode(
+                sourceFolder.trim(),
+                commitMessage.trim(),
+                tasks
+            );
+            return Result.success(results);
+        } catch (Exception e) {
+            log.error("一键代码推送失败", e);
+            return Result.error("一键代码推送失败: " + e.getMessage());
+        }
+    }
+
+    /**
      * 批量克隆Git项目
      */
     @PostMapping("/clone")

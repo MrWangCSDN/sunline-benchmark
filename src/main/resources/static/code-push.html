@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>一键代码推送 - 字典管理系统</title>
+    <script src="/js/vue.global.js"></script>
+    <script src="/js/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        #app {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header .subtitle {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            padding: 30px;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #374151;
+            font-size: 14px;
+        }
+
+        .form-group input[type="text"] {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s;
+            outline: none;
+        }
+
+        .form-group input[type="text"]:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-group .help-text {
+            margin-top: 5px;
+            font-size: 12px;
+            color: #6b7280;
+        }
+
+        /* 文件夹输入区域 */
+        .folder-input-wrapper {
+            display: flex;
+            gap: 10px;
+            align-items: stretch;
+        }
+
+        .folder-input-wrapper input[type="text"] {
+            flex: 1;
+        }
+
+        .btn-folder-browse {
+            padding: 12px 18px;
+            background: #f3f4f6;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #374151;
+            transition: all 0.3s;
+            white-space: nowrap;
+            font-weight: 500;
+        }
+
+        .btn-folder-browse:hover {
+            background: #e5e7eb;
+            border-color: #9ca3af;
+        }
+
+        /* 隐藏的文件夹选择input */
+        .folder-file-input {
+            display: none;
+        }
+
+        /* 工程列表容器 */
+        .projects-container {
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            background: #f9fafb;
+            overflow: hidden;
+        }
+
+        .projects-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 15px;
+            background: #f3f4f6;
+            border-bottom: 1px solid #e5e7eb;
+            flex-wrap: wrap;
+        }
+
+        .select-all-btn {
+            padding: 6px 14px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .select-all-btn:hover {
+            background: #5568d3;
+        }
+
+        .branch-select-all-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-left: auto;
+        }
+
+        .branch-select-all-group span {
+            font-size: 12px;
+            color: #6b7280;
+            font-weight: 500;
+        }
+
+        .branch-all-btn {
+            padding: 4px 10px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            background: white;
+            transition: all 0.2s;
+        }
+
+        .branch-all-btn.master { color: #dc2626; border-color: #fca5a5; }
+        .branch-all-btn.master:hover { background: #fee2e2; border-color: #dc2626; }
+        .branch-all-btn.dev { color: #16a34a; border-color: #86efac; }
+        .branch-all-btn.dev:hover { background: #dcfce7; border-color: #16a34a; }
+        .branch-all-btn.sit { color: #2563eb; border-color: #93c5fd; }
+        .branch-all-btn.sit:hover { background: #dbeafe; border-color: #2563eb; }
+
+        .projects-list-wrap {
+            max-height: 420px;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        /* 工程行 */
+        .project-row {
+            display: flex;
+            align-items: center;
+            padding: 12px 14px;
+            margin-bottom: 8px;
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            transition: all 0.2s;
+            gap: 12px;
+        }
+
+        .project-row:hover {
+            border-color: #667eea;
+            background: #f5f6ff;
+            box-shadow: 0 1px 4px rgba(102, 126, 234, 0.15);
+        }
+
+        .project-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .project-checkbox {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #667eea;
+            flex-shrink: 0;
+        }
+
+        .project-name {
+            flex: 1;
+            font-size: 14px;
+            font-weight: 500;
+            color: #1f2937;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .project-path {
+            font-size: 11px;
+            color: #9ca3af;
+            margin-left: 6px;
+            font-weight: normal;
+        }
+
+        /* 分支勾选区 */
+        .branch-checks {
+            display: flex;
+            gap: 14px;
+            flex-shrink: 0;
+        }
+
+        .branch-check-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .branch-check-item input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .branch-check-item input.master { accent-color: #dc2626; }
+        .branch-check-item input.dev { accent-color: #16a34a; }
+        .branch-check-item input.sit { accent-color: #2563eb; }
+
+        .branch-label {
+            font-size: 12px;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .branch-label.master { color: #dc2626; background: #fee2e2; }
+        .branch-label.dev { color: #16a34a; background: #dcfce7; }
+        .branch-label.sit { color: #2563eb; background: #dbeafe; }
+
+        /* 按钮区 */
+        .btn {
+            padding: 12px 28px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 5px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 18px rgba(102, 126, 234, 0.45);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #4b5563;
+            transform: translateY(-1px);
+        }
+
+        .btn-warning {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .btn-warning:hover:not(:disabled) {
+            background: #d97706;
+            transform: translateY(-1px);
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background: #dc2626;
+            transform: translateY(-1px);
+        }
+
+        .action-buttons {
+            text-align: center;
+            margin-top: 28px;
+            padding-top: 20px;
+            border-top: 1px solid #f3f4f6;
+        }
+
+        /* 加载中 */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+
+        .spinner {
+            border: 4px solid #f3f4f6;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 38px;
+            height: 38px;
+            animation: spin 0.9s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 选中统计 */
+        .selection-stats {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #6b7280;
+            display: flex;
+            gap: 16px;
+        }
+
+        .selection-stats span {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .stat-badge {
+            padding: 1px 7px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 11px;
+        }
+
+        .stat-badge.projects { background: #e0e7ff; color: #4338ca; }
+        .stat-badge.branches { background: #d1fae5; color: #065f46; }
+
+        /* 推送进度/结果 */
+        .result-section {
+            margin-top: 20px;
+        }
+
+        .result-section h3 {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .progress-bar-wrap {
+            background: #f3f4f6;
+            border-radius: 6px;
+            height: 8px;
+            margin-bottom: 16px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            border-radius: 6px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            transition: width 0.4s ease;
+        }
+
+        .result-list {
+            max-height: 320px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .result-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            border: 1px solid transparent;
+        }
+
+        .result-item.success {
+            background: #f0fdf4;
+            border-color: #bbf7d0;
+            color: #14532d;
+        }
+
+        .result-item.error {
+            background: #fef2f2;
+            border-color: #fecaca;
+            color: #7f1d1d;
+        }
+
+        .result-item.running {
+            background: #eff6ff;
+            border-color: #bfdbfe;
+            color: #1e3a5f;
+        }
+
+        .result-icon {
+            flex-shrink: 0;
+            font-size: 15px;
+        }
+
+        .result-content {
+            flex: 1;
+        }
+
+        .result-content strong {
+            display: block;
+            margin-bottom: 2px;
+        }
+
+        .result-content .result-msg {
+            font-size: 12px;
+            opacity: 0.85;
+        }
+
+        /* 空状态 */
+        .empty-state {
+            text-align: center;
+            padding: 50px 20px;
+            color: #9ca3af;
+        }
+
+        .empty-state .empty-icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+
+        /* 分隔线标题 */
+        .section-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .section-title::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: #e5e7eb;
+        }
+
+        /* 警告提示 */
+        .warning-banner {
+            background: #fffbeb;
+            border: 1px solid #fcd34d;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+            font-size: 13px;
+            color: #92400e;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="header">
+            <h1>🚀 一键代码推送</h1>
+            <p class="subtitle">将本地文件夹强制覆盖推送到多个 Git 工程的指定分支</p>
+        </div>
+
+        <div class="card">
+            <div class="warning-banner">
+                ⚠️ <strong>强制覆盖模式：</strong>推送将直接覆盖目标分支中的同名文件，请确认来源文件夹无误后再执行。
+            </div>
+
+            <!-- 来源文件夹 -->
+            <div class="form-group">
+                <label>📁 来源文件夹路径 <span style="color: #ef4444;">*</span></label>
+                <div class="folder-input-wrapper">
+                    <input
+                        type="text"
+                        v-model="sourceFolder"
+                        placeholder="请输入或粘贴本地文件夹的绝对路径，如：/Users/xx/mycode/module-a"
+                        @input="validateFolder">
+                    <button type="button" class="btn-folder-browse" @click="triggerFolderSelect" title="选择本地文件夹">
+                        📂 选择文件夹
+                    </button>
+                </div>
+                <!-- 隐藏的 file input，用于浏览器本地路径选择 -->
+                <input
+                    type="file"
+                    ref="folderInput"
+                    class="folder-file-input"
+                    webkitdirectory
+                    multiple
+                    @change="onFolderSelected">
+                <div class="help-text" v-if="!folderError">文件夹内容将被推送到所选工程根目录下（与模块同级别），采用强制覆盖逻辑</div>
+                <div class="help-text" style="color:#ef4444;" v-if="folderError">{{ folderError }}</div>
+            </div>
+
+            <!-- 提交信息 -->
+            <div class="form-group">
+                <label>💬 提交信息 <span style="color: #ef4444;">*</span></label>
+                <input
+                    type="text"
+                    v-model="commitMessage"
+                    placeholder="如：feat: 一键代码推送更新">
+                <div class="help-text">本次推送的 Git commit 提交说明</div>
+            </div>
+
+            <!-- 工程和分支选择 -->
+            <div class="form-group">
+                <div class="section-title">🗂️ 选择目标工程和分支</div>
+                <div class="projects-container">
+                    <!-- 工具栏 -->
+                    <div class="projects-toolbar">
+                        <button type="button" class="select-all-btn" @click="toggleSelectAllProjects">
+                            {{ allProjectsSelected ? '取消全选' : '全选工程' }}
+                        </button>
+                        <div class="branch-select-all-group">
+                            <span>批量选分支：</span>
+                            <button type="button" class="branch-all-btn master" @click="toggleAllBranch('master')">master</button>
+                            <button type="button" class="branch-all-btn dev" @click="toggleAllBranch('dev')">dev</button>
+                            <button type="button" class="branch-all-btn sit" @click="toggleAllBranch('sit')">sit</button>
+                        </div>
+                    </div>
+
+                    <!-- 列表体 -->
+                    <div class="projects-list-wrap">
+                        <div v-if="loadingProjects" class="loading">
+                            <div class="spinner"></div>
+                            <p>正在加载 Git 工程列表...</p>
+                        </div>
+                        <div v-else-if="projects.length === 0" class="empty-state">
+                            <div class="empty-icon">📭</div>
+                            <p>暂无 Git 工程，请检查系统配置</p>
+                        </div>
+                        <template v-else>
+                            <div
+                                v-for="project in projects"
+                                :key="project.id"
+                                class="project-row">
+                                <!-- 工程复选框 -->
+                                <input
+                                    type="checkbox"
+                                    class="project-checkbox"
+                                    :id="'proj-' + project.id"
+                                    :checked="isProjectSelected(project.id)"
+                                    @change="toggleProject(project.id)">
+                                <label :for="'proj-' + project.id" class="project-name" style="cursor:pointer;">
+                                    {{ project.name }}
+                                    <span class="project-path" v-if="project.path">({{ project.path }})</span>
+                                </label>
+
+                                <!-- 分支复选框 -->
+                                <div class="branch-checks">
+                                    <label
+                                        v-for="branch in availableBranches"
+                                        :key="branch"
+                                        class="branch-check-item">
+                                        <input
+                                            type="checkbox"
+                                            :class="branch"
+                                            :checked="isBranchSelected(project.id, branch)"
+                                            @change="toggleBranch(project.id, branch)">
+                                        <span :class="['branch-label', branch]">{{ branch }}</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- 统计信息 -->
+                <div class="selection-stats">
+                    <span>已选工程：<em class="stat-badge projects">{{ selectedProjectCount }}</em> 个</span>
+                    <span>共推送任务：<em class="stat-badge branches">{{ totalTaskCount }}</em> 个（工程×分支）</span>
+                </div>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="action-buttons">
+                <button
+                    type="button"
+                    class="btn btn-primary"
+                    :disabled="pushing || !canPush"
+                    @click="startPush">
+                    <span v-if="pushing">⏳ 推送中...</span>
+                    <span v-else>🚀 一键推送</span>
+                </button>
+                <button
+                    type="button"
+                    class="btn btn-warning"
+                    :disabled="pushing"
+                    @click="resetForm">
+                    🔄 重置
+                </button>
+                <button
+                    type="button"
+                    class="btn btn-secondary"
+                    :disabled="pushing"
+                    @click="cancelPush">
+                    ✖ 取消
+                </button>
+            </div>
+        </div>
+
+        <!-- 推送结果区域 -->
+        <div class="card result-section" v-if="results.length > 0 || pushing">
+            <h3>
+                <span v-if="pushing">⏳ 推送进行中...</span>
+                <span v-else-if="hasError">⚠️ 推送完成（含失败项）</span>
+                <span v-else>✅ 推送完成</span>
+            </h3>
+
+            <!-- 进度条 -->
+            <div class="progress-bar-wrap" v-if="pushing || results.length > 0">
+                <div
+                    class="progress-bar"
+                    :style="{ width: progressPercent + '%' }">
+                </div>
+            </div>
+            <div style="font-size:12px; color:#6b7280; margin-bottom:12px;" v-if="totalTaskCount > 0">
+                {{ results.length }} / {{ totalTaskCount }} 任务完成
+            </div>
+
+            <div class="result-list">
+                <div
+                    v-for="(item, idx) in results"
+                    :key="idx"
+                    :class="['result-item', item.status]">
+                    <span class="result-icon">
+                        <template v-if="item.status === 'success'">✅</template>
+                        <template v-else-if="item.status === 'error'">❌</template>
+                        <template v-else>🔄</template>
+                    </span>
+                    <div class="result-content">
+                        <strong>{{ item.project }} — <span :class="['branch-label', item.branch]" style="font-size:11px;">{{ item.branch }}</span></strong>
+                        <div class="result-msg">{{ item.message }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    sourceFolder: '',
+                    commitMessage: 'feat: 一键代码推送更新',
+                    folderError: '',
+                    projects: [],
+                    loadingProjects: false,
+                    availableBranches: ['master', 'dev', 'sit'],
+                    // 选中结构：{ projectId: Set<branch> }
+                    selections: {},
+                    pushing: false,
+                    results: [],
+                    totalTaskCount: 0
+                };
+            },
+            computed: {
+                allProjectsSelected() {
+                    if (this.projects.length === 0) return false;
+                    return this.projects.every(p => this.isProjectFullySelected(p.id));
+                },
+                selectedProjectCount() {
+                    return this.projects.filter(p => this.isProjectSelected(p.id)).length;
+                },
+                totalSelectedTasks() {
+                    let count = 0;
+                    for (const pid in this.selections) {
+                        count += (this.selections[pid] || new Set()).size;
+                    }
+                    return count;
+                },
+                canPush() {
+                    return this.sourceFolder.trim() !== '' &&
+                        this.commitMessage.trim() !== '' &&
+                        this.totalSelectedTasks > 0;
+                },
+                hasError() {
+                    return this.results.some(r => r.status === 'error');
+                },
+                progressPercent() {
+                    if (this.totalTaskCount === 0) return 0;
+                    return Math.round((this.results.length / this.totalTaskCount) * 100);
+                }
+            },
+            mounted() {
+                this.loadProjects();
+            },
+            methods: {
+                async loadProjects() {
+                    this.loadingProjects = true;
+                    try {
+                        const resp = await axios.get('/api/git/projects');
+                        if (resp.data.code === 200) {
+                            this.projects = resp.data.data || [];
+                            // 初始化 selections
+                            const sel = {};
+                            this.projects.forEach(p => { sel[p.id] = new Set(); });
+                            this.selections = sel;
+                        } else {
+                            alert('加载 Git 工程列表失败: ' + resp.data.message);
+                        }
+                    } catch (e) {
+                        console.error('加载 Git 工程列表失败:', e);
+                        alert('加载 Git 工程列表失败: ' + (e.response?.data?.message || e.message));
+                    } finally {
+                        this.loadingProjects = false;
+                    }
+                },
+
+                /* ===== 文件夹选择 ===== */
+                triggerFolderSelect() {
+                    this.$refs.folderInput.click();
+                },
+                onFolderSelected(e) {
+                    const files = e.target.files;
+                    if (!files || files.length === 0) return;
+                    // 取第一个文件的路径，向上解析出文件夹路径
+                    const firstFile = files[0];
+                    // webkitRelativePath 形如 "folderName/subdir/file.txt"
+                    const relativePath = firstFile.webkitRelativePath;
+                    const topFolder = relativePath.split('/')[0];
+                    // 无法获取完整绝对路径（浏览器安全限制），提示用户
+                    this.sourceFolder = topFolder;
+                    this.folderError = '⚠️ 浏览器安全限制，仅能获取文件夹名称。如需使用绝对路径，请手动粘贴完整路径。';
+                    // 重置 input，允许重复选同一个文件夹
+                    e.target.value = '';
+                },
+                validateFolder() {
+                    this.folderError = '';
+                },
+
+                /* ===== 工程/分支选择 ===== */
+                isProjectSelected(pid) {
+                    return (this.selections[pid] || new Set()).size > 0;
+                },
+                isProjectFullySelected(pid) {
+                    const set = this.selections[pid] || new Set();
+                    return set.size === this.availableBranches.length;
+                },
+                isBranchSelected(pid, branch) {
+                    return (this.selections[pid] || new Set()).has(branch);
+                },
+                toggleProject(pid) {
+                    const set = this.selections[pid] || new Set();
+                    if (set.size > 0) {
+                        // 取消该工程所有分支
+                        this.selections[pid] = new Set();
+                    } else {
+                        // 选中该工程全部分支
+                        this.selections[pid] = new Set(this.availableBranches);
+                    }
+                    // 触发响应式更新
+                    this.selections = { ...this.selections };
+                },
+                toggleBranch(pid, branch) {
+                    const set = new Set(this.selections[pid] || []);
+                    if (set.has(branch)) {
+                        set.delete(branch);
+                    } else {
+                        set.add(branch);
+                    }
+                    this.selections[pid] = set;
+                    this.selections = { ...this.selections };
+                },
+                toggleSelectAllProjects() {
+                    const sel = {};
+                    if (this.allProjectsSelected) {
+                        this.projects.forEach(p => { sel[p.id] = new Set(); });
+                    } else {
+                        this.projects.forEach(p => { sel[p.id] = new Set(this.availableBranches); });
+                    }
+                    this.selections = sel;
+                },
+                toggleAllBranch(branch) {
+                    // 判断当前是否所有有效工程都已勾选该分支
+                    const allOn = this.projects.every(p => (this.selections[p.id] || new Set()).has(branch));
+                    const sel = { ...this.selections };
+                    this.projects.forEach(p => {
+                        const set = new Set(sel[p.id] || []);
+                        if (allOn) {
+                            set.delete(branch);
+                        } else {
+                            set.add(branch);
+                        }
+                        sel[p.id] = set;
+                    });
+                    this.selections = sel;
+                },
+
+                /* ===== 推送 ===== */
+                buildTasks() {
+                    const tasks = [];
+                    this.projects.forEach(p => {
+                        const branches = [...(this.selections[p.id] || new Set())];
+                        branches.forEach(b => {
+                            tasks.push({ projectId: p.id, projectName: p.name, branch: b });
+                        });
+                    });
+                    return tasks;
+                },
+                async startPush() {
+                    if (!this.canPush) return;
+
+                    const tasks = this.buildTasks();
+                    if (tasks.length === 0) {
+                        alert('请至少选择一个工程和分支');
+                        return;
+                    }
+
+                    const projectNames = [...new Set(tasks.map(t => t.projectName))].join('、');
+                    const branchNames = [...new Set(tasks.map(t => t.branch))].join('、');
+                    const confirmMsg = `确认要执行以下操作吗？\n\n` +
+                        `📁 来源路径：${this.sourceFolder}\n` +
+                        `🗂️ 目标工程：${projectNames}\n` +
+                        `🌿 目标分支：${branchNames}\n` +
+                        `📝 提交信息：${this.commitMessage}\n\n` +
+                        `⚠️ 此操作将强制覆盖目标分支中的文件，共 ${tasks.length} 个推送任务！`;
+                    if (!confirm(confirmMsg)) return;
+
+                    this.pushing = true;
+                    this.results = [];
+                    this.totalTaskCount = tasks.length;
+
+                    try {
+                        const payload = {
+                            sourceFolder: this.sourceFolder.trim(),
+                            commitMessage: this.commitMessage.trim(),
+                            tasks: tasks.map(t => ({ projectId: t.projectId, branch: t.branch }))
+                        };
+                        const resp = await axios.post('/api/git/code-push', payload);
+                        if (resp.data.code === 200) {
+                            this.results = (resp.data.data || []).map(item => ({
+                                project: item.project,
+                                branch: item.branch,
+                                status: item.success ? 'success' : 'error',
+                                message: item.message
+                            }));
+                        } else {
+                            this.results = [{ project: '系统', branch: '-', status: 'error', message: resp.data.message || '推送失败' }];
+                        }
+                    } catch (e) {
+                        console.error('代码推送失败:', e);
+                        this.results = [{ project: '系统', branch: '-', status: 'error', message: e.response?.data?.message || e.message || '推送请求失败' }];
+                    } finally {
+                        this.pushing = false;
+                    }
+                },
+
+                /* ===== 重置 / 取消 ===== */
+                resetForm() {
+                    this.sourceFolder = '';
+                    this.commitMessage = 'feat: 一键代码推送更新';
+                    this.folderError = '';
+                    const sel = {};
+                    this.projects.forEach(p => { sel[p.id] = new Set(); });
+                    this.selections = sel;
+                    this.results = [];
+                    this.totalTaskCount = 0;
+                },
+                cancelPush() {
+                    this.resetForm();
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
