@@ -1,6 +1,7 @@
 package com.sunline.dict.controller;
 
 import com.sunline.dict.common.Result;
+import com.sunline.dict.service.CodeSyncService;
 import com.sunline.dict.service.WebhookService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +22,9 @@ public class WebhookController {
     
     @Autowired
     private WebhookService webhookService;
+
+    @Autowired
+    private CodeSyncService codeSyncService;
     
     /**
      * 接收GitHub Webhook
@@ -74,6 +78,14 @@ public class WebhookController {
             }
             
             Map<String, Object> result = webhookService.handleGitLabPushEvent(payload);
+
+            // 同步触发代码同步（失败不影响 XML 解析结果）
+            try {
+                Map<String, Object> syncResult = codeSyncService.syncCode(payload);
+                log.info("代码同步结果：{}", syncResult.get("message"));
+            } catch (Exception syncEx) {
+                log.warn("代码同步失败（不影响主流程）：{}", syncEx.getMessage());
+            }
             
             if ((boolean) result.get("success")) {
                 return Result.success(result);
@@ -119,6 +131,35 @@ public class WebhookController {
         }
     }
     
+    /**
+     * 代码同步 Webhook（GitLab Push → 同步 master 代码到服务器）
+     * URL: POST /api/webhook/code-sync
+     *
+     * <p>在 GitLab 项目设置中，为每个需要同步的工程添加 Webhook：
+     * URL: http://你的服务器:8080/api/webhook/code-sync
+     * Trigger: Push events
+     */
+    @PostMapping("/code-sync")
+    public Result<Map<String, Object>> handleCodeSync(
+            @RequestBody Map<String, Object> payload,
+            @RequestHeader(value = "X-Gitlab-Event", required = false) String event) {
+        try {
+            log.info("收到代码同步 Webhook，事件类型：{}", event);
+
+            if (!"Push Hook".equals(event) && !"push".equals(event)) {
+                log.info("非 Push 事件，忽略。event={}", event);
+                return Result.success(Map.of("message", "非 Push 事件，已忽略"));
+            }
+
+            Map<String, Object> result = codeSyncService.syncCode(payload);
+            return Result.success(result);
+
+        } catch (Exception e) {
+            log.error("代码同步失败", e);
+            return Result.error("代码同步失败：" + e.getMessage());
+        }
+    }
+
     /**
      * Webhook健康检查
      * URL: GET /api/webhook/health

@@ -909,13 +909,24 @@
                 },
                 
                 buildTreeData(flowTree) {
-                    // 提取领域：从flow_from_jar截取，如loan-bpf -> loan
+                    // 始终从 flow_from_jar 中提取领域和分层，不依赖 flow_domain / flow_kind 字段。
+                    // 原因：老格式数据的 flow_domain/flow_kind 可能因拆分逻辑不同而存储错误值。
+                    // flow_from_jar 格式：
+                    //   旧格式：comm-pbf                               → prefix=comm-pbf → domain=comm, kind=pbf
+                    //   新格式：ccbs-comm-impl:master:comm-pbf/src/... → prefix=comm-pbf → domain=comm, kind=pbf
                     let domain = '';
+                    let kind = 'pbf'; // 分层默认 pbf
                     if (flowTree.flow_from_jar) {
-                        const parts = flowTree.flow_from_jar.split('-');
-                        if (parts.length > 0) {
-                            domain = parts[0];
+                        const prefix = this.extractDomainPrefixFromJar(flowTree.flow_from_jar);
+                        if (prefix && prefix.indexOf('-') >= 0) {
+                            const parts = prefix.split('-');
+                            domain = parts[0];   // comm / dept / loan / sett
+                            kind = parts[1] || 'pbf'; // pbf / ...
                         }
+                    }
+                    // 兜底：提取失败时使用后端字段
+                    if (!domain) {
+                        domain = flowTree.flow_domain || '';
                     }
                     
                     const domainColor = this.getDomainColor(domain);
@@ -925,7 +936,7 @@
                         value: flowTree.flow_id,
                         nodeType: 'flow',
                         domain: domain,
-                        layer: 'pbf', // flow类型的分层固定为pbf
+                        layer: kind,
                         itemStyle: {
                             borderColor: domainColor,
                             borderWidth: 2,
@@ -1076,6 +1087,22 @@
                     return nodeData;
                 },
                 
+                // 从 from_jar 中提取领域前缀（dept-pbf），兼容全路径格式
+                // 旧格式：dept-pbf → 返回 dept-pbf
+                // 新格式：ccbs-dept-impl:master:dept-pbf/src/main/... → 返回 dept-pbf
+                extractDomainPrefixFromJar(fromJar) {
+                    if (!fromJar || !fromJar.trim()) return null;
+                    let prefix = fromJar.trim();
+                    if (prefix.includes(':')) {
+                        const parts = prefix.split(':', 3);
+                        if (parts.length >= 3) prefix = parts[2].trim();
+                    }
+                    if (prefix.includes('/')) {
+                        prefix = prefix.split('/')[0].trim();
+                    }
+                    return prefix || null;
+                },
+
                 // 获取领域对应的颜色
                 getDomainColor(domain) {
                     const colorMap = {

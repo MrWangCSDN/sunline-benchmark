@@ -15,6 +15,14 @@ import com.sunline.dict.service.ServiceImplXmlParseService;
 import com.sunline.dict.service.TablesXmlParseService;
 import com.sunline.dict.service.UschemaXmlParseService;
 import com.sunline.dict.service.WebhookService;
+import com.sunline.dict.vectorization.ComplexVectorizationService;
+import com.sunline.dict.vectorization.DictVectorizationService;
+import com.sunline.dict.vectorization.EschemaVectorizationService;
+import com.sunline.dict.vectorization.UschemaVectorizationService;
+import com.sunline.dict.vectorization.ComponentVectorizationService;
+import com.sunline.dict.vectorization.FlowtranVectorizationService;
+import com.sunline.dict.vectorization.MetadataTablesVectorizationService;
+import com.sunline.dict.vectorization.ServiceVectorizationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -79,6 +87,33 @@ public class WebhookServiceImpl implements WebhookService {
     
     @Value("${github.access-token:}")
     private String githubAccessToken;
+
+    @Value("${vectorization.enabled:false}")
+    private boolean vectorizationEnabled;
+
+    @Autowired(required = false)
+    private FlowtranVectorizationService flowtranVectorizationService;
+
+    @Autowired(required = false)
+    private ServiceVectorizationService serviceVectorizationService;
+
+    @Autowired(required = false)
+    private ComponentVectorizationService componentVectorizationService;
+
+    @Autowired(required = false)
+    private MetadataTablesVectorizationService metadataTablesVectorizationService;
+
+    @Autowired(required = false)
+    private ComplexVectorizationService complexVectorizationService;
+
+    @Autowired(required = false)
+    private DictVectorizationService dictVectorizationService;
+
+    @Autowired(required = false)
+    private EschemaVectorizationService eschemaVectorizationService;
+
+    @Autowired(required = false)
+    private UschemaVectorizationService uschemaVectorizationService;
     
     @Override
     public Map<String, Object> handlePushEvent(Map<String, Object> payload) throws Exception {
@@ -168,34 +203,50 @@ public class WebhookServiceImpl implements WebhookService {
             int[] deleted = deleteFlowtranBySourceInfo(sourceInfo);
             totalFlowtran -= deleted[0];
             totalFlowStep -= deleted[1];
+            // 同步删除 Qdrant 向量数据
+            vectorDeleteFlowtran(sourceInfo);
         }
         // 处理 c_schema.xml 删除
         for (String filePath : removedSchemaFiles) {
-            complexXmlParseService.deleteBySourceInfo(projectName + ":" + filePath);
+            String sourceInfo = projectName + ":" + filePath;
+            complexXmlParseService.deleteBySourceInfo(sourceInfo);
+            vectorDeleteComplex(sourceInfo);
         }
         // 处理 d_schema.xml 删除
         for (String filePath : removedDictFiles) {
-            dictXmlParseService.deleteBySourceInfo(projectName + ":" + filePath);
+            String sourceInfo = projectName + ":" + filePath;
+            dictXmlParseService.deleteBySourceInfo(sourceInfo);
+            vectorDeleteDict(sourceInfo);
         }
         // 处理 u_schema.xml 删除
         for (String filePath : removedUschemaFiles) {
-            uschemaXmlParseService.deleteBySourceInfo(projectName + ":" + filePath);
+            String sourceInfo = projectName + ":" + filePath;
+            uschemaXmlParseService.deleteBySourceInfo(sourceInfo);
+            vectorDeleteUschema(sourceInfo);
         }
         // 处理 e_schema.xml 删除
         for (String filePath : removedEschemaFiles) {
-            eschemaXmlParseService.deleteBySourceInfo(projectName + ":" + filePath);
+            String sourceInfo = projectName + ":" + filePath;
+            eschemaXmlParseService.deleteBySourceInfo(sourceInfo);
+            vectorDeleteEschema(sourceInfo);
         }
         // 处理 .tables.xml 删除
         for (String filePath : removedTablesFiles) {
-            tablesXmlParseService.deleteBySourceInfo(projectName + ":" + filePath);
+            String sourceInfo = projectName + ":" + filePath;
+            tablesXmlParseService.deleteBySourceInfo(sourceInfo);
+            vectorDeleteMetadataTables(sourceInfo);
         }
         // 处理构件文件删除
         for (String filePath : removedComponentFiles) {
-            componentXmlParseService.deleteBySourceInfo(projectName + ":" + filePath);
+            String sourceInfo = projectName + ":" + filePath;
+            componentXmlParseService.deleteBySourceInfo(sourceInfo);
+            vectorDeleteComponent(sourceInfo);
         }
         // 处理服务文件删除
         for (String filePath : removedServiceFiles) {
-            serviceFileXmlParseService.deleteBySourceInfo(projectName + ":" + filePath);
+            String sourceInfo = projectName + ":" + filePath;
+            serviceFileXmlParseService.deleteBySourceInfo(sourceInfo);
+            vectorDeleteService(sourceInfo);
         }
         // 处理服务实现文件删除
         for (String filePath : removedServiceImplFiles) {
@@ -211,6 +262,8 @@ public class WebhookServiceImpl implements WebhookService {
                     Map<String, Object> parseResult = flowXmlParseService.parseAndSave(fileContent, sourceInfo);
                     totalFlowtran += (int) parseResult.getOrDefault("flowtranCount", 0);
                     totalFlowStep += (int) parseResult.getOrDefault("flowStepCount", 0);
+                    // MySQL 落库成功后，触发向量化更新
+                    vectorizeFlowtran(sourceInfo);
                 }
             } catch (Exception e) {
                 log.error("处理 flowtrans.xml 失败: {}", filePath, e);
@@ -225,6 +278,7 @@ public class WebhookServiceImpl implements WebhookService {
                     Map<String, Object> parseResult = complexXmlParseService.parseAndSave(fileContent, sourceInfo);
                     log.info("c_schema.xml 解析完成：complex={}, detail={}, 来源={}",
                             parseResult.get("complexCount"), parseResult.get("complexDetailCount"), filePath);
+                    vectorizeComplex(sourceInfo);
                 }
             } catch (Exception e) {
                 log.error("处理 c_schema.xml 失败: {}", filePath, e);
@@ -239,6 +293,7 @@ public class WebhookServiceImpl implements WebhookService {
                     Map<String, Object> parseResult = dictXmlParseService.parseAndSave(fileContent, sourceInfo);
                     log.info("d_schema.xml 解析完成：dict={}, detail={}, 来源={}",
                             parseResult.get("dictCount"), parseResult.get("dictDetailCount"), filePath);
+                    vectorizeDict(sourceInfo);
                 }
             } catch (Exception e) {
                 log.error("处理 d_schema.xml 失败: {}", filePath, e);
@@ -253,6 +308,7 @@ public class WebhookServiceImpl implements WebhookService {
                     Map<String, Object> parseResult = uschemaXmlParseService.parseAndSave(fileContent, sourceInfo);
                     log.info("u_schema.xml 解析完成：uschema={}, detail={}, 来源={}",
                             parseResult.get("uschemaCount"), parseResult.get("uschemaDetailCount"), filePath);
+                    vectorizeUschema(sourceInfo);
                 }
             } catch (Exception e) {
                 log.error("处理 u_schema.xml 失败: {}", filePath, e);
@@ -267,6 +323,7 @@ public class WebhookServiceImpl implements WebhookService {
                     Map<String, Object> parseResult = eschemaXmlParseService.parseAndSave(fileContent, sourceInfo);
                     log.info("e_schema.xml 解析完成：eschema={}, detail={}, 来源={}",
                             parseResult.get("eschemaCount"), parseResult.get("eschemaDetailCount"), filePath);
+                    vectorizeEschema(sourceInfo);
                 }
             } catch (Exception e) {
                 log.error("处理 e_schema.xml 失败: {}", filePath, e);
@@ -282,6 +339,7 @@ public class WebhookServiceImpl implements WebhookService {
                     log.info(".tables.xml 解析完成：tables={}, detail={}, indexes={}, 来源={}",
                             parseResult.get("tablesCount"), parseResult.get("detailCount"),
                             parseResult.get("indexesCount"), filePath);
+                    vectorizeMetadataTables(sourceInfo);
                 }
             } catch (Exception e) {
                 log.error("处理 .tables.xml 失败: {}", filePath, e);
@@ -298,6 +356,7 @@ public class WebhookServiceImpl implements WebhookService {
                     Map<String, Object> parseResult = componentXmlParseService.parseAndSave(fileContent, sourceInfo, componentType);
                     log.info("构件文件 ({}) 解析完成：component={}, detail={}, 来源={}",
                             componentType, parseResult.get("componentCount"), parseResult.get("componentDetailCount"), filePath);
+                    vectorizeComponent(sourceInfo);
                 }
             } catch (Exception e) {
                 log.error("处理构件文件 ({}) 失败: {}", componentType, filePath, e);
@@ -314,6 +373,8 @@ public class WebhookServiceImpl implements WebhookService {
                     Map<String, Object> parseResult = serviceFileXmlParseService.parseAndSave(fileContent, sourceInfo, svcType);
                     log.info("服务文件 ({}) 解析完成：service={}, detail={}, 来源={}",
                             svcType, parseResult.get("serviceCount"), parseResult.get("serviceDetailCount"), filePath);
+                    // MySQL 落库成功后触发向量化
+                    vectorizeService(sourceInfo);
                 }
             } catch (Exception e) {
                 log.error("处理服务文件 ({}) 失败: {}", svcType, filePath, e);
@@ -441,34 +502,50 @@ public class WebhookServiceImpl implements WebhookService {
             int[] deleted = deleteFlowtranBySourceInfo(sourceInfo);
             totalFlowtran -= deleted[0];
             totalFlowStep -= deleted[1];
+            // 同步删除 Qdrant 向量数据
+            vectorDeleteFlowtran(sourceInfo);
         }
         // 处理 c_schema.xml 删除
         for (String filePath : removedSchemaFiles) {
-            complexXmlParseService.deleteBySourceInfo(projectName + ":master:" + filePath);
+            String sourceInfo = projectName + ":master:" + filePath;
+            complexXmlParseService.deleteBySourceInfo(sourceInfo);
+            vectorDeleteComplex(sourceInfo);
         }
         // 处理 d_schema.xml 删除
         for (String filePath : removedDictFiles) {
-            dictXmlParseService.deleteBySourceInfo(projectName + ":master:" + filePath);
+            String sourceInfo = projectName + ":master:" + filePath;
+            dictXmlParseService.deleteBySourceInfo(sourceInfo);
+            vectorDeleteDict(sourceInfo);
         }
         // 处理 u_schema.xml 删除
         for (String filePath : removedUschemaFiles) {
-            uschemaXmlParseService.deleteBySourceInfo(projectName + ":master:" + filePath);
+            String sourceInfo = projectName + ":master:" + filePath;
+            uschemaXmlParseService.deleteBySourceInfo(sourceInfo);
+            vectorDeleteUschema(sourceInfo);
         }
         // 处理 e_schema.xml 删除
         for (String filePath : removedEschemaFiles) {
-            eschemaXmlParseService.deleteBySourceInfo(projectName + ":master:" + filePath);
+            String sourceInfo = projectName + ":master:" + filePath;
+            eschemaXmlParseService.deleteBySourceInfo(sourceInfo);
+            vectorDeleteEschema(sourceInfo);
         }
         // 处理 .tables.xml 删除
         for (String filePath : removedTablesFiles) {
-            tablesXmlParseService.deleteBySourceInfo(projectName + ":master:" + filePath);
+            String sourceInfo = projectName + ":master:" + filePath;
+            tablesXmlParseService.deleteBySourceInfo(sourceInfo);
+            vectorDeleteMetadataTables(sourceInfo);
         }
         // 处理构件文件删除
         for (String filePath : removedComponentFiles) {
-            componentXmlParseService.deleteBySourceInfo(projectName + ":master:" + filePath);
+            String sourceInfo = projectName + ":master:" + filePath;
+            componentXmlParseService.deleteBySourceInfo(sourceInfo);
+            vectorDeleteComponent(sourceInfo);
         }
         // 处理服务文件删除
         for (String filePath : removedServiceFiles) {
-            serviceFileXmlParseService.deleteBySourceInfo(projectName + ":master:" + filePath);
+            String sourceInfo = projectName + ":master:" + filePath;
+            serviceFileXmlParseService.deleteBySourceInfo(sourceInfo);
+            vectorDeleteService(sourceInfo);
         }
         // 处理服务实现文件删除
         for (String filePath : removedServiceImplFiles) {
@@ -484,6 +561,8 @@ public class WebhookServiceImpl implements WebhookService {
                     Map<String, Object> parseResult = flowXmlParseService.parseAndSave(fileContent, sourceInfo);
                     totalFlowtran += (int) parseResult.getOrDefault("flowtranCount", 0);
                     totalFlowStep += (int) parseResult.getOrDefault("flowStepCount", 0);
+                    // MySQL 落库成功后，触发向量化更新
+                    vectorizeFlowtran(sourceInfo);
                 }
             } catch (Exception e) {
                 log.error("处理 flowtrans.xml 失败: {}", filePath, e);
@@ -498,6 +577,7 @@ public class WebhookServiceImpl implements WebhookService {
                     Map<String, Object> parseResult = complexXmlParseService.parseAndSave(fileContent, sourceInfo);
                     log.info("c_schema.xml 解析完成：complex={}, detail={}, 来源={}",
                             parseResult.get("complexCount"), parseResult.get("complexDetailCount"), filePath);
+                    vectorizeComplex(sourceInfo);
                 }
             } catch (Exception e) {
                 log.error("处理 c_schema.xml 失败: {}", filePath, e);
@@ -512,6 +592,7 @@ public class WebhookServiceImpl implements WebhookService {
                     Map<String, Object> parseResult = dictXmlParseService.parseAndSave(fileContent, sourceInfo);
                     log.info("d_schema.xml 解析完成：dict={}, detail={}, 来源={}",
                             parseResult.get("dictCount"), parseResult.get("dictDetailCount"), filePath);
+                    vectorizeDict(sourceInfo);
                 }
             } catch (Exception e) {
                 log.error("处理 d_schema.xml 失败: {}", filePath, e);
@@ -526,6 +607,7 @@ public class WebhookServiceImpl implements WebhookService {
                     Map<String, Object> parseResult = uschemaXmlParseService.parseAndSave(fileContent, sourceInfo);
                     log.info("u_schema.xml 解析完成：uschema={}, detail={}, 来源={}",
                             parseResult.get("uschemaCount"), parseResult.get("uschemaDetailCount"), filePath);
+                    vectorizeUschema(sourceInfo);
                 }
             } catch (Exception e) {
                 log.error("处理 u_schema.xml 失败: {}", filePath, e);
@@ -540,6 +622,7 @@ public class WebhookServiceImpl implements WebhookService {
                     Map<String, Object> parseResult = eschemaXmlParseService.parseAndSave(fileContent, sourceInfo);
                     log.info("e_schema.xml 解析完成：eschema={}, detail={}, 来源={}",
                             parseResult.get("eschemaCount"), parseResult.get("eschemaDetailCount"), filePath);
+                    vectorizeEschema(sourceInfo);
                 }
             } catch (Exception e) {
                 log.error("处理 e_schema.xml 失败: {}", filePath, e);
@@ -555,6 +638,7 @@ public class WebhookServiceImpl implements WebhookService {
                     log.info(".tables.xml 解析完成：tables={}, detail={}, indexes={}, 来源={}",
                             parseResult.get("tablesCount"), parseResult.get("detailCount"),
                             parseResult.get("indexesCount"), filePath);
+                    vectorizeMetadataTables(sourceInfo);
                 }
             } catch (Exception e) {
                 log.error("处理 .tables.xml 失败: {}", filePath, e);
@@ -571,6 +655,7 @@ public class WebhookServiceImpl implements WebhookService {
                     Map<String, Object> parseResult = componentXmlParseService.parseAndSave(fileContent, sourceInfo, componentType);
                     log.info("构件文件 ({}) 解析完成：component={}, detail={}, 来源={}",
                             componentType, parseResult.get("componentCount"), parseResult.get("componentDetailCount"), filePath);
+                    vectorizeComponent(sourceInfo);
                 }
             } catch (Exception e) {
                 log.error("处理构件文件 ({}) 失败: {}", componentType, filePath, e);
@@ -587,6 +672,8 @@ public class WebhookServiceImpl implements WebhookService {
                     Map<String, Object> parseResult = serviceFileXmlParseService.parseAndSave(fileContent, sourceInfo, svcType);
                     log.info("服务文件 ({}) 解析完成：service={}, detail={}, 来源={}",
                             svcType, parseResult.get("serviceCount"), parseResult.get("serviceDetailCount"), filePath);
+                    // MySQL 落库成功后触发向量化
+                    vectorizeService(sourceInfo);
                 }
             } catch (Exception e) {
                 log.error("处理服务文件 ({}) 失败: {}", svcType, filePath, e);
@@ -1253,5 +1340,217 @@ public class WebhookServiceImpl implements WebhookService {
         result.put("flowtranCount", flowtranCount);
         result.put("flowStepCount", flowStepCount);
         return result;
+    }
+
+    /**
+     * 向量化 flowtran（MySQL 落库成功后调用）
+     * 失败不影响主流程
+     */
+    private void vectorizeFlowtran(String sourceInfo) {
+        if (!vectorizationEnabled || flowtranVectorizationService == null) return;
+        try {
+            flowtranVectorizationService.vectorizeBySource(sourceInfo);
+            log.info("flowtran 向量化完成，sourceInfo={}", sourceInfo);
+        } catch (Exception e) {
+            log.warn("flowtran 向量化失败（不影响主流程），sourceInfo={}，错误：{}", sourceInfo, e.getMessage());
+        }
+    }
+
+    /**
+     * 删除 Qdrant 中 flowtran 向量数据（MySQL 删除后调用）
+     * 失败不影响主流程
+     */
+    private void vectorDeleteFlowtran(String sourceInfo) {
+        if (!vectorizationEnabled || flowtranVectorizationService == null) return;
+        try {
+            flowtranVectorizationService.deleteBySource(sourceInfo);
+            log.info("flowtran 向量删除完成，sourceInfo={}", sourceInfo);
+        } catch (Exception e) {
+            log.warn("flowtran 向量删除失败（不影响主流程），sourceInfo={}，错误：{}", sourceInfo, e.getMessage());
+        }
+    }
+
+    /**
+     * 向量化 uschema（MySQL 落库成功后调用）
+     */
+    private void vectorizeUschema(String sourceInfo) {
+        if (!vectorizationEnabled || uschemaVectorizationService == null) return;
+        try {
+            uschemaVectorizationService.vectorizeBySource(sourceInfo);
+            log.info("uschema 向量化完成，sourceInfo={}", sourceInfo);
+        } catch (Exception e) {
+            log.warn("uschema 向量化失败（不影响主流程），sourceInfo={}，错误：{}", sourceInfo, e.getMessage());
+        }
+    }
+
+    /**
+     * 删除 Qdrant 中 uschema 向量数据（MySQL 删除后调用）
+     */
+    private void vectorDeleteUschema(String sourceInfo) {
+        if (!vectorizationEnabled || uschemaVectorizationService == null) return;
+        try {
+            uschemaVectorizationService.deleteBySource(sourceInfo);
+            log.info("uschema 向量删除完成，sourceInfo={}", sourceInfo);
+        } catch (Exception e) {
+            log.warn("uschema 向量删除失败（不影响主流程），sourceInfo={}，错误：{}", sourceInfo, e.getMessage());
+        }
+    }
+
+    /**
+     * 向量化 eschema（MySQL 落库成功后调用）
+     */
+    private void vectorizeEschema(String sourceInfo) {
+        if (!vectorizationEnabled || eschemaVectorizationService == null) return;
+        try {
+            eschemaVectorizationService.vectorizeBySource(sourceInfo);
+            log.info("eschema 向量化完成，sourceInfo={}", sourceInfo);
+        } catch (Exception e) {
+            log.warn("eschema 向量化失败（不影响主流程），sourceInfo={}，错误：{}", sourceInfo, e.getMessage());
+        }
+    }
+
+    /**
+     * 删除 Qdrant 中 eschema 向量数据（MySQL 删除后调用）
+     */
+    private void vectorDeleteEschema(String sourceInfo) {
+        if (!vectorizationEnabled || eschemaVectorizationService == null) return;
+        try {
+            eschemaVectorizationService.deleteBySource(sourceInfo);
+            log.info("eschema 向量删除完成，sourceInfo={}", sourceInfo);
+        } catch (Exception e) {
+            log.warn("eschema 向量删除失败（不影响主流程），sourceInfo={}，错误：{}", sourceInfo, e.getMessage());
+        }
+    }
+
+    /**
+     * 向量化 dict（MySQL 落库成功后调用）
+     */
+    private void vectorizeDict(String sourceInfo) {
+        if (!vectorizationEnabled || dictVectorizationService == null) return;
+        try {
+            dictVectorizationService.vectorizeBySource(sourceInfo);
+            log.info("dict 向量化完成，sourceInfo={}", sourceInfo);
+        } catch (Exception e) {
+            log.warn("dict 向量化失败（不影响主流程），sourceInfo={}，错误：{}", sourceInfo, e.getMessage());
+        }
+    }
+
+    /**
+     * 删除 Qdrant 中 dict 向量数据（MySQL 删除后调用）
+     */
+    private void vectorDeleteDict(String sourceInfo) {
+        if (!vectorizationEnabled || dictVectorizationService == null) return;
+        try {
+            dictVectorizationService.deleteBySource(sourceInfo);
+            log.info("dict 向量删除完成，sourceInfo={}", sourceInfo);
+        } catch (Exception e) {
+            log.warn("dict 向量删除失败（不影响主流程），sourceInfo={}，错误：{}", sourceInfo, e.getMessage());
+        }
+    }
+
+    /**
+     * 向量化 complex（MySQL 落库成功后调用）
+     */
+    private void vectorizeComplex(String sourceInfo) {
+        if (!vectorizationEnabled || complexVectorizationService == null) return;
+        try {
+            complexVectorizationService.vectorizeBySource(sourceInfo);
+            log.info("complex 向量化完成，sourceInfo={}", sourceInfo);
+        } catch (Exception e) {
+            log.warn("complex 向量化失败（不影响主流程），sourceInfo={}，错误：{}", sourceInfo, e.getMessage());
+        }
+    }
+
+    /**
+     * 删除 Qdrant 中 complex 向量数据（MySQL 删除后调用）
+     */
+    private void vectorDeleteComplex(String sourceInfo) {
+        if (!vectorizationEnabled || complexVectorizationService == null) return;
+        try {
+            complexVectorizationService.deleteBySource(sourceInfo);
+            log.info("complex 向量删除完成，sourceInfo={}", sourceInfo);
+        } catch (Exception e) {
+            log.warn("complex 向量删除失败（不影响主流程），sourceInfo={}，错误：{}", sourceInfo, e.getMessage());
+        }
+    }
+
+    /**
+     * 向量化 metadata_tables（MySQL 落库成功后调用）
+     */
+    private void vectorizeMetadataTables(String sourceInfo) {
+        if (!vectorizationEnabled || metadataTablesVectorizationService == null) return;
+        try {
+            metadataTablesVectorizationService.vectorizeBySource(sourceInfo);
+            log.info("metadata_tables 向量化完成，sourceInfo={}", sourceInfo);
+        } catch (Exception e) {
+            log.warn("metadata_tables 向量化失败（不影响主流程），sourceInfo={}，错误：{}", sourceInfo, e.getMessage());
+        }
+    }
+
+    /**
+     * 删除 Qdrant 中 metadata_tables 向量数据（MySQL 删除后调用）
+     */
+    private void vectorDeleteMetadataTables(String sourceInfo) {
+        if (!vectorizationEnabled || metadataTablesVectorizationService == null) return;
+        try {
+            metadataTablesVectorizationService.deleteBySource(sourceInfo);
+            log.info("metadata_tables 向量删除完成，sourceInfo={}", sourceInfo);
+        } catch (Exception e) {
+            log.warn("metadata_tables 向量删除失败（不影响主流程），sourceInfo={}，错误：{}", sourceInfo, e.getMessage());
+        }
+    }
+
+    /**
+     * 向量化 component（MySQL 落库成功后调用）
+     */
+    private void vectorizeComponent(String sourceInfo) {
+        if (!vectorizationEnabled || componentVectorizationService == null) return;
+        try {
+            componentVectorizationService.vectorizeBySource(sourceInfo);
+            log.info("component 向量化完成，sourceInfo={}", sourceInfo);
+        } catch (Exception e) {
+            log.warn("component 向量化失败（不影响主流程），sourceInfo={}，错误：{}", sourceInfo, e.getMessage());
+        }
+    }
+
+    /**
+     * 删除 Qdrant 中 component 向量数据（MySQL 删除后调用）
+     */
+    private void vectorDeleteComponent(String sourceInfo) {
+        if (!vectorizationEnabled || componentVectorizationService == null) return;
+        try {
+            componentVectorizationService.deleteBySource(sourceInfo);
+            log.info("component 向量删除完成，sourceInfo={}", sourceInfo);
+        } catch (Exception e) {
+            log.warn("component 向量删除失败（不影响主流程），sourceInfo={}，错误：{}", sourceInfo, e.getMessage());
+        }
+    }
+
+    /**
+     * 向量化 service（MySQL 落库成功后调用）
+     * 失败不影响主流程
+     */
+    private void vectorizeService(String sourceInfo) {
+        if (!vectorizationEnabled || serviceVectorizationService == null) return;
+        try {
+            serviceVectorizationService.vectorizeBySource(sourceInfo);
+            log.info("service 向量化完成，sourceInfo={}", sourceInfo);
+        } catch (Exception e) {
+            log.warn("service 向量化失败（不影响主流程），sourceInfo={}，错误：{}", sourceInfo, e.getMessage());
+        }
+    }
+
+    /**
+     * 删除 Qdrant 中 service 向量数据（MySQL 删除后调用）
+     * 失败不影响主流程
+     */
+    private void vectorDeleteService(String sourceInfo) {
+        if (!vectorizationEnabled || serviceVectorizationService == null) return;
+        try {
+            serviceVectorizationService.deleteBySource(sourceInfo);
+            log.info("service 向量删除完成，sourceInfo={}", sourceInfo);
+        } catch (Exception e) {
+            log.warn("service 向量删除失败（不影响主流程），sourceInfo={}，错误：{}", sourceInfo, e.getMessage());
+        }
     }
 }

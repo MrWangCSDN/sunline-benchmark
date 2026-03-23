@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XML 数据检索 - 字典管理系统</title>
+    <script src="/js/vue.global.js"></script>
+    <script src="/js/axios.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        #app { max-width: 1100px; margin: 0 auto; }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 28px;
+        }
+        .header h1 { font-size: 30px; margin-bottom: 8px; }
+        .header p { font-size: 14px; opacity: 0.9; }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            padding: 28px;
+            margin-bottom: 20px;
+        }
+
+        /* 路径输入区 */
+        .form-group { margin-bottom: 20px; }
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            color: #374151;
+            font-size: 14px;
+            margin-bottom: 8px;
+        }
+        .path-input-wrap {
+            display: flex;
+            gap: 10px;
+        }
+        .path-input-wrap input {
+            flex: 1;
+            padding: 12px 14px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .path-input-wrap input:focus { border-color: #667eea; box-shadow: 0 0 0 3px rgba(102,126,234,0.1); }
+        .path-input-wrap input.error { border-color: #ef4444; }
+
+        .help-text { margin-top: 5px; font-size: 12px; color: #6b7280; }
+        .error-text { margin-top: 5px; font-size: 12px; color: #ef4444; }
+
+        /* 支持文件类型说明 */
+        .file-types {
+            background: #f0f4ff;
+            border: 1px solid #c7d2fe;
+            border-radius: 8px;
+            padding: 14px 18px;
+            margin-bottom: 22px;
+        }
+        .file-types h4 {
+            font-size: 13px;
+            font-weight: 600;
+            color: #4338ca;
+            margin-bottom: 10px;
+        }
+        .file-type-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 6px;
+        }
+        .file-type-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: #374151;
+        }
+        .badge {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .badge.svc   { background: #dbeafe; color: #1d4ed8; }
+        .badge.impl  { background: #ede9fe; color: #7c3aed; }
+        .badge.cplx  { background: #fce7f3; color: #be185d; }
+        .badge.comp  { background: #fef3c7; color: #d97706; }
+        .badge.tbl   { background: #d1fae5; color: #065f46; }
+
+        /* 按钮 */
+        .action-buttons { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+
+        .btn {
+            padding: 11px 28px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.25s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(102,126,234,0.4); }
+        .btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+
+        .btn-warning { background: #f59e0b; color: white; }
+        .btn-warning:hover:not(:disabled) { background: #d97706; transform: translateY(-1px); }
+        .btn-warning:disabled { opacity: 0.55; cursor: not-allowed; }
+
+        .btn-secondary { background: #6b7280; color: white; }
+        .btn-secondary:hover:not(:disabled) { background: #4b5563; transform: translateY(-1px); }
+        .btn-secondary:disabled { opacity: 0.55; cursor: not-allowed; }
+
+        /* 进度提示 */
+        .scanning-hint {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #667eea;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .spinner {
+            border: 3px solid #e0e7ff;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 22px;
+            height: 22px;
+            animation: spin 0.8s linear infinite;
+            flex-shrink: 0;
+        }
+        @keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
+
+        /* 结果区 */
+        .result-card { margin-top: 0; }
+
+        .result-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 18px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .result-title::after { content:''; flex:1; height:1px; background:#e5e7eb; }
+
+        /* 统计卡片网格 */
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 12px;
+            margin-bottom: 22px;
+        }
+        .stat-card {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            padding: 14px 16px;
+            text-align: center;
+            transition: box-shadow 0.2s;
+        }
+        .stat-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .stat-card .stat-val {
+            font-size: 28px;
+            font-weight: 700;
+            color: #667eea;
+            line-height: 1.1;
+        }
+        .stat-card .stat-label {
+            font-size: 12px;
+            color: #6b7280;
+            margin-top: 4px;
+        }
+
+        /* 详细统计表 */
+        .detail-table-wrap { overflow-x: auto; margin-bottom: 22px; }
+        .detail-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .detail-table th {
+            background: #f3f4f6;
+            padding: 10px 14px;
+            text-align: left;
+            font-weight: 600;
+            color: #374151;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        .detail-table td {
+            padding: 10px 14px;
+            border-bottom: 1px solid #f3f4f6;
+            color: #4b5563;
+        }
+        .detail-table tr:last-child td { border-bottom: none; }
+        .detail-table tr:hover td { background: #f9fafb; }
+        .num { font-weight: 700; color: #1d4ed8; }
+        .zero { color: #9ca3af; }
+
+        /* 错误列表 */
+        .error-section h4 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #dc2626;
+            margin-bottom: 10px;
+        }
+        .error-list {
+            max-height: 260px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .error-item {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 12px;
+        }
+        .error-item .err-file { font-weight: 600; color: #991b1b; word-break: break-all; }
+        .error-item .err-msg  { color: #7f1d1d; margin-top: 2px; word-break: break-all; }
+
+        /* 空结果 */
+        .empty-hint {
+            text-align: center;
+            padding: 30px;
+            color: #9ca3af;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+<div id="app">
+    <div class="header">
+        <h1>🔍 XML 数据检索</h1>
+        <p>递归扫描本地文件夹中的目标 XML 文件，自动解析并落库</p>
+    </div>
+
+    <!-- 配置区 -->
+    <div class="card">
+        <!-- 支持的文件类型说明 -->
+        <div class="file-types">
+            <h4>📋 支持的 XML 文件类型</h4>
+            <div class="file-type-grid">
+                <div class="file-type-item">
+                    <span class="badge svc">service</span>
+                    <span>.pcs.xml / .pbs.xml → service / service_detail</span>
+                </div>
+                <div class="file-type-item">
+                    <span class="badge impl">serviceImpl</span>
+                    <span>.pcsImpl.xml 等 → service_impl</span>
+                </div>
+                <div class="file-type-item">
+                    <span class="badge cplx">complex</span>
+                    <span>.c_schema.xml → complex / complex_detail</span>
+                </div>
+                <div class="file-type-item">
+                    <span class="badge comp">component</span>
+                    <span>.pbcb/.pbcp/.pbcc/.pbct.xml → component / component_detail</span>
+                </div>
+                <div class="file-type-item">
+                    <span class="badge tbl">tables</span>
+                    <span>.tables.xml → metadata_tables / detail / indexes</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 路径输入 -->
+        <div class="form-group">
+            <label>📁 扫描文件夹路径 <span style="color:#ef4444">*</span></label>
+            <div class="path-input-wrap">
+                <input
+                    type="text"
+                    v-model="folderPath"
+                    :class="{ error: pathError }"
+                    placeholder="请输入本地文件夹绝对路径，如：/home/user/project 或 C:\Users\xx\project"
+                    @input="onPathInput"
+                    @keyup.enter="startScan">
+            </div>
+            <div class="error-text" v-if="pathError">{{ pathError }}</div>
+            <div class="help-text" v-else>将递归扫描该文件夹及所有子文件夹下的目标 XML 文件</div>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="action-buttons">
+            <button class="btn btn-primary" :disabled="scanning || !canScan" @click="startScan">
+                <span v-if="scanning">⏳ 检索中...</span>
+                <span v-else>🔍 开始检索</span>
+            </button>
+            <button class="btn btn-warning" :disabled="!scanning" @click="cancelScan">
+                ✖ 取消
+            </button>
+            <button class="btn btn-secondary" :disabled="scanning" @click="resetForm">
+                🔄 重置
+            </button>
+            <div class="scanning-hint" v-if="scanning">
+                <div class="spinner"></div>
+                <span>正在扫描，数据量较大时请耐心等待...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 结果区 -->
+    <div class="card result-card" v-if="result">
+        <div class="result-title">
+            <span v-if="result.errorCount === 0">✅ 检索完成</span>
+            <span v-else>⚠️ 检索完成（含 {{ result.errorCount }} 个失败文件）</span>
+        </div>
+
+        <!-- 总文件数 + 关键汇总 -->
+        <div class="stat-grid">
+            <div class="stat-card">
+                <div class="stat-val">{{ result.totalFiles }}</div>
+                <div class="stat-label">扫描文件总数</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-val" style="color:#1d4ed8;">{{ totalRecords }}</div>
+                <div class="stat-label">入库记录总数</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-val" :style="result.errorCount > 0 ? 'color:#dc2626' : 'color:#16a34a'">
+                    {{ result.errorCount }}
+                </div>
+                <div class="stat-label">失败文件数</div>
+            </div>
+        </div>
+
+        <!-- 分类明细表 -->
+        <div class="detail-table-wrap">
+            <table class="detail-table">
+                <thead>
+                    <tr>
+                        <th>类型</th>
+                        <th>文件数</th>
+                        <th>入库明细</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><span class="badge svc">service</span></td>
+                        <td><span :class="result.fileStats.serviceFiles > 0 ? 'num' : 'zero'">{{ result.fileStats.serviceFiles }}</span></td>
+                        <td>
+                            service: <span :class="result.recordStats.serviceCount > 0 ? 'num' : 'zero'">{{ result.recordStats.serviceCount }}</span>，
+                            service_detail: <span :class="result.recordStats.serviceDetailCount > 0 ? 'num' : 'zero'">{{ result.recordStats.serviceDetailCount }}</span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge impl">serviceImpl</span></td>
+                        <td><span :class="result.fileStats.serviceImplFiles > 0 ? 'num' : 'zero'">{{ result.fileStats.serviceImplFiles }}</span></td>
+                        <td>
+                            service_impl: <span :class="result.recordStats.serviceImplCount > 0 ? 'num' : 'zero'">{{ result.recordStats.serviceImplCount }}</span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge cplx">complex</span></td>
+                        <td><span :class="result.fileStats.complexFiles > 0 ? 'num' : 'zero'">{{ result.fileStats.complexFiles }}</span></td>
+                        <td>
+                            complex: <span :class="result.recordStats.complexCount > 0 ? 'num' : 'zero'">{{ result.recordStats.complexCount }}</span>，
+                            complex_detail: <span :class="result.recordStats.complexDetailCount > 0 ? 'num' : 'zero'">{{ result.recordStats.complexDetailCount }}</span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge comp">component</span></td>
+                        <td><span :class="result.fileStats.componentFiles > 0 ? 'num' : 'zero'">{{ result.fileStats.componentFiles }}</span></td>
+                        <td>
+                            component: <span :class="result.recordStats.componentCount > 0 ? 'num' : 'zero'">{{ result.recordStats.componentCount }}</span>，
+                            component_detail: <span :class="result.recordStats.componentDetailCount > 0 ? 'num' : 'zero'">{{ result.recordStats.componentDetailCount }}</span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge tbl">tables</span></td>
+                        <td><span :class="result.fileStats.tablesFiles > 0 ? 'num' : 'zero'">{{ result.fileStats.tablesFiles }}</span></td>
+                        <td>
+                            metadata_tables: <span :class="result.recordStats.tablesCount > 0 ? 'num' : 'zero'">{{ result.recordStats.tablesCount }}</span>，
+                            detail: <span :class="result.recordStats.tablesDetailCount > 0 ? 'num' : 'zero'">{{ result.recordStats.tablesDetailCount }}</span>，
+                            indexes: <span :class="result.recordStats.tablesIndexesCount > 0 ? 'num' : 'zero'">{{ result.recordStats.tablesIndexesCount }}</span>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 无文件提示 -->
+        <div class="empty-hint" v-if="result.totalFiles === 0">
+            📭 该目录下未找到任何匹配的 XML 文件，请确认路径是否正确
+        </div>
+
+        <!-- 失败文件列表 -->
+        <div class="error-section" v-if="result.errors && result.errors.length > 0">
+            <h4>❌ 解析失败的文件（{{ result.errors.length }} 个）</h4>
+            <div class="error-list">
+                <div class="error-item" v-for="(err, i) in result.errors" :key="i">
+                    <div class="err-file">{{ err.file }}</div>
+                    <div class="err-msg">{{ err.error }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const { createApp } = Vue;
+
+    createApp({
+        data() {
+            return {
+                folderPath: '',
+                pathError: '',
+                scanning: false,
+                result: null,
+                cancelRequested: false
+            };
+        },
+        computed: {
+            canScan() {
+                return this.folderPath.trim() !== '' && !this.pathError;
+            },
+            totalRecords() {
+                if (!this.result) return 0;
+                const r = this.result.recordStats;
+                return r.serviceCount + r.serviceDetailCount
+                    + r.serviceImplCount
+                    + r.complexCount + r.complexDetailCount
+                    + r.componentCount + r.componentDetailCount
+                    + r.tablesCount + r.tablesDetailCount + r.tablesIndexesCount;
+            }
+        },
+        methods: {
+            onPathInput() {
+                const p = this.folderPath.trim();
+                if (!p) { this.pathError = ''; return; }
+                if (!/^\//.test(p) && !/^[A-Za-z]:[/\\]/.test(p)) {
+                    this.pathError = '❌ 请输入完整的绝对路径，如：/home/user/project 或 C:\\Users\\xx\\project';
+                } else {
+                    this.pathError = '';
+                }
+            },
+
+            async startScan() {
+                if (!this.canScan || this.scanning) return;
+
+                const path = this.folderPath.trim();
+                if (!confirm(`确认要扫描以下目录并将 XML 数据写入数据库吗？\n\n📁 ${path}\n\n注意：同 sourceInfo 的记录将被覆盖更新。`)) return;
+
+                this.scanning = true;
+                this.result = null;
+                this.cancelRequested = false;
+
+                try {
+                    const resp = await axios.post('/api/xml-scan/scan', { folderPath: path }, { timeout: 600000 });
+                    if (resp.data.code === 200) {
+                        this.result = resp.data.data;
+                    } else {
+                        alert('检索失败：' + (resp.data.message || '未知错误'));
+                    }
+                } catch (e) {
+                    if (!this.cancelRequested) {
+                        alert('检索请求失败：' + (e.response?.data?.message || e.message || '网络错误'));
+                    }
+                } finally {
+                    this.scanning = false;
+                }
+            },
+
+            cancelScan() {
+                this.cancelRequested = true;
+                this.scanning = false;
+                alert('已请求取消（当前正在处理的文件会完成后停止）');
+            },
+
+            resetForm() {
+                this.folderPath = '';
+                this.pathError = '';
+                this.result = null;
+                this.scanning = false;
+                this.cancelRequested = false;
+            }
+        }
+    }).mount('#app');
+</script>
+</body>
+</html>

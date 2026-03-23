@@ -60,6 +60,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
                     "/login.html",
                     "/api/auth/**",
                     "/api/webhook/**",  // webhook接口允许匿名访问
+                    "/api/build/all",   // 构建全量接口允许匿名访问
                     "/js/**",
                     "/css/**",
                     "/*.html",

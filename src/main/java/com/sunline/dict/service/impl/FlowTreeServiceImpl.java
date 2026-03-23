@@ -3,13 +3,19 @@ package com.sunline.dict.service.impl;
 import com.sunline.dict.entity.FlowStep;
 import com.sunline.dict.entity.Flowtran;
 import com.sunline.dict.entity.HardCodeMethodStack;
-import com.sunline.dict.entity.ServiceTypeFile;
-import com.sunline.dict.entity.ServiceTypeImplFile;
+import com.sunline.dict.entity.Component;
+import com.sunline.dict.entity.ComponentDetail;
+import com.sunline.dict.entity.ServiceDetail;
+import com.sunline.dict.entity.ServiceFile;
+import com.sunline.dict.entity.ServiceImplFile;
+import com.sunline.dict.mapper.ComponentDetailMapper;
+import com.sunline.dict.mapper.ComponentMapper;
 import com.sunline.dict.mapper.FlowStepMapper;
 import com.sunline.dict.mapper.FlowtranMapper;
 import com.sunline.dict.mapper.HardCodeMethodStackMapper;
-import com.sunline.dict.mapper.ServiceTypeFileMapper;
-import com.sunline.dict.mapper.ServiceTypeImplFileMapper;
+import com.sunline.dict.mapper.ServiceDetailMapper;
+import com.sunline.dict.mapper.ServiceFileMapper;
+import com.sunline.dict.mapper.ServiceImplFileMapper;
 import com.sunline.dict.service.FlowTreeService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -37,10 +43,19 @@ public class FlowTreeServiceImpl implements FlowTreeService {
     private FlowStepMapper flowStepMapper;
     
     @Autowired
-    private ServiceTypeFileMapper serviceTypeFileMapper;
+    private ServiceFileMapper serviceFileMapper;
+
+    @Autowired
+    private ServiceDetailMapper serviceDetailMapper;
     
     @Autowired
-    private ServiceTypeImplFileMapper serviceTypeImplFileMapper;
+    private ComponentMapper componentMapper;
+
+    @Autowired
+    private ComponentDetailMapper componentDetailMapper;
+
+    @Autowired
+    private ServiceImplFileMapper serviceImplFileMapper;
     
     @Autowired
     private HardCodeMethodStackMapper hardCodeMethodStackMapper;
@@ -51,8 +66,9 @@ public class FlowTreeServiceImpl implements FlowTreeService {
     // 缓存
     private Map<String, Flowtran> flowtranCache = new HashMap<>();
     private Map<String, List<FlowStep>> flowStepCache = new HashMap<>(); // key: flow_id
-    private Map<String, List<ServiceTypeFile>> serviceTypeFileCache = new HashMap<>(); // key: service_type_id
-    private Map<String, ServiceTypeImplFile> serviceTypeImplFileCache = new HashMap<>(); // key: service_type_id
+    private Map<String, ServiceFile> serviceFileCache = new HashMap<>(); // key: service.id（= serviceTypeId）
+    private Map<String, List<ServiceDetail>> serviceDetailCache = new HashMap<>(); // key: service_type_id
+    private Map<String, ServiceImplFile> serviceTypeImplFileCache = new HashMap<>(); // key: serviceTypeId
     private Map<String, List<HardCodeMethodStack>> hardCodeMethodStackCache = new HashMap<>(); // key: service_type_id|service_type_impl_id|service_name
     
     @Override
@@ -108,12 +124,13 @@ public class FlowTreeServiceImpl implements FlowTreeService {
         List<Map<String, Object>> result = new ArrayList<>();
         
         // 根据from_jar字段匹配领域
-        // from_jar格式：dept-pbf、sett-pbf、comm-pbf、loan-pbf等
-        String domainPrefix = domain + "-";
-        
+        // 支持两种格式：
+        // 1. 旧格式：dept-pbf、sett-pbf、comm-pbf、loan-pbf
+        // 2. 新格式：project:branch:dept-pbf/src/main/.../file.flowtrans.xml（全路径）
         for (Flowtran flowtran : flowtranCache.values()) {
             String fromJar = flowtran.getFromJar();
-            if (fromJar != null && fromJar.startsWith(domainPrefix)) {
+            String extractedDomain = extractDomainFromJar(fromJar);
+            if (domain.equals(extractedDomain)) {
                 Map<String, Object> item = new LinkedHashMap<>();
                 item.put("id", flowtran.getId());
                 item.put("longname", flowtran.getLongname());
@@ -132,6 +149,69 @@ public class FlowTreeServiceImpl implements FlowTreeService {
         
         log.info("领域 {} 下找到 {} 个交易", domain, result.size());
         return result;
+    }
+    
+    /**
+     * 已知领域列表
+     */
+    private static final Set<String> KNOWN_DOMAINS = Set.of("comm", "dept", "loan", "sett");
+
+    /**
+     * 从 from_jar 中提取领域前缀（如 dept-pbf）。
+     * 支持三种格式：
+     * 1. 旧格式：comm-pcs-api → comm-pcs-api
+     * 2. Webhook 格式：ccbs-dept-impl:master:dept-pbf/src/... → dept-pbf
+     * 3. 本地全路径：D:\xxx\ccbs-comm-api\xxx 或 /www/data/ccbs-comm-api/xxx → 从路径段提取
+     */
+    private String extractDomainPrefixFromJar(String fromJar) {
+        if (fromJar == null || fromJar.trim().isEmpty()) return null;
+        String input = fromJar.trim();
+
+        // 格式2：含冒号的 Webhook 格式
+        if (input.contains(":") && !input.matches("^[A-Za-z]:\\\\.*")) {
+            String[] colonParts = input.split(":", 3);
+            if (colonParts.length >= 3) {
+                String seg = colonParts[2].trim();
+                if (seg.contains("/")) seg = seg.split("/")[0].trim();
+                return seg.isEmpty() ? null : seg;
+            }
+        }
+
+        // 格式3：本地全路径（含 / 或 \）→ 扫描路径段，找 ccbs-{domain}-xxx 模式
+        if (input.contains("/") || input.contains("\\")) {
+            String[] pathSegments = input.replace("\\", "/").split("/");
+            for (String seg : pathSegments) {
+                // 匹配 ccbs-{domain}-xxx 格式（如 ccbs-comm-api、ccbs-dept-impl）
+                if (seg.startsWith("ccbs-") && seg.length() > 5) {
+                    String afterCcbs = seg.substring(5); // comm-api、dept-impl
+                    if (afterCcbs.contains("-")) {
+                        String domain = afterCcbs.split("-")[0]; // comm、dept
+                        if (KNOWN_DOMAINS.contains(domain)) {
+                            return domain + "-" + afterCcbs.split("-", 2)[1]; // comm-api
+                        }
+                    }
+                }
+                // 匹配 {domain}-xxx 格式（如 comm-pcs-api、dept-pbf）
+                if (seg.contains("-")) {
+                    String firstPart = seg.split("-")[0];
+                    if (KNOWN_DOMAINS.contains(firstPart)) {
+                        return seg;
+                    }
+                }
+            }
+        }
+
+        // 格式1：直接是 comm-pcs-api 这种短格式
+        return input;
+    }
+
+    /**
+     * 从 from_jar 中提取领域标识（如 dept、comm、sett、loan）。
+     */
+    private String extractDomainFromJar(String fromJar) {
+        String prefix = extractDomainPrefixFromJar(fromJar);
+        if (prefix == null || !prefix.contains("-")) return prefix;
+        return prefix.split("-")[0].trim();
     }
     
     @Override
@@ -183,11 +263,10 @@ public class FlowTreeServiceImpl implements FlowTreeService {
         tree.put("flow_txn_mode", flowtran.getTxnMode());
         tree.put("flow_from_jar", flowtran.getFromJar());
         
-        // 从 flow_from_jar 中提取 flow_domain 和 flow_kind
-        // 例如："loan-pbf" -> flow_domain="loan", flow_kind="pbf"
-        String fromJar = flowtran.getFromJar();
-        if (fromJar != null && fromJar.contains("-")) {
-            String[] parts = fromJar.split("-", 2);
+        // 从 flow_from_jar 中提取 flow_domain 和 flow_kind（兼容新旧格式）
+        String prefix = extractDomainPrefixFromJar(flowtran.getFromJar());
+        if (prefix != null && prefix.contains("-")) {
+            String[] parts = prefix.split("-", 2);
             if (parts.length == 2) {
                 tree.put("flow_domain", parts[0]); // 前半部分：loan
                 tree.put("flow_kind", parts[1]);   // 后半部分：pbf
@@ -232,33 +311,41 @@ public class FlowTreeServiceImpl implements FlowTreeService {
                     String serviceTypeId = parts[0]; // xxxxx
                     String serviceId = parts[1]; // xxx
                     
-                    // 查找service_type_impl_id
-                    ServiceTypeImplFile implFile = serviceTypeImplFileCache.get(serviceTypeId);
+                    // 查找 service_type_impl_id（从 serviceImpl 表获取）
+                    ServiceImplFile implFile = serviceTypeImplFileCache.get(serviceTypeId);
                     if (implFile != null) {
-                        node.put("service_type_impl_id", implFile.getServiceTypeImplId());
+                        node.put("service_type_impl_id", implFile.getId());
                     }
                     
-                    // 查找service_name, service_type_kind, domain
-                    List<ServiceTypeFile> serviceTypeFiles = serviceTypeFileCache.get(serviceTypeId);
-                    if (serviceTypeFiles != null) {
-                        for (ServiceTypeFile stf : serviceTypeFiles) {
-                            if (serviceId.equals(stf.getServiceId())) {
-                                node.put("service_name", stf.getServiceName());
-                                node.put("service_type_kind", stf.getServiceTypeKind());
-                                
-                                // 提取domain
-                                String fromJar = stf.getServiceTypeFromJar();
-                                if (fromJar != null && fromJar.contains("-")) {
-                                    String domain = fromJar.substring(0, fromJar.indexOf("-"));
-                                    node.put("domain", domain);
-                                }
-                                
+                    // 从 service 表获取 kind（分层）和 fromJar（领域）
+                    ServiceFile serviceFile = serviceFileCache.get(serviceTypeId);
+                    if (serviceFile != null) {
+                        node.put("service_type_kind", serviceFile.getKind());
+
+                        // 提取 domain（从 fromJar 或 service.id 解析）
+                        String fromJar = serviceFile.getFromJar();
+                        if (fromJar != null) {
+                            String domainPrefix = extractDomainPrefixFromJar(fromJar);
+                            if (domainPrefix != null && domainPrefix.contains("-")) {
+                                node.put("domain", domainPrefix.split("-")[0]);
+                            }
+                        }
+                    }
+
+                    // 从 service_detail 表获取 service_name（方法）
+                    List<ServiceDetail> details = serviceDetailCache.get(serviceTypeId);
+                    if (details != null) {
+                        for (ServiceDetail sd : details) {
+                            if (serviceId.equals(sd.getServiceId())) {
+                                node.put("service_name", sd.getServiceName());
+
                                 // 构建code_service_list（递归）
-                                String serviceTypeImplId = implFile != null ? implFile.getServiceTypeImplId() : null;
+                                String serviceTypeImplId = implFile != null ? implFile.getId() : null;
+                                String svcName = sd.getServiceName();
                                 List<Map<String, Object>> codeServiceList = buildCodeServiceList(
-                                    serviceTypeId, serviceTypeImplId, stf.getServiceName(), new HashSet<>());
+                                    serviceTypeId, serviceTypeImplId, svcName, new HashSet<>());
                                 node.put("code_service_list", codeServiceList);
-                                
+
                                 break;
                             }
                         }
@@ -317,61 +404,62 @@ public class FlowTreeServiceImpl implements FlowTreeService {
                 continue;
             }
             
-            // 从service_type_file中查找匹配的service
-            List<ServiceTypeFile> codeServiceTypeFiles = serviceTypeFileCache.get(codeServiceTypeId);
-            if (codeServiceTypeFiles == null || codeServiceTypeFiles.isEmpty()) {
-                log.debug("未找到service_type_file记录：service_type_id={}", codeServiceTypeId);
+            // 从 service_detail 中查找匹配的方法
+            List<ServiceDetail> codeDetails = serviceDetailCache.get(codeServiceTypeId);
+            if (codeDetails == null || codeDetails.isEmpty()) {
+                log.debug("未找到 service_detail 记录：service_type_id={}", codeServiceTypeId);
                 continue;
             }
-            
-            // 按code_method_type分组，每个方法对应一个service
+
+            // 从 service 表获取 kind 和 fromJar
+            ServiceFile codeServiceFile = serviceFileCache.get(codeServiceTypeId);
+
+            // 按 code_method_type 分组
             Map<String, List<HardCodeMethodStack>> groupedByMethod = entry.getValue().stream()
-                .collect(Collectors.groupingBy(stack -> 
+                .collect(Collectors.groupingBy(stack ->
                     stack.getCodeMethodType() != null ? stack.getCodeMethodType() : ""));
             
-            // 对于每个方法，查找对应的service
             for (Map.Entry<String, List<HardCodeMethodStack>> methodEntry : groupedByMethod.entrySet()) {
-                String codeMethodType = methodEntry.getKey(); // 被调用的方法名
+                String codeMethodType = methodEntry.getKey();
                 
-                // 根据code_method_type（方法名）匹配service_name
-                ServiceTypeFile matchedServiceTypeFile = null;
-                for (ServiceTypeFile stf : codeServiceTypeFiles) {
-                    if (codeMethodType != null && codeMethodType.equals(stf.getServiceName())) {
-                        matchedServiceTypeFile = stf;
+                // 根据 code_method_type（方法名）匹配 service_detail.service_name
+                ServiceDetail matchedDetail = null;
+                for (ServiceDetail sd : codeDetails) {
+                    if (codeMethodType != null && codeMethodType.equals(sd.getServiceName())) {
+                        matchedDetail = sd;
                         break;
                     }
                 }
                 
-                // 如果找不到精确匹配，跳过（不创建节点）
-                if (matchedServiceTypeFile == null) {
-                    log.debug("未找到匹配的service_name：code_method_type={}, service_type_id={}", 
+                if (matchedDetail == null) {
+                    log.debug("未找到匹配的 service_name：code_method_type={}, service_type_id={}",
                         codeMethodType, codeServiceTypeId);
                     continue;
                 }
                 
-                // 创建code_service节点
                 Map<String, Object> codeService = new LinkedHashMap<>();
                 codeService.put("code_service_type_id", codeServiceTypeId);
                 
-                // 查找对应的service_type_impl_id
-                ServiceTypeImplFile codeImplFile = serviceTypeImplFileCache.get(codeServiceTypeId);
-                String codeServiceTypeImplId = codeImplFile != null ? codeImplFile.getServiceTypeImplId() : null;
+                ServiceImplFile codeImplFile = serviceTypeImplFileCache.get(codeServiceTypeId);
+                String codeServiceTypeImplId = codeImplFile != null ? codeImplFile.getId() : null;
                 codeService.put("code_service_type_impl_id", codeServiceTypeImplId);
                 
-                codeService.put("code_service_name", matchedServiceTypeFile.getServiceName());
-                codeService.put("code_service_long_name", matchedServiceTypeFile.getServiceTypeLongName());
-                codeService.put("code_service_kind", matchedServiceTypeFile.getServiceTypeKind());
+                codeService.put("code_service_name", matchedDetail.getServiceName());
+                codeService.put("code_service_long_name",
+                    codeServiceFile != null ? codeServiceFile.getLongname() : "");
+                codeService.put("code_service_kind",
+                    codeServiceFile != null ? codeServiceFile.getKind() : "");
                 
-                // 提取domain
-                String fromJar = matchedServiceTypeFile.getServiceTypeFromJar();
-                if (fromJar != null && fromJar.contains("-")) {
-                    String domain = fromJar.substring(0, fromJar.indexOf("-"));
-                    codeService.put("code_domain", domain);
+                // 提取 domain
+                if (codeServiceFile != null && codeServiceFile.getFromJar() != null) {
+                    String prefix = extractDomainPrefixFromJar(codeServiceFile.getFromJar());
+                    if (prefix != null && prefix.contains("-")) {
+                        codeService.put("code_domain", prefix.split("-")[0]);
+                    }
                 }
                 
-                // 递归查找code_service_list
                 List<Map<String, Object>> nestedCodeServiceList = buildCodeServiceList(
-                    codeServiceTypeId, codeServiceTypeImplId, matchedServiceTypeFile.getServiceName(), new HashSet<>(visited));
+                    codeServiceTypeId, codeServiceTypeImplId, matchedDetail.getServiceName(), new HashSet<>(visited));
                 codeService.put("code_service_list", nestedCodeServiceList);
                 
                 codeServiceList.add(codeService);
@@ -383,18 +471,16 @@ public class FlowTreeServiceImpl implements FlowTreeService {
     }
     
     /**
-     * 根据类名查找service_type_id
-     * 支持多种匹配策略：精确匹配、去除后缀匹配等
+     * 根据类名查找 service_type_id（从 serviceFileCache 和 serviceDetailCache 中匹配）
      */
     private String findServiceTypeIdByClassName(String className) {
-        // 如果className是完整路径，提取简单类名
         String simpleClassName = className;
         if (className.contains(".")) {
             simpleClassName = className.substring(className.lastIndexOf(".") + 1);
         }
         
-        // 策略1：精确匹配
-        if (serviceTypeFileCache.containsKey(simpleClassName)) {
+        // 策略1：精确匹配 serviceFileCache（key = service.id = serviceTypeId）
+        if (serviceFileCache.containsKey(simpleClassName)) {
             return simpleClassName;
         }
         
@@ -403,14 +489,14 @@ public class FlowTreeServiceImpl implements FlowTreeService {
         for (String suffix : suffixes) {
             if (simpleClassName.endsWith(suffix)) {
                 String withoutSuffix = simpleClassName.substring(0, simpleClassName.length() - suffix.length());
-                if (serviceTypeFileCache.containsKey(withoutSuffix)) {
+                if (serviceFileCache.containsKey(withoutSuffix)) {
                     return withoutSuffix;
                 }
             }
         }
         
-        // 策略3：在缓存中查找包含该类名的key
-        for (String key : serviceTypeFileCache.keySet()) {
+        // 策略3：模糊匹配
+        for (String key : serviceFileCache.keySet()) {
             if (key.equals(simpleClassName) || 
                 simpleClassName.contains(key) || 
                 key.contains(simpleClassName)) {
@@ -430,7 +516,8 @@ public class FlowTreeServiceImpl implements FlowTreeService {
         // 清空缓存
         flowtranCache.clear();
         flowStepCache.clear();
-        serviceTypeFileCache.clear();
+        serviceFileCache.clear();
+        serviceDetailCache.clear();
         serviceTypeImplFileCache.clear();
         hardCodeMethodStackCache.clear();
         
@@ -448,20 +535,64 @@ public class FlowTreeServiceImpl implements FlowTreeService {
         }
         log.info("加载flow_step缓存：{} 条，涉及 {} 个交易", flowSteps.size(), flowStepCache.size());
         
-        // 加载service_type_file，按service_type_id分组
-        List<ServiceTypeFile> serviceTypeFiles = serviceTypeFileMapper.selectList(null);
-        for (ServiceTypeFile stf : serviceTypeFiles) {
-            serviceTypeFileCache.computeIfAbsent(stf.getServiceTypeId(), k -> new ArrayList<>()).add(stf);
+        // 加载 service 表，按 service.id 索引（service.id = serviceTypeId）
+        List<ServiceFile> serviceFiles = serviceFileMapper.selectList(null);
+        for (ServiceFile sf : serviceFiles) {
+            serviceFileCache.put(sf.getId(), sf);
         }
-        log.info("加载service_type_file缓存：{} 条，涉及 {} 个service_type_id", 
-            serviceTypeFiles.size(), serviceTypeFileCache.size());
+        log.info("加载 service 缓存：{} 条", serviceFiles.size());
+
+        // 加载 component 表，合并到 serviceFileCache（构件和服务共用同一缓存）
+        // Component 的字段（id, kind, fromJar）与 ServiceFile 一致，构造一个 ServiceFile 代理对象
+        List<Component> components = componentMapper.selectList(null);
+        for (Component c : components) {
+            if (!serviceFileCache.containsKey(c.getId())) {
+                ServiceFile proxy = new ServiceFile();
+                proxy.setId(c.getId());
+                proxy.setLongname(c.getLongname());
+                proxy.setPackagePath(c.getPackagePath());
+                proxy.setKind(c.getKind());
+                proxy.setServiceType(c.getComponentType());
+                proxy.setFromJar(c.getFromJar());
+                serviceFileCache.put(c.getId(), proxy);
+            }
+        }
+        log.info("加载 service+component 缓存合计：{} 条（service={}, component={}）",
+            serviceFileCache.size(), serviceFiles.size(), components.size());
+
+        // 加载 service_detail 表，按 service_type_id 分组
+        List<ServiceDetail> serviceDetails = serviceDetailMapper.selectList(null);
+        for (ServiceDetail sd : serviceDetails) {
+            serviceDetailCache.computeIfAbsent(sd.getServiceTypeId(), k -> new ArrayList<>()).add(sd);
+        }
+
+        // 加载 component_detail 表，合并到 serviceDetailCache
+        // ComponentDetail 的字段（componentId, serviceId, serviceName）与 ServiceDetail 对应
+        List<ComponentDetail> componentDetails = componentDetailMapper.selectList(null);
+        for (ComponentDetail cd : componentDetails) {
+            if (cd.getComponentId() != null) {
+                ServiceDetail proxy = new ServiceDetail();
+                proxy.setServiceTypeId(cd.getComponentId());
+                proxy.setServiceId(cd.getServiceId());
+                proxy.setServiceName(cd.getServiceName());
+                proxy.setServiceLongname(cd.getServiceLongname());
+                serviceDetailCache.computeIfAbsent(cd.getComponentId(), k -> new ArrayList<>()).add(proxy);
+            }
+        }
+        log.info("加载 service_detail+component_detail 缓存合计：涉及 {} 个 serviceTypeId（detail={}, componentDetail={}）",
+            serviceDetailCache.size(), serviceDetails.size(), componentDetails.size());
         
-        // 加载service_type_impl_file，按service_type_id索引（一个service_type_id对应一个impl）
-        List<ServiceTypeImplFile> serviceTypeImplFiles = serviceTypeImplFileMapper.selectList(null);
-        for (ServiceTypeImplFile stif : serviceTypeImplFiles) {
-            serviceTypeImplFileCache.put(stif.getServiceTypeId(), stif);
+        // 加载 serviceImpl 表，按 serviceType 字段 或 id 前缀作为 cache key
+        // serviceImpl.serviceType 存储的是引用的 serviceType id（如 StCustQuery）
+        // 若 serviceType 为空或存的是类型名（如 pcsImpl），则从 id 中提取（id 格式如 StCustQuery.StCustQueryPbsImpl）
+        List<ServiceImplFile> serviceImplFiles = serviceImplFileMapper.selectList(null);
+        for (ServiceImplFile sif : serviceImplFiles) {
+            String cacheKey = resolveServiceTypeIdFromImpl(sif);
+            if (cacheKey != null && !cacheKey.isEmpty()) {
+                serviceTypeImplFileCache.put(cacheKey, sif);
+            }
         }
-        log.info("加载service_type_impl_file缓存：{} 条", serviceTypeImplFileCache.size());
+        log.info("加载 serviceImpl 缓存：{} 条", serviceTypeImplFileCache.size());
         
         // 加载hard_code_method_stack，按service_type_id|service_type_impl_id|service_name分组
         List<HardCodeMethodStack> stacks = hardCodeMethodStackMapper.selectList(null);
@@ -475,6 +606,29 @@ public class FlowTreeServiceImpl implements FlowTreeService {
             stacks.size(), hardCodeMethodStackCache.size());
         
         log.info("缓存加载完成");
+    }
+
+    /**
+     * 从 ServiceImplFile 中提取对应的 serviceTypeId 作为缓存 key
+     * 优先级：
+     * 1. serviceType 字段（若内容看起来像 serviceTypeId，如含大写字母且不含 Impl）
+     * 2. id 字段的 "." 前半部分（id 格式如 StCustQuery.StCustQueryPbsImpl → StCustQuery）
+     */
+    private String resolveServiceTypeIdFromImpl(ServiceImplFile sif) {
+        // 优先从 serviceType 字段获取（若它存的是真正的 serviceTypeId）
+        String st = sif.getServiceType();
+        if (st != null && !st.isEmpty() && !st.contains("Impl") && !st.equals("pcs") && !st.equals("pbs")
+                && !st.equals("pbcb") && !st.equals("pbcp") && !st.equals("pbcc") && !st.equals("pbct")) {
+            return st;
+        }
+
+        // 从 id 中提取 "." 前半部分
+        String id = sif.getId();
+        if (id != null && id.contains(".")) {
+            return id.split("\\.", 2)[0];
+        }
+
+        return st;
     }
     
     @Override
@@ -542,11 +696,9 @@ public class FlowTreeServiceImpl implements FlowTreeService {
                 String flowId = flow.getId();
                 String fromJar = flow.getFromJar();
                 
-                // 从 from_jar 中提取领域（例如：loan-pbf -> loan）
-                String domain = "unknown";
-                if (fromJar != null && fromJar.contains("-")) {
-                    domain = fromJar.split("-")[0];
-                }
+                // 从 from_jar 中提取领域（兼容旧格式 dept-pbf 和新格式全路径）
+                String domain = extractDomainFromJar(fromJar);
+                if (domain == null) domain = "unknown";
                 
                 // 构建交易树
                 Map<String, Object> tree = buildTree(flowId);

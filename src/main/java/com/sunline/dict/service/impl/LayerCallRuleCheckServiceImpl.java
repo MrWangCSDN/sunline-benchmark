@@ -23,7 +23,16 @@ public class LayerCallRuleCheckServiceImpl implements LayerCallRuleCheckService 
     private FlowtranMapper flowtranMapper;
     
     @Autowired
-    private ServiceTypeFileMapper serviceTypeFileMapper;
+    private ServiceFileMapper serviceFileMapper;
+
+    @Autowired
+    private ServiceDetailMapper serviceDetailMapper;
+
+    @Autowired
+    private ComponentMapper componentMapper;
+
+    @Autowired
+    private ComponentDetailMapper componentDetailMapper;
     
     @Autowired
     private HardCodeMethodStackMapper hardCodeMethodStackMapper;
@@ -67,8 +76,8 @@ public class LayerCallRuleCheckServiceImpl implements LayerCallRuleCheckService 
         // 加载flow领域映射
         Map<String, String> flowDomainMap = loadFlowDomains();
         
-        // 加载service_type映射
-        Map<String, ServiceTypeFile> serviceTypeMap = loadServiceTypeMap();
+        // 加载 service+component 统一映射（key = serviceTypeId|serviceId）
+        Map<String, ServiceInfo> serviceTypeMap = buildUnifiedServiceIdMap();
         
         List<FlowStep> allSteps = flowStepMapper.selectList(null);
         int totalChecked = 0;
@@ -94,37 +103,119 @@ public class LayerCallRuleCheckServiceImpl implements LayerCallRuleCheckService 
         return result;
     }
     
-    private Map<String, Object> checkServiceTypeCalls() {
-        log.info("检查 service_type_file 硬编码调用（pbs、pcs、pbcb等层）");
-        
-        // 加载规则
-        Map<String, List<LayerCallRuleItem>> ruleMap = loadRules();
-        
-        // 加载所有service_type_file
-        List<ServiceTypeFile> allServices = serviceTypeFileMapper.selectList(null);
-        Map<String, ServiceTypeFile> serviceMap = new HashMap<>();
-        for (ServiceTypeFile stf : allServices) {
-            String key = stf.getServiceTypeId() + "|" + stf.getServiceName();
-            serviceMap.put(key, stf);
+    /**
+     * 内部结构：合并 service/service_detail 和 component/component_detail 的查询视图
+     */
+    private static class ServiceInfo {
+        String serviceTypeId;
+        String kind;
+        String fromJar;
+
+        ServiceInfo(String serviceTypeId, String kind, String fromJar) {
+            this.serviceTypeId = serviceTypeId;
+            this.kind = kind;
+            this.fromJar = fromJar;
         }
+    }
+
+    /**
+     * 构建统一的 ServiceInfo Map（service + component 合并），key = serviceTypeId|serviceName
+     */
+    private Map<String, ServiceInfo> buildUnifiedServiceMap() {
+        Map<String, ServiceInfo> map = new HashMap<>();
+
+        // 加载 service + service_detail
+        Map<String, ServiceFile> sfMap = new HashMap<>();
+        for (ServiceFile sf : serviceFileMapper.selectList(null)) {
+            sfMap.put(sf.getId(), sf);
+        }
+        for (ServiceDetail sd : serviceDetailMapper.selectList(null)) {
+            ServiceFile sf = sfMap.get(sd.getServiceTypeId());
+            if (sf != null && sd.getServiceName() != null) {
+                map.put(sd.getServiceTypeId() + "|" + sd.getServiceName(),
+                        new ServiceInfo(sf.getId(), sf.getKind(), sf.getFromJar()));
+            }
+        }
+
+        // 加载 component + component_detail，合并到同一 Map
+        Map<String, Component> compMap = new HashMap<>();
+        for (Component c : componentMapper.selectList(null)) {
+            compMap.put(c.getId(), c);
+        }
+        for (ComponentDetail cd : componentDetailMapper.selectList(null)) {
+            Component c = compMap.get(cd.getComponentId());
+            if (c != null && cd.getServiceName() != null) {
+                String key = cd.getComponentId() + "|" + cd.getServiceName();
+                if (!map.containsKey(key)) {
+                    map.put(key, new ServiceInfo(c.getId(), c.getKind(), c.getFromJar()));
+                }
+            }
+        }
+
+        return map;
+    }
+
+    /**
+     * 构建统一的 ServiceInfo Map，key = serviceTypeId|serviceId（用于 flow_step 查找）
+     */
+    private Map<String, ServiceInfo> buildUnifiedServiceIdMap() {
+        Map<String, ServiceInfo> map = new HashMap<>();
+
+        Map<String, ServiceFile> sfMap = new HashMap<>();
+        for (ServiceFile sf : serviceFileMapper.selectList(null)) {
+            sfMap.put(sf.getId(), sf);
+        }
+        for (ServiceDetail sd : serviceDetailMapper.selectList(null)) {
+            ServiceFile sf = sfMap.get(sd.getServiceTypeId());
+            if (sf != null && sd.getServiceId() != null) {
+                map.put(sd.getServiceTypeId() + "|" + sd.getServiceId(),
+                        new ServiceInfo(sf.getId(), sf.getKind(), sf.getFromJar()));
+            }
+        }
+
+        Map<String, Component> compMap = new HashMap<>();
+        for (Component c : componentMapper.selectList(null)) {
+            compMap.put(c.getId(), c);
+        }
+        for (ComponentDetail cd : componentDetailMapper.selectList(null)) {
+            Component c = compMap.get(cd.getComponentId());
+            if (c != null && cd.getServiceId() != null) {
+                String key = cd.getComponentId() + "|" + cd.getServiceId();
+                if (!map.containsKey(key)) {
+                    map.put(key, new ServiceInfo(c.getId(), c.getKind(), c.getFromJar()));
+                }
+            }
+        }
+
+        return map;
+    }
+
+    private Map<String, Object> checkServiceTypeCalls() {
+        log.info("检查 service/component 硬编码调用（pbs、pcs、pbcb等层）");
         
-        // 加载所有hard_code_method_stack
+        Map<String, List<LayerCallRuleItem>> ruleMap = loadRules();
+        Map<String, ServiceInfo> serviceMap = buildUnifiedServiceMap();
+        
         List<HardCodeMethodStack> allStacks = hardCodeMethodStackMapper.selectList(null);
         
         int totalChecked = 0;
         int violationCount = 0;
         
-        // 按 service_type_id|service_name 分组
         Map<String, List<HardCodeMethodStack>> stackMap = new HashMap<>();
         for (HardCodeMethodStack stack : allStacks) {
             String key = stack.getServiceTypeId() + "|" + stack.getServiceName();
             stackMap.computeIfAbsent(key, k -> new ArrayList<>()).add(stack);
         }
+
+        // 用于批量更新 service/component 的 incorrectCalls
+        Map<String, ServiceFile> sfUpdateMap = new HashMap<>();
+        for (ServiceFile sf : serviceFileMapper.selectList(null)) {
+            sfUpdateMap.put(sf.getId(), sf);
+        }
         
-        // 检查每个service的硬编码调用
         for (Map.Entry<String, List<HardCodeMethodStack>> entry : stackMap.entrySet()) {
             String key = entry.getKey();
-            ServiceTypeFile caller = serviceMap.get(key);
+            ServiceInfo caller = serviceMap.get(key);
             
             if (caller == null) continue;
             
@@ -132,15 +223,10 @@ public class LayerCallRuleCheckServiceImpl implements LayerCallRuleCheckService 
             List<String> violations = new ArrayList<>();
             
             for (HardCodeMethodStack stack : entry.getValue()) {
-                String codeServiceType = stack.getCodeServiceType();
-                String codeMethodType = stack.getCodeMethodType();
-                
-                // 在 service_type_file 表中查找被调用方
-                String calleeKey = codeServiceType + "|" + codeMethodType;
-                ServiceTypeFile callee = serviceMap.get(calleeKey);
+                String calleeKey = stack.getCodeServiceType() + "|" + stack.getCodeMethodType();
+                ServiceInfo callee = serviceMap.get(calleeKey);
                 
                 if (callee != null) {
-                    // 检查调用是否合规
                     String violation = checkServiceCall(caller, callee, ruleMap);
                     if (violation != null) {
                         violations.add(violation);
@@ -148,13 +234,17 @@ public class LayerCallRuleCheckServiceImpl implements LayerCallRuleCheckService 
                 }
             }
             
-            if (!violations.isEmpty()) {
-                violationCount++;
-                caller.setIncorrectCalls(String.join(",", violations));
-                serviceTypeFileMapper.updateById(caller);
-            } else if (caller.getIncorrectCalls() != null && !caller.getIncorrectCalls().isEmpty()) {
-                caller.setIncorrectCalls(null);
-                serviceTypeFileMapper.updateById(caller);
+            // 写入 incorrectCalls（service 表）
+            ServiceFile sf = sfUpdateMap.get(caller.serviceTypeId);
+            if (sf != null) {
+                if (!violations.isEmpty()) {
+                    violationCount++;
+                    sf.setIncorrectCalls(String.join(",", violations));
+                    serviceFileMapper.updateById(sf);
+                } else if (sf.getIncorrectCalls() != null && !sf.getIncorrectCalls().isEmpty()) {
+                    sf.setIncorrectCalls(null);
+                    serviceFileMapper.updateById(sf);
+                }
             }
         }
         
@@ -164,15 +254,14 @@ public class LayerCallRuleCheckServiceImpl implements LayerCallRuleCheckService 
         return result;
     }
     
-    private String checkServiceCall(ServiceTypeFile caller, ServiceTypeFile callee, 
+    private String checkServiceCall(ServiceInfo caller, ServiceInfo callee, 
                                     Map<String, List<LayerCallRuleItem>> ruleMap) {
-        String callerLayer = caller.getServiceTypeKind();
-        String calleeLayer = callee.getServiceTypeKind();
+        String callerLayer = caller.kind;
+        String calleeLayer = callee.kind;
         
-        String callerDomain = extractDomain(caller.getServiceTypeFromJar());
-        String calleeDomain = extractDomain(callee.getServiceTypeFromJar());
+        String callerDomain = extractDomain(caller.fromJar);
+        String calleeDomain = extractDomain(callee.fromJar);
         
-        // 检查规则
         List<LayerCallRuleItem> rules = ruleMap.get(callerLayer);
         if (rules == null) return null;
         
@@ -180,20 +269,19 @@ public class LayerCallRuleCheckServiceImpl implements LayerCallRuleCheckService 
             if (rule.getCalleeLayer().equals(calleeLayer)) {
                 if ("same_domain".equals(rule.getDomainConstraint())) {
                     if (callerDomain != null && callerDomain.equals(calleeDomain)) {
-                        return null; // 合规
+                        return null;
                     }
                 } else if ("cross_domain".equals(rule.getDomainConstraint())) {
-                    return null; // 合规
+                    return null;
                 }
             }
         }
         
-        // 违规：返回格式 接口ID(分层-领域)
-        return callee.getServiceTypeId() + "(" + calleeLayer + "-" + calleeDomain + ")";
+        return callee.serviceTypeId + "(" + calleeLayer + "-" + calleeDomain + ")";
     }
     
     private List<String> checkSingleFlowStep(FlowStep step, Map<String, String> flowDomainMap, 
-                                            Map<String, ServiceTypeFile> serviceTypeMap,
+                                            Map<String, ServiceInfo> serviceInfoMap,
                                             Map<String, List<LayerCallRuleItem>> ruleMap) {
         List<String> violations = new ArrayList<>();
         String callerDomain = flowDomainMap.get(step.getFlowId());
@@ -210,10 +298,10 @@ public class LayerCallRuleCheckServiceImpl implements LayerCallRuleCheckService 
             if (nodeName != null && nodeName.contains(".")) {
                 String[] parts = nodeName.split("\\.", 2);
                 String key = parts[0] + "|" + (parts.length > 1 ? parts[1] : "");
-                ServiceTypeFile stf = serviceTypeMap.get(key);
-                if (stf != null) {
-                    calleeLayer = stf.getServiceTypeKind()+"层";
-                    calleeDomain = extractDomain(stf.getServiceTypeFromJar());
+                ServiceInfo info = serviceInfoMap.get(key);
+                if (info != null) {
+                    calleeLayer = info.kind + "层";
+                    calleeDomain = extractDomain(info.fromJar);
                 }
             }
         }
@@ -273,20 +361,43 @@ public class LayerCallRuleCheckServiceImpl implements LayerCallRuleCheckService 
         return flowDomainMap;
     }
     
-    private Map<String, ServiceTypeFile> loadServiceTypeMap() {
-        Map<String, ServiceTypeFile> map = new HashMap<>();
-        List<ServiceTypeFile> files = serviceTypeFileMapper.selectList(null);
-        for (ServiceTypeFile stf : files) {
-            String key = stf.getServiceTypeId() + "|" + stf.getServiceId();
-            map.put(key, stf);
-        }
-        return map;
-    }
-    
+    private static final Set<String> KNOWN_DOMAINS = Set.of("comm", "dept", "loan", "sett");
+
+    /**
+     * 从 fromJar 中提取领域标识（comm/dept/loan/sett）
+     * 支持旧格式、Webhook格式、本地全路径格式
+     */
     private String extractDomain(String fromJar) {
-        if (fromJar != null && fromJar.contains("-")) {
-            return fromJar.split("-")[0];
+        if (fromJar == null || fromJar.trim().isEmpty()) return null;
+        String input = fromJar.trim();
+
+        if (input.contains(":") && !input.matches("^[A-Za-z]:\\\\.*")) {
+            String[] colonParts = input.split(":", 3);
+            if (colonParts.length >= 3) {
+                String seg = colonParts[2].trim();
+                if (seg.contains("/")) seg = seg.split("/")[0].trim();
+                if (seg.contains("-")) return seg.split("-")[0];
+            }
         }
+
+        if (input.contains("/") || input.contains("\\")) {
+            String[] segs = input.replace("\\", "/").split("/");
+            for (String seg : segs) {
+                if (seg.startsWith("ccbs-") && seg.length() > 5) {
+                    String after = seg.substring(5);
+                    if (after.contains("-")) {
+                        String d = after.split("-")[0];
+                        if (KNOWN_DOMAINS.contains(d)) return d;
+                    }
+                }
+                if (seg.contains("-")) {
+                    String d = seg.split("-")[0];
+                    if (KNOWN_DOMAINS.contains(d)) return d;
+                }
+            }
+        }
+
+        if (input.contains("-")) return input.split("-")[0];
         return null;
     }
 }

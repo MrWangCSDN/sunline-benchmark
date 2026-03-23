@@ -109,6 +109,54 @@ database:
     # 如果不配置，系统会自动从GitLab API获取用户的所有项目
     list: 63286,63223,64145,64142,63227,63467,63474,63469,63479,63468,63475,63470,63480,63587,63588
 
+# 代码同步配置（Webhook 触发 master 分支代码同步到本地服务器）
+code-sync:
+  base-path: /home/cbs/code                  # 代码存放根目录，每个工程放在 {base-path}/{project_name}/
+  allowed-project-ids: 64142,63227,63467,63474,63469,63479,63468,63475,63470,63480,63587,63588
+  git-timeout-seconds: 300                   # git 命令超时时间（秒）
+
+# 工程编译配置
+# 批次之间串行执行（前一批全部成功才开始下一批）
+# 批次内部并行执行（同一批中的工程同时编译）
+build:
+  base-path: /home/cbs/code
+  log-path: /home/cbs/logs/build
+  mvn-home:                                  # Maven 路径（留空则使用 PATH 中的 mvn）
+  settings-file: /home/cbs/code/settings.xml # Maven settings.xml 路径（留空则使用默认）
+  build-timeout-minutes: 30                  # 单个工程编译超时（分钟）
+  batches:
+    - name: "第一批-基础字典"
+      parallel: false
+      projects:
+        - ccbs-dict
+    - name: "第二批-AP框架"
+      parallel: false
+      projects:
+        - ccbs-ap
+    - name: "第三批-API层"
+      parallel: true
+      projects:
+        - ccbs-comm-api
+        - ccbs-sett-api
+        - ccbs-dept-api
+        - ccbs-loan-api
+    - name: "第四批-实现层"
+      parallel: true
+      projects:
+        - ccbs-comm-impl
+        - ccbs-sett-impl
+        - ccbs-dept-impl
+        - ccbs-loan-impl
+
+# 向量化配置（embedding-service + Qdrant）
+vectorization:
+  enabled: true                           # 向量化已启用
+  embedding-url: http://21.73.16.151:8765  # embedding-service 地址
+  qdrant-host: 21.73.16.151               # Qdrant 地址
+  qdrant-port: 6333                       # Qdrant REST 端口
+  collection: xml_models                  # collection 名称
+  vector-size: 768                        # BGE-base-zh 向量维度
+
 # 日志配置
 logging:
   level:

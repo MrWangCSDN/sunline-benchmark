@@ -38,7 +38,7 @@ public class MetadataTablesDetail implements Serializable {
     /** field.id（可选） */
     private String fieldId;
 
-    /** field.dyname（可选） */
+    /** field.dbname（可选） */
     private String fieldDbname;
 
     /** field.longname（可选） */

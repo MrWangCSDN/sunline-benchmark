@@ -34,7 +34,7 @@ import java.util.Map;
  * &lt;schema id="XXX" longname="XXX" package="XXX"&gt;
  *   &lt;table id="XXX" name="XXX" longname="XXX" extension="XXX"&gt;
  *     &lt;fields&gt;
- *       &lt;field id="XXX" dyname="XXX" longname="XXX" type="XXX"
+     *       &lt;field id="XXX" dbname="XXX" longname="XXX" type="XXX"
  *              nullable="XXX" primarykey="XXX" ref="XXX"/&gt;
  *     &lt;/fields&gt;
  *     &lt;odbindexes&gt;
@@ -142,7 +142,7 @@ public class TablesXmlParseServiceImpl implements TablesXmlParseService {
                     detail.setTableLongname(tableLongname);
                     detail.setTableExtension(tableExtension);
                     detail.setFieldId(nullIfEmpty(fieldEl.getAttribute("id")));
-                    detail.setFieldDbname(nullIfEmpty(fieldEl.getAttribute("dyname")));
+                    detail.setFieldDbname(nullIfEmpty(fieldEl.getAttribute("dbname")));
                     detail.setFieldLongname(nullIfEmpty(fieldEl.getAttribute("longname")));
                     detail.setFieldType(nullIfEmpty(fieldEl.getAttribute("type")));
                     detail.setFieldNullable(nullIfEmpty(fieldEl.getAttribute("nullable")));

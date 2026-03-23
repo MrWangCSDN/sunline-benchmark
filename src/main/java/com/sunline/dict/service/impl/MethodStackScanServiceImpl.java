@@ -1,11 +1,17 @@
 package com.sunline.dict.service.impl;
 
+import com.sunline.dict.entity.Component;
+import com.sunline.dict.entity.ComponentDetail;
 import com.sunline.dict.entity.HardCodeMethodStack;
-import com.sunline.dict.entity.ServiceTypeFile;
-import com.sunline.dict.entity.ServiceTypeImplFile;
+import com.sunline.dict.entity.ServiceDetail;
+import com.sunline.dict.entity.ServiceFile;
+import com.sunline.dict.entity.ServiceImplFile;
+import com.sunline.dict.mapper.ComponentDetailMapper;
+import com.sunline.dict.mapper.ComponentMapper;
 import com.sunline.dict.mapper.HardCodeMethodStackMapper;
-import com.sunline.dict.mapper.ServiceTypeFileMapper;
-import com.sunline.dict.mapper.ServiceTypeImplFileMapper;
+import com.sunline.dict.mapper.ServiceDetailMapper;
+import com.sunline.dict.mapper.ServiceFileMapper;
+import com.sunline.dict.mapper.ServiceImplFileMapper;
 import com.sunline.dict.service.MethodStackScanService;
 import org.objectweb.asm.*;
 import org.objectweb.asm.tree.*;
@@ -39,10 +45,19 @@ public class MethodStackScanServiceImpl implements MethodStackScanService {
     private HardCodeMethodStackMapper hardCodeMethodStackMapper;
     
     @Autowired
-    private ServiceTypeFileMapper serviceTypeFileMapper;
+    private ServiceFileMapper serviceFileMapper;
+
+    @Autowired
+    private ServiceDetailMapper serviceDetailMapper;
+
+    @Autowired
+    private ComponentMapper componentMapper;
+
+    @Autowired
+    private ComponentDetailMapper componentDetailMapper;
     
     @Autowired
-    private ServiceTypeImplFileMapper serviceTypeImplFileMapper;
+    private ServiceImplFileMapper serviceImplFileMapper;
     
     // 扫描进度信息
     private volatile Map<String, Object> scanProgress = new ConcurrentHashMap<>();
@@ -75,8 +90,11 @@ public class MethodStackScanServiceImpl implements MethodStackScanService {
         "com/spdb/ccbs/sett/"
     };
     
-    // 第一步：ServiceType缓存，key为service_type_id，value为该接口下的所有方法列表
-    private final ConcurrentHashMap<String, List<ServiceTypeFile>> serviceTypeCache = new ConcurrentHashMap<>();
+    // ServiceFile 缓存（service + component 合并），key = serviceTypeId
+    private final ConcurrentHashMap<String, ServiceFile> serviceFileCache = new ConcurrentHashMap<>();
+
+    // ServiceDetail 缓存（service_detail + component_detail 合并），key = serviceTypeId
+    private final ConcurrentHashMap<String, List<ServiceDetail>> serviceTypeCache = new ConcurrentHashMap<>();
     
     // jar包文件缓存，key为jar包名称（不含版本号），value为jar文件对象
     private final ConcurrentHashMap<String, File> jarFileCache = new ConcurrentHashMap<>();
@@ -246,35 +264,69 @@ public class MethodStackScanServiceImpl implements MethodStackScanService {
      * Map<service_type_id, List<ServiceTypeFile>>
      */
     private void loadServiceTypeCache() {
-        log.info("------------ 第一步：加载ServiceType缓存 ------------");
+        log.info("------------ 第一步：加载 Service + Component 缓存 ------------");
         
+        serviceFileCache.clear();
         serviceTypeCache.clear();
-        
-        List<ServiceTypeFile> allServiceTypes = serviceTypeFileMapper.selectList(null);
-        log.info("从数据库加载了 {} 条ServiceTypeFile记录", allServiceTypes.size());
-        
-        for (ServiceTypeFile serviceType : allServiceTypes) {
-            String serviceTypeId = serviceType.getServiceTypeId();
-            serviceTypeCache.computeIfAbsent(serviceTypeId, k -> new ArrayList<>()).add(serviceType);
+
+        // 加载 service 表
+        List<ServiceFile> allServiceFiles = serviceFileMapper.selectList(null);
+        for (ServiceFile sf : allServiceFiles) {
+            serviceFileCache.put(sf.getId(), sf);
+        }
+
+        // 加载 component 表，合并到 serviceFileCache
+        List<Component> allComponents = componentMapper.selectList(null);
+        for (Component c : allComponents) {
+            if (!serviceFileCache.containsKey(c.getId())) {
+                ServiceFile proxy = new ServiceFile();
+                proxy.setId(c.getId());
+                proxy.setLongname(c.getLongname());
+                proxy.setPackagePath(c.getPackagePath());
+                proxy.setKind(c.getKind());
+                proxy.setServiceType(c.getComponentType());
+                proxy.setFromJar(c.getFromJar());
+                serviceFileCache.put(c.getId(), proxy);
+            }
+        }
+        log.info("加载 service+component 缓存：{} 条", serviceFileCache.size());
+
+        // 加载 service_detail 表
+        List<ServiceDetail> allDetails = serviceDetailMapper.selectList(null);
+        for (ServiceDetail sd : allDetails) {
+            if (sd.getServiceTypeId() != null) {
+                serviceTypeCache.computeIfAbsent(sd.getServiceTypeId(), k -> new ArrayList<>()).add(sd);
+            }
+        }
+
+        // 加载 component_detail 表，合并到 serviceTypeCache
+        List<ComponentDetail> allCompDetails = componentDetailMapper.selectList(null);
+        for (ComponentDetail cd : allCompDetails) {
+            if (cd.getComponentId() != null) {
+                ServiceDetail proxy = new ServiceDetail();
+                proxy.setServiceTypeId(cd.getComponentId());
+                proxy.setServiceId(cd.getServiceId());
+                proxy.setServiceName(cd.getServiceName());
+                proxy.setServiceLongname(cd.getServiceLongname());
+                serviceTypeCache.computeIfAbsent(cd.getComponentId(), k -> new ArrayList<>()).add(proxy);
+            }
         }
         
-        log.info("ServiceType缓存加载完成，共 {} 个接口，{} 个方法", 
-            serviceTypeCache.size(), allServiceTypes.size());
+        log.info("Service+Component 缓存加载完成，共 {} 个接口，{} 个方法",
+            serviceTypeCache.size(), allDetails.size() + allCompDetails.size());
         
-        // 输出前20个接口的示例，帮助调试匹配问题
-        log.info("缓存中的ServiceType ID示例（前20个）：");
+        log.info("缓存中的 ServiceType ID 示例（前20个）：");
         int count = 0;
-        for (Map.Entry<String, List<ServiceTypeFile>> entry : serviceTypeCache.entrySet()) {
+        for (Map.Entry<String, List<ServiceDetail>> entry : serviceTypeCache.entrySet()) {
             if (count++ < 20) {
                 String serviceTypeId = entry.getKey();
-                List<ServiceTypeFile> methods = entry.getValue();
+                List<ServiceDetail> methods = entry.getValue();
                 log.info("  [{}] ServiceTypeId: {} ({} 个方法)", count, serviceTypeId, methods.size());
                 
-                // 输出方法名
                 if (!methods.isEmpty()) {
                     StringBuilder methodNames = new StringBuilder("      方法列表: ");
-                    for (ServiceTypeFile stf : methods) {
-                        methodNames.append(stf.getServiceName()).append(", ");
+                    for (ServiceDetail sd : methods) {
+                        methodNames.append(sd.getServiceName()).append(", ");
                     }
                     log.info(methodNames.toString());
                 }
@@ -387,8 +439,8 @@ public class MethodStackScanServiceImpl implements MethodStackScanService {
     private void processServiceImplFiles() {
         log.info("------------ 第二步：遍历ServiceImpl记录并处理（单线程） ------------");
         
-        List<ServiceTypeImplFile> allImplFiles = serviceTypeImplFileMapper.selectList(null);
-        log.info("从数据库加载了 {} 条ServiceTypeImplFile记录", allImplFiles.size());
+        List<ServiceImplFile> allImplFiles = serviceImplFileMapper.selectList(null);
+        log.info("从 serviceImpl 表加载了 {} 条记录", allImplFiles.size());
         
         scanProgress.put("total", allImplFiles.size());
         
@@ -398,7 +450,7 @@ public class MethodStackScanServiceImpl implements MethodStackScanService {
         int failedCount = 0;
         int current = 0;
         
-        for (ServiceTypeImplFile implFile : allImplFiles) {
+        for (ServiceImplFile implFile : allImplFiles) {
             if (cancelFlag) {
                 log.info("扫描已取消，停止处理");
                 break;
@@ -413,15 +465,15 @@ public class MethodStackScanServiceImpl implements MethodStackScanService {
                 if (records >= 0) {
                     successCount++;
                     log.info("[{}/{}] 处理成功：{}，生成 {} 条记录", 
-                        current, allImplFiles.size(), implFile.getServiceTypeImplId(), records);
+                        current, allImplFiles.size(), implFile.getId(), records);
                 } else {
                     failedCount++;
                     log.warn("[{}/{}] 处理失败：{}", 
-                        current, allImplFiles.size(), implFile.getServiceTypeImplId());
+                        current, allImplFiles.size(), implFile.getId());
                 }
             } catch (Exception e) {
                 log.error("[{}/{}] 处理异常：{}", 
-                    current, allImplFiles.size(), implFile.getServiceTypeImplId(), e);
+                    current, allImplFiles.size(), implFile.getId(), e);
                 failedCount++;
             }
             
@@ -451,18 +503,17 @@ public class MethodStackScanServiceImpl implements MethodStackScanService {
      * 处理单个ServiceImpl记录
      * 返回生成的记录数，-1表示失败
      */
-    private int processServiceImpl(ServiceTypeImplFile implFile) {
+    private int processServiceImpl(ServiceImplFile implFile) {
         try {
-            String serviceTypeImplId = implFile.getServiceTypeImplId();
-            String serviceImplFromJar = implFile.getServiceImplFromJar();
-            String serviceImplPackage = implFile.getServiceImplPackage();
-            String serviceTypeId = implFile.getServiceTypeId();
+            String serviceImplId = implFile.getId();
+            String fromJar = implFile.getFromJar();
+            String packagePath = implFile.getPackagePath();
+            String serviceTypeId = resolveServiceTypeIdFromImpl(implFile);
             
-            log.debug("处理ServiceImpl：{} (jar: {}, package: {})", 
-                serviceTypeImplId, serviceImplFromJar, serviceImplPackage);
+            log.debug("处理 ServiceImpl：{} (jar: {}, package: {})", 
+                serviceImplId, fromJar, packagePath);
             
-            // 从缓存中获取对应的ServiceType方法列表
-            List<ServiceTypeFile> serviceMethods = serviceTypeCache.get(serviceTypeId);
+            List<ServiceDetail> serviceMethods = serviceTypeCache.get(serviceTypeId);
             if (serviceMethods == null || serviceMethods.isEmpty()) {
                 log.debug("ServiceType {} 下没有方法，跳过", serviceTypeId);
                 return 0;
@@ -470,20 +521,52 @@ public class MethodStackScanServiceImpl implements MethodStackScanService {
             
             log.debug("ServiceType {} 下有 {} 个方法", serviceTypeId, serviceMethods.size());
             
-            // 从缓存中获取jar包文件
-            File jarFile = jarFileCache.get(serviceImplFromJar);
+            String jarName = extractJarNameFromPath(fromJar);
+            File jarFile = jarFileCache.get(jarName);
             if (jarFile == null) {
-                log.warn("未找到jar包文件：{}", serviceImplFromJar);
+                log.warn("未找到 jar 包文件：{} (原始 fromJar: {})", jarName, fromJar);
                 return -1;
             }
             
-            // 第三步：解析字节码
-            return parseClassFile(jarFile, serviceImplPackage, serviceTypeImplId, serviceTypeId, serviceMethods);
+            String className = serviceImplId.contains(".") 
+                ? serviceImplId.substring(serviceImplId.lastIndexOf(".") + 1)
+                : serviceImplId;
+            
+            return parseClassFile(jarFile, packagePath, className, serviceTypeId, serviceMethods);
             
         } catch (Exception e) {
-            log.error("处理ServiceImpl失败：{}", implFile.getServiceTypeImplId(), e);
+            log.error("处理 ServiceImpl 失败：{}", implFile.getId(), e);
             return -1;
         }
+    }
+
+    private String resolveServiceTypeIdFromImpl(ServiceImplFile sif) {
+        String st = sif.getServiceType();
+        if (st != null && !st.isEmpty() && !st.contains("Impl")
+                && !st.equals("pcs") && !st.equals("pbs")
+                && !st.equals("pbcb") && !st.equals("pbcp")
+                && !st.equals("pbcc") && !st.equals("pbct")) {
+            return st;
+        }
+        String id = sif.getId();
+        if (id != null && id.contains(".")) {
+            return id.split("\\.", 2)[0];
+        }
+        return st;
+    }
+
+    private String extractJarNameFromPath(String fromJar) {
+        if (fromJar == null) return "";
+        String name = fromJar.replace("\\", "/");
+        if (name.contains("/")) {
+            String[] segments = name.split("/");
+            for (String seg : segments) {
+                if (seg.startsWith("ccbs-") && !seg.endsWith(".xml")) {
+                    return extractJarNameWithoutVersion(seg);
+                }
+            }
+        }
+        return extractJarNameWithoutVersion(fromJar);
     }
     
     /**
@@ -491,7 +574,7 @@ public class MethodStackScanServiceImpl implements MethodStackScanService {
      */
     @Transactional(rollbackFor = Exception.class)
     private int parseClassFile(File jarFile, String packageName, String className, 
-                               String serviceTypeId, List<ServiceTypeFile> serviceMethods) throws Exception {
+                               String serviceTypeId, List<ServiceDetail> serviceMethods) throws Exception {
         
         String classFilePath = packageName.replace(".", "/") + "/" + className + ".class";
         
@@ -525,8 +608,7 @@ public class MethodStackScanServiceImpl implements MethodStackScanService {
                         continue;
                     }
                     
-                    // 检查是否是ServiceType中定义的方法
-                    ServiceTypeFile matchedService = findMatchingService(serviceMethods, method.name);
+                    ServiceDetail matchedService = findMatchingService(serviceMethods, method.name);
                     if (matchedService == null) {
                         continue;
                     }
@@ -542,7 +624,8 @@ public class MethodStackScanServiceImpl implements MethodStackScanService {
                         HardCodeMethodStack stack = new HardCodeMethodStack();
                         stack.setServiceTypeId(serviceTypeId);
                         stack.setServiceTypeImplId(className);
-                        stack.setServiceTypeKind(matchedService.getServiceTypeKind());
+                        ServiceFile sf = serviceFileCache.get(serviceTypeId);
+                        stack.setServiceTypeKind(sf != null ? sf.getKind() : null);
                         stack.setServiceId(matchedService.getServiceId());
                         stack.setServiceName(matchedService.getServiceName());
                         stack.setCodeServiceType(call.getClassName());
@@ -750,10 +833,10 @@ public class MethodStackScanServiceImpl implements MethodStackScanService {
     /**
      * 查找匹配的Service方法
      */
-    private ServiceTypeFile findMatchingService(List<ServiceTypeFile> serviceMethods, String methodName) {
-        for (ServiceTypeFile service : serviceMethods) {
-            if (methodName.equals(service.getServiceName())) {
-                return service;
+    private ServiceDetail findMatchingService(List<ServiceDetail> serviceMethods, String methodName) {
+        for (ServiceDetail sd : serviceMethods) {
+            if (methodName.equals(sd.getServiceName())) {
+                return sd;
             }
         }
         return null;

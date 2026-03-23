@@ -37,6 +37,9 @@ public class ServiceFile implements Serializable {
     /** 来源文件名（提交的具体文件名） */
     private String fromJar;
 
+    /** 错误调用列表（违规的分层或领域调用，由 LayerCallRuleCheck 写入） */
+    private String incorrectCalls;
+
     private LocalDateTime createTime;
 
     private LocalDateTime updateTime;
@@ -61,6 +64,9 @@ public class ServiceFile implements Serializable {
 
     public String getFromJar() { return fromJar; }
     public void setFromJar(String fromJar) { this.fromJar = fromJar; }
+
+    public String getIncorrectCalls() { return incorrectCalls; }
+    public void setIncorrectCalls(String incorrectCalls) { this.incorrectCalls = incorrectCalls; }
 
     public LocalDateTime getCreateTime() { return createTime; }
     public void setCreateTime(LocalDateTime createTime) { this.createTime = createTime; }
