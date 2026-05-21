@@ -65,3 +65,24 @@ uploads/
 *.temp
 *.cache
 
+# Python venv
+.venv-download/
+.venv/
+__pycache__/
+
+# Archives (should not be committed to repo)
+*.zip
+
+# Runtime / process artifacts
+benchmark.out
+benchmark.pid
+*.pid
+*.out
+
+# Generated output
+output/
+
+# Tool / IDE configs (project-local, not shared)
+.cursor/
+.specify/
+tools/

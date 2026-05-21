@@ -178,6 +178,7 @@ public class BuildProgressController {
             args.add("-s");
             args.add(settingsFile.trim());
         }
+        args.add("-U"); // 强制更新 SNAPSHOT 依赖
         for (String goal : goals) {
             args.add(goal);
         }

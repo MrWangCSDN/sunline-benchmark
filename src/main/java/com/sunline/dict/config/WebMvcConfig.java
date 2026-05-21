@@ -60,7 +60,17 @@ public class WebMvcConfig implements WebMvcConfigurer {
                     "/login.html",
                     "/api/auth/**",
                     "/api/webhook/**",  // webhook接口允许匿名访问
-                    "/api/build/all",   // 构建全量接口允许匿名访问
+                    "/api/build/batches",       // 批次列表查询（免鉴权）
+                    "/api/build/all",          // 触发全量编译（免鉴权）
+                    "/api/build/all/async",    // 触发全量编译异步（免鉴权）
+                    "/api/build/all/progress", // SSE进度订阅（免鉴权）
+                    "/api/build/all/status",   // 状态查询（免鉴权）
+                    "/api/build/async-build/status", // 异步构建状态回调（免鉴权）
+                    "/api/build/records/**",   // 操作明细查询（免鉴权）
+                    "/api/build/batch/**",     // 单批次编译触发（免鉴权）
+                    "/api/build/project/**",   // 单工程编译触发（免鉴权）
+                    "/api/build/clone/**",     // 全量clone（免鉴权）
+                    "/api/relation/**",        // 调用关系图谱（免鉴权）
                     "/js/**",
                     "/css/**",
                     "/*.html",

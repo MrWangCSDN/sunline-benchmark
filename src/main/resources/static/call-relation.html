@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>调用关系图谱扫描 - 字典管理系统</title>
+    <script src="/js/vue.global.js"></script>
+    <script src="/js/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        #app {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header .subtitle {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            padding: 30px;
+            margin-bottom: 20px;
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #374151;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #f3f4f6;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* 统计概览卡片 */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+
+        .stat-card {
+            background: #f9fafb;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid #e5e7eb;
+            transition: all 0.3s;
+        }
+
+        .stat-card:hover {
+            border-color: #667eea;
+            background: #f0f2ff;
+        }
+
+        .stat-value {
+            font-size: 36px;
+            font-weight: 800;
+            color: #667eea;
+            line-height: 1.2;
+        }
+
+        .stat-value.warning {
+            color: #f59e0b;
+        }
+
+        .stat-value.danger {
+            color: #ef4444;
+        }
+
+        .stat-label {
+            font-size: 13px;
+            color: #6b7280;
+            margin-top: 6px;
+        }
+
+        /* 操作区 */
+        .action-area {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 14px 32px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            outline: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #4b5563;
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* 状态区 */
+        .status-area {
+            margin-top: 20px;
+            padding: 16px 20px;
+            border-radius: 8px;
+            border: 2px solid #e5e7eb;
+            background: #f9fafb;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 14px;
+            color: #374151;
+        }
+
+        .status-area.scanning {
+            border-color: #667eea;
+            background: #f0f2ff;
+        }
+
+        .status-area.success {
+            border-color: #10b981;
+            background: #ecfdf5;
+            color: #065f46;
+        }
+
+        .status-area.error {
+            border-color: #ef4444;
+            background: #fef2f2;
+            color: #991b1b;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #9ca3af;
+            flex-shrink: 0;
+        }
+
+        .status-dot.idle { background: #9ca3af; }
+        .status-dot.scanning {
+            background: #667eea;
+            animation: pulse 1.2s infinite;
+        }
+        .status-dot.success { background: #10b981; }
+        .status-dot.error { background: #ef4444; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.8); }
+        }
+
+        .status-text { flex: 1; }
+
+        .status-meta {
+            font-size: 12px;
+            color: #6b7280;
+            display: flex;
+            gap: 16px;
+        }
+
+        .status-meta.scanning { color: #667eea; }
+        .status-meta.success { color: #059669; }
+
+        /* 结果卡片 */
+        .result-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .result-item {
+            padding: 14px 18px;
+            background: #f9fafb;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .result-item-label {
+            font-size: 13px;
+            color: #6b7280;
+        }
+
+        .result-item-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: #374151;
+        }
+
+        .result-item-value.highlight {
+            color: #667eea;
+        }
+
+        .result-item-value.warning {
+            color: #f59e0b;
+        }
+
+        /* 错误卡片 */
+        .error-box {
+            padding: 20px;
+            background: #fef2f2;
+            border: 1px solid #fca5a5;
+            border-radius: 8px;
+            color: #991b1b;
+        }
+
+        .error-box h3 {
+            font-size: 15px;
+            margin-bottom: 8px;
+        }
+
+        .error-box p {
+            font-size: 13px;
+            line-height: 1.6;
+            word-break: break-all;
+        }
+
+        .error-hint {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #b91c1c;
+            opacity: 0.8;
+        }
+
+        /* 旋转动画（扫描中按钮图标） */
+        .spin {
+            display: inline-block;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* 分割线提示文字 */
+        .section-hint {
+            font-size: 12px;
+            color: #9ca3af;
+            margin-top: 6px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- 页头 -->
+        <div class="header">
+            <h1>🕸️ 调用关系图谱扫描</h1>
+            <p class="subtitle">全量扫描 Java 骨架代码，重建调用关系图谱数据库</p>
+        </div>
+
+        <!-- 统计概览 -->
+        <div class="card">
+            <div class="card-title">📊 当前图谱概览</div>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value">{{ summaryData ? summaryData.totalEdges : '—' }}</div>
+                    <div class="stat-label">调用关系总边数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" :class="summaryData && summaryData.violations > 0 ? 'danger' : ''">
+                        {{ summaryData ? summaryData.violations : '—' }}
+                    </div>
+                    <div class="stat-label">违规调用数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" :class="summaryData && summaryData.crossDomainCalls > 0 ? 'warning' : ''">
+                        {{ summaryData ? summaryData.crossDomainCalls : '—' }}
+                    </div>
+                    <div class="stat-label">跨域调用数</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 操作区 -->
+        <div class="card">
+            <div class="card-title">⚡ 触发全量扫描</div>
+            <div class="action-area">
+                <button
+                    class="btn btn-primary"
+                    @click="startScan"
+                    :disabled="isScanning">
+                    <span v-if="isScanning" class="spin">⏳</span>
+                    <span v-else>🚀</span>
+                    {{ isScanning ? '扫描中，请等待...' : '触发全量扫描' }}
+                </button>
+                <button
+                    class="btn btn-secondary"
+                    @click="refreshSummary"
+                    :disabled="isScanning">
+                    🔄 刷新概览
+                </button>
+            </div>
+
+            <!-- 状态区 -->
+            <div class="status-area" :class="status">
+                <div class="status-dot" :class="status"></div>
+                <div class="status-text">
+                    <span>{{ statusText }}</span>
+                </div>
+                <div v-if="isScanning" class="status-meta scanning">
+                    <span>⏱ 已运行 {{ elapsedSeconds }} 秒</span>
+                    <span v-if="summaryData">数据库当前边数: {{ summaryData.totalEdges }}</span>
+                </div>
+                <div v-if="status === 'success' && scanResult" class="status-meta success">
+                    耗时 {{ (scanResult.costMs / 1000).toFixed(2) }} 秒
+                </div>
+            </div>
+
+            <p class="section-hint" v-if="status === 'idle'">
+                全量扫描将清空并重建 call_relation 表，根据代码规模耗时约数分钟到数十分钟
+            </p>
+        </div>
+
+        <!-- 扫描结果（成功） -->
+        <div class="card" v-if="status === 'success' && scanResult">
+            <div class="card-title">✅ 扫描结果</div>
+            <div class="result-grid">
+                <div class="result-item">
+                    <span class="result-item-label">📁 扫描 Java 文件总数</span>
+                    <span class="result-item-value">{{ scanResult.totalFiles }}</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-item-label">🦴 Impl 骨架文件</span>
+                    <span class="result-item-value">{{ scanResult.implFiles }}</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-item-label">🔧 工具类文件</span>
+                    <span class="result-item-value">{{ scanResult.utilFiles }}</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-item-label">🕸️ 写入调用关系总边数</span>
+                    <span class="result-item-value highlight">{{ scanResult.totalEdges }}</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-item-label">📋 交易→服务编排边</span>
+                    <span class="result-item-value">{{ scanResult.flowEdges }}</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-item-label">⚠️ 违规调用边</span>
+                    <span class="result-item-value" :class="scanResult.violations > 0 ? 'warning' : ''">
+                        {{ scanResult.violations }}
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 扫描失败 -->
+        <div class="card" v-if="status === 'error'">
+            <div class="card-title">❌ 扫描失败</div>
+            <div class="error-box">
+                <h3>错误信息</h3>
+                <p>{{ errorMsg || '未知错误，请查看服务端日志' }}</p>
+                <p class="error-hint">💡 提示：请检查服务端代码目录（/home/cbs/code）是否存在，以及服务是否正常运行</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    status: 'idle',       // idle | scanning | success | error
+                    scanResult: null,
+                    summaryData: null,
+                    elapsedSeconds: 0,
+                    errorMsg: '',
+
+                    _timerInterval: null,
+                    _pollInterval: null,
+                };
+            },
+
+            computed: {
+                isScanning() {
+                    return this.status === 'scanning';
+                },
+                statusText() {
+                    const map = {
+                        idle: '就绪，等待触发全量扫描',
+                        scanning: '扫描中，正在遍历 Java 骨架代码并重建调用关系...',
+                        success: '扫描成功，调用关系图谱已更新',
+                        error: '扫描失败，请查看下方错误信息',
+                    };
+                    return map[this.status] || '';
+                },
+            },
+
+            methods: {
+                async refreshSummary() {
+                    try {
+                        const res = await axios.get('/api/relation/summary');
+                        if (res.data && res.data.data) {
+                            this.summaryData = res.data.data;
+                        }
+                    } catch (e) {
+                        console.warn('获取统计概览失败:', e.message);
+                    }
+                },
+
+                startElapsedTimer() {
+                    this.elapsedSeconds = 0;
+                    this._timerInterval = setInterval(() => {
+                        this.elapsedSeconds++;
+                    }, 1000);
+                },
+
+                startSummaryPolling() {
+                    this._pollInterval = setInterval(() => {
+                        this.refreshSummary();
+                    }, 3000);
+                },
+
+                stopAllTimers() {
+                    if (this._timerInterval) {
+                        clearInterval(this._timerInterval);
+                        this._timerInterval = null;
+                    }
+                    if (this._pollInterval) {
+                        clearInterval(this._pollInterval);
+                        this._pollInterval = null;
+                    }
+                },
+
+                async startScan() {
+                    if (this.isScanning) return;
+
+                    this.status = 'scanning';
+                    this.scanResult = null;
+                    this.errorMsg = '';
+
+                    this.startElapsedTimer();
+                    this.startSummaryPolling();
+
+                    try {
+                        const res = await axios.post('/api/relation/scan', null, {
+                            timeout: 1800000,   // 30 分钟
+                        });
+
+                        this.stopAllTimers();
+
+                        if (res.data && res.data.data) {
+                            this.scanResult = res.data.data;
+                            this.status = 'success';
+                        } else {
+                            this.errorMsg = res.data?.message || '接口返回数据异常';
+                            this.status = 'error';
+                        }
+                    } catch (e) {
+                        this.stopAllTimers();
+                        this.errorMsg = e.response?.data?.message || e.message || '请求失败';
+                        this.status = 'error';
+                    }
+
+                    // 无论成功失败，刷新最新统计
+                    await this.refreshSummary();
+                },
+            },
+
+            mounted() {
+                this.refreshSummary();
+            },
+
+            beforeUnmount() {
+                this.stopAllTimers();
+            },
+        }).mount('#app');
+    </script>
+</body>
+</html>

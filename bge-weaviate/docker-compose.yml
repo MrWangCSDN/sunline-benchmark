@@ -1,0 +1,44 @@
+version: '3.8'
+
+# BGE + Weaviate 本地 Docker 环境
+# 适用于 Mac（含 Apple Silicon）
+
+services:
+  # BGE 嵌入模型推理服务（Weaviate 官方镜像）
+  # 使用 baai-bge-m3-onnx：多语言模型，中文效果好
+  bge:
+    image: cr.weaviate.io/semitechnologies/transformers-inference:baai-bge-m3-onnx
+    environment:
+      ENABLE_CUDA: 0   # Mac 无 GPU，使用 CPU
+    ports:
+      - "8081:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  # Weaviate 向量数据库
+  weaviate:
+    image: cr.weaviate.io/semitechnologies/weaviate:1.29.0
+    ports:
+      - "8080:8080"
+      - "50051:50051"
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    environment:
+      # 启用 text2vec-transformers 模块
+      ENABLE_MODULES: text2vec-transformers
+      TRANSFORMERS_INFERENCE_API: http://bge:8080
+      DEFAULT_VECTORIZER_MODULE: text2vec-transformers
+      QUERY_DEFAULTS_LIMIT: 25
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+      PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
+      CLUSTER_HOSTNAME: 'node1'
+    depends_on:
+      bge:
+        condition: service_healthy
+
+volumes:
+  weaviate_data:

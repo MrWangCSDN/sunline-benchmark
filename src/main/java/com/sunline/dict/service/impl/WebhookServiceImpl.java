@@ -6,6 +6,7 @@ import com.sunline.dict.entity.Flowtran;
 import com.sunline.dict.mapper.FlowStepMapper;
 import com.sunline.dict.mapper.FlowtranMapper;
 import com.sunline.dict.service.ComplexXmlParseService;
+import com.sunline.dict.service.CallRelationScanService;
 import com.sunline.dict.service.ComponentXmlParseService;
 import com.sunline.dict.service.DictXmlParseService;
 import com.sunline.dict.service.EschemaXmlParseService;
@@ -69,6 +70,9 @@ public class WebhookServiceImpl implements WebhookService {
 
     @Autowired
     private ServiceImplXmlParseService serviceImplXmlParseService;
+
+    @Autowired
+    private CallRelationScanService callRelationScanService;
     
     @Autowired
     private FlowtranMapper flowtranMapper;
@@ -396,6 +400,26 @@ public class WebhookServiceImpl implements WebhookService {
                 log.error("处理服务实现文件 ({}) 失败: {}", implType, filePath, e);
             }
         }
+
+        // 服务/构件 XML 变更 → 重建 nodeMap 缓存
+        if (!componentFiles.isEmpty() || !removedComponentFiles.isEmpty()
+                || !serviceFiles.isEmpty() || !removedServiceFiles.isEmpty()) {
+            try {
+                callRelationScanService.rebuildNodeMap();
+                log.info("服务/构件 XML 变更，已重建 nodeMap 缓存");
+            } catch (Exception e) {
+                log.warn("重建 nodeMap 缓存失败（不影响主流程）：{}", e.getMessage());
+            }
+        }
+        // serviceImpl XML 变更 → 重建 implMap 缓存
+        if (!serviceImplFiles.isEmpty() || !removedServiceImplFiles.isEmpty()) {
+            try {
+                callRelationScanService.rebuildImplMap();
+                log.info("serviceImpl XML 变更，已重建 implMap 缓存");
+            } catch (Exception e) {
+                log.warn("重建 implMap 缓存失败（不影响主流程）：{}", e.getMessage());
+            }
+        }
         
         log.info("Webhook处理完成，交易数：{}, 步骤数：{}", totalFlowtran, totalFlowStep);
         
@@ -693,6 +717,26 @@ public class WebhookServiceImpl implements WebhookService {
                 }
             } catch (Exception e) {
                 log.error("处理服务实现文件 ({}) 失败: {}", implType, filePath, e);
+            }
+        }
+
+        // 服务/构件 XML 变更 → 重建 nodeMap 缓存
+        if (!componentFiles.isEmpty() || !removedComponentFiles.isEmpty()
+                || !serviceFiles.isEmpty() || !removedServiceFiles.isEmpty()) {
+            try {
+                callRelationScanService.rebuildNodeMap();
+                log.info("服务/构件 XML 变更，已重建 nodeMap 缓存");
+            } catch (Exception e) {
+                log.warn("重建 nodeMap 缓存失败（不影响主流程）：{}", e.getMessage());
+            }
+        }
+        // serviceImpl XML 变更 → 重建 implMap 缓存
+        if (!serviceImplFiles.isEmpty() || !removedServiceImplFiles.isEmpty()) {
+            try {
+                callRelationScanService.rebuildImplMap();
+                log.info("serviceImpl XML 变更，已重建 implMap 缓存");
+            } catch (Exception e) {
+                log.warn("重建 implMap 缓存失败（不影响主流程）：{}", e.getMessage());
             }
         }
         

@@ -936,7 +936,7 @@
                 </div>
             </div>
             
-            <div class="menu-group" v-if="hasMenuPermission('git-management') || hasMenuPermission('git-branch-create') || hasMenuPermission('git-permission-manage') || hasMenuPermission('jar-scan-analysis') || hasMenuPermission('service-build-scan') || hasMenuPermission('service-impl-build-scan') || hasMenuPermission('method-stack-scan') || hasMenuPermission('flow-tree-query') || hasMenuPermission('pom-dependency-tree') || hasMenuPermission('batch-clone') || hasMenuPermission('excel-compare') || hasMenuPermission('excel-clean') || hasMenuPermission('db-table-export') || hasMenuPermission('xml-db-compare') || hasMenuPermission('esf-interface-compare') || hasMenuPermission('migration-table-compare') || hasMenuPermission('layer-call-rule') || hasMenuPermission('code-push') || hasMenuPermission('xml-scan')" :class="{ expanded: gitMenuExpanded }">
+            <div class="menu-group" v-if="hasMenuPermission('git-management') || hasMenuPermission('git-branch-create') || hasMenuPermission('git-permission-manage') || hasMenuPermission('jar-scan-analysis') || hasMenuPermission('service-build-scan') || hasMenuPermission('service-impl-build-scan') || hasMenuPermission('method-stack-scan') || hasMenuPermission('flow-tree-query') || hasMenuPermission('pom-dependency-tree') || hasMenuPermission('batch-clone') || hasMenuPermission('excel-compare') || hasMenuPermission('excel-clean') || hasMenuPermission('file-template-export') || hasMenuPermission('db-table-export') || hasMenuPermission('xml-db-compare') || hasMenuPermission('esf-interface-compare') || hasMenuPermission('migration-table-compare') || hasMenuPermission('layer-call-rule') || hasMenuPermission('code-push') || hasMenuPermission('xml-scan') || hasMenuPermission('call-relation')" :class="{ expanded: gitMenuExpanded }">
                 <div class="menu-group-title" :class="{ collapsed: !gitMenuExpanded }" @click="toggleGitMenu">
                     <span>工具箱</span>
                     <span class="arrow">▼</span>
@@ -984,6 +984,9 @@
                     <div class="menu-item" v-if="hasMenuPermission('excel-clean')" @click="switchView('excel-clean')" :class="{ active: currentView === 'excel-clean' }">
                         <span>🧹 Excel数据清洗</span>
                     </div>
+                    <div class="menu-item" v-if="hasMenuPermission('file-template-export')" @click="switchView('file-template-export')" :class="{ active: currentView === 'file-template-export' }">
+                        <span>📄 文件模版</span>
+                    </div>
                     <div class="menu-item" v-if="hasMenuPermission('db-table-export')" @click="switchView('db-table-export')" :class="{ active: currentView === 'db-table-export' }">
                         <span>💾 数据库表导出</span>
                     </div>
@@ -998,6 +1001,9 @@
                     </div>
                     <div class="menu-item" v-if="hasMenuPermission('layer-call-rule')" @click="switchView('layer-call-rule')" :class="{ active: currentView === 'layer-call-rule' }">
                         <span>⚙️ 分层调用规则配置</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('call-relation')" @click="switchView('call-relation')" :class="{ active: currentView === 'call-relation' }">
+                        <span>🕸️ 调用关系图谱扫描</span>
                     </div>
                 </div>
             </div>
@@ -1057,11 +1063,13 @@
                 <iframe v-show="currentView === 'batch-clone'" src="/batch-clone.html"></iframe>
                 <iframe v-show="currentView === 'excel-compare'" src="/excel-compare.html"></iframe>
                 <iframe v-show="currentView === 'excel-clean'" src="/excel-clean.html"></iframe>
+                <iframe v-show="currentView === 'file-template-export'" src="/file-template-export.html"></iframe>
                 <iframe v-show="currentView === 'db-table-export'" src="/db-table-export.html"></iframe>
                 <iframe v-show="currentView === 'xml-db-compare'" src="/xml-db-compare.html"></iframe>
                 <iframe v-show="currentView === 'esf-interface-compare'" src="/esf-interface-compare.html"></iframe>
                 <iframe v-show="currentView === 'migration-table-compare'" src="/migration-table-compare.html"></iframe>
                 <iframe v-show="currentView === 'layer-call-rule'" src="/layer-call-rule.html"></iframe>
+                <iframe v-show="currentView === 'call-relation'" src="/call-relation.html"></iframe>
                 <iframe v-show="currentView === 'user-management'" src="/user-management.html"></iframe>
                 <iframe v-show="currentView === 'enum-mapping'" src="/enum-mapping.html"></iframe>
                 <iframe v-show="currentView === 'domain-mapping'" src="/domain-mapping.html"></iframe>
@@ -2135,11 +2143,13 @@
                         'batch-clone': '📦 批量克隆项目',
                         'excel-compare': '📊 Excel文档比对',
                         'excel-clean': '🧹 Excel数据清洗',
+                        'file-template-export': '📄 文件模版',
                         'db-table-export': '💾 数据库表导出',
                         'xml-db-compare': '🔄 XML模型与数据库比对',
                         'esf-interface-compare': '📡 ESF接口文档比对',
                         'migration-table-compare': '🔄 迁移中间表比对',
-                        'layer-call-rule': '⚙️ 分层调用规则配置'
+                        'layer-call-rule': '⚙️ 分层调用规则配置',
+                        'call-relation': '🕸️ 调用关系图谱扫描'
                     };
                     return titles[this.currentView] || '字典管理系统';
                 },
@@ -2729,4 +2739,3 @@
     </script>
 </body>
 </html>
-

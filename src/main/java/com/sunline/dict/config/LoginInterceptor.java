@@ -14,17 +14,8 @@ public class LoginInterceptor implements HandlerInterceptor {
     
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
-        // 排除登录页面、登录接口和webhook接口
         String uri = request.getRequestURI();
-        if (uri.equals("/") || 
-            uri.equals("/login.html") || 
-            uri.startsWith("/api/auth/") ||
-            uri.startsWith("/api/webhook/") ||  // webhook接口允许匿名访问
-            uri.startsWith("/js/") ||
-            uri.startsWith("/css/") ||
-            uri.endsWith(".html") ||
-            uri.endsWith(".js") ||
-            uri.endsWith(".css")) {
+        if (isAnonymousAllowed(uri)) {
             return true;
         }
         
@@ -45,5 +36,30 @@ public class LoginInterceptor implements HandlerInterceptor {
         
         return true;
     }
-}
 
+    private boolean isAnonymousAllowed(String uri) {
+        if (uri == null || uri.isBlank()) {
+            return false;
+        }
+        return uri.equals("/")
+                || uri.equals("/login.html")
+                || uri.startsWith("/api/auth/")
+                || uri.startsWith("/api/webhook/")
+                || uri.equals("/api/build/batches")
+                || uri.equals("/api/build/all")
+                || uri.equals("/api/build/all/async")
+                || uri.equals("/api/build/all/progress")
+                || uri.equals("/api/build/all/status")
+                || uri.equals("/api/build/async-build/status")
+                || uri.startsWith("/api/build/records/")
+                || uri.startsWith("/api/build/batch/")
+                || uri.startsWith("/api/build/project/")
+                || uri.startsWith("/api/build/clone/")
+                || uri.startsWith("/api/relation/")
+                || uri.startsWith("/js/")
+                || uri.startsWith("/css/")
+                || uri.endsWith(".html")
+                || uri.endsWith(".js")
+                || uri.endsWith(".css");
+    }
+}

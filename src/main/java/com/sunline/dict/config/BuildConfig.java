@@ -18,6 +18,7 @@ public class BuildConfig {
     private String mvnHome = "";
     private String settingsFile = "";
     private int buildTimeoutMinutes = 30;
+    private SuccessCallbackConfig successCallback = new SuccessCallbackConfig();
     private List<BatchConfig> batches = new ArrayList<>();
 
     public String getBasePath() { return basePath; }
@@ -35,8 +36,29 @@ public class BuildConfig {
     public int getBuildTimeoutMinutes() { return buildTimeoutMinutes; }
     public void setBuildTimeoutMinutes(int buildTimeoutMinutes) { this.buildTimeoutMinutes = buildTimeoutMinutes; }
 
+    public SuccessCallbackConfig getSuccessCallback() { return successCallback; }
+    public void setSuccessCallback(SuccessCallbackConfig successCallback) { this.successCallback = successCallback; }
+
     public List<BatchConfig> getBatches() { return batches; }
     public void setBatches(List<BatchConfig> batches) { this.batches = batches; }
+
+    /**
+     * 全量任务成功后的回调配置
+     */
+    public static class SuccessCallbackConfig {
+        private boolean enabled = true;
+        private String url = "http://127.0.0.1:8123/api/neo4j/build/async";
+        private int timeoutSeconds = 10;
+
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+
+        public String getUrl() { return url; }
+        public void setUrl(String url) { this.url = url; }
+
+        public int getTimeoutSeconds() { return timeoutSeconds; }
+        public void setTimeoutSeconds(int timeoutSeconds) { this.timeoutSeconds = timeoutSeconds; }
+    }
 
     /**
      * 单批次配置

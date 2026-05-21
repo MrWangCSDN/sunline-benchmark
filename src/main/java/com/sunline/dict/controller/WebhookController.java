@@ -1,13 +1,16 @@
 package com.sunline.dict.controller;
 
 import com.sunline.dict.common.Result;
-import com.sunline.dict.service.CodeSyncService;
+import com.sunline.dict.service.CallRelationScanService;
 import com.sunline.dict.service.WebhookService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -24,7 +27,7 @@ public class WebhookController {
     private WebhookService webhookService;
 
     @Autowired
-    private CodeSyncService codeSyncService;
+    private CallRelationScanService callRelationScanService;
     
     /**
      * 接收GitHub Webhook
@@ -36,6 +39,11 @@ public class WebhookController {
             @RequestHeader(value = "X-GitHub-Event", required = false) String event) {
         
         try {
+            if (callRelationScanService.isScanning()) {
+                log.info("全量扫描进行中，GitHub Webhook 暂停处理");
+                return Result.success(Map.of("message", "全量扫描进行中，Webhook 暂停处理"));
+            }
+
             log.info("收到GitHub Webhook，事件类型: {}", event);
             
             // 只处理push事件
@@ -69,6 +77,11 @@ public class WebhookController {
             @RequestHeader(value = "X-Gitlab-Event", required = false) String event) {
         
         try {
+            if (callRelationScanService.isScanning()) {
+                log.info("全量扫描进行中，GitLab Webhook 暂停处理");
+                return Result.success(Map.of("message", "全量扫描进行中，Webhook 暂停处理"));
+            }
+
             log.info("收到GitLab Webhook，事件类型: {}", event);
             
             // 只处理Push Hook事件
@@ -79,12 +92,14 @@ public class WebhookController {
             
             Map<String, Object> result = webhookService.handleGitLabPushEvent(payload);
 
-            // 同步触发代码同步（失败不影响 XML 解析结果）
+            // 异步触发调用关系增量扫描（从 payload 的 commits 中提取变更文件）
             try {
-                Map<String, Object> syncResult = codeSyncService.syncCode(payload);
-                log.info("代码同步结果：{}", syncResult.get("message"));
-            } catch (Exception syncEx) {
-                log.warn("代码同步失败（不影响主流程）：{}", syncEx.getMessage());
+                List<String> changedFiles = extractChangedFiles(payload);
+                if (!changedFiles.isEmpty()) {
+                    asyncIncrementalScan(changedFiles);
+                }
+            } catch (Exception relEx) {
+                log.warn("调用关系增量扫描触发失败（不影响主流程）：{}", relEx.getMessage());
             }
             
             if ((boolean) result.get("success")) {
@@ -132,40 +147,63 @@ public class WebhookController {
     }
     
     /**
-     * 代码同步 Webhook（GitLab Push → 同步 master 代码到服务器）
-     * URL: POST /api/webhook/code-sync
-     *
-     * <p>在 GitLab 项目设置中，为每个需要同步的工程添加 Webhook：
-     * URL: http://你的服务器:8080/api/webhook/code-sync
-     * Trigger: Push events
-     */
-    @PostMapping("/code-sync")
-    public Result<Map<String, Object>> handleCodeSync(
-            @RequestBody Map<String, Object> payload,
-            @RequestHeader(value = "X-Gitlab-Event", required = false) String event) {
-        try {
-            log.info("收到代码同步 Webhook，事件类型：{}", event);
-
-            if (!"Push Hook".equals(event) && !"push".equals(event)) {
-                log.info("非 Push 事件，忽略。event={}", event);
-                return Result.success(Map.of("message", "非 Push 事件，已忽略"));
-            }
-
-            Map<String, Object> result = codeSyncService.syncCode(payload);
-            return Result.success(result);
-
-        } catch (Exception e) {
-            log.error("代码同步失败", e);
-            return Result.error("代码同步失败：" + e.getMessage());
-        }
-    }
-
-    /**
      * Webhook健康检查
      * URL: GET /api/webhook/health
      */
     @GetMapping("/health")
     public Result<String> health() {
         return Result.success("Webhook服务运行正常");
+    }
+
+    /**
+     * 从 GitLab Push Webhook payload 的 commits 中提取所有变更文件路径。
+     * GitLab payload 结构：commits[].{added[], modified[], removed[]}
+     */
+    @SuppressWarnings("unchecked")
+    private List<String> extractChangedFiles(Map<String, Object> payload) {
+        List<String> files = new ArrayList<>();
+        Object commitsObj = payload.get("commits");
+        if (!(commitsObj instanceof List)) return files;
+
+        List<Map<String, Object>> commits = (List<Map<String, Object>>) commitsObj;
+        for (Map<String, Object> commit : commits) {
+            addFiles(files, commit.get("added"));
+            addFiles(files, commit.get("modified"));
+            addFiles(files, commit.get("removed"));
+        }
+
+        // 只保留 Java 文件
+        files.removeIf(f -> !f.endsWith(".java"));
+
+        if (!files.isEmpty()) {
+            log.info("从 Webhook diff 提取到 {} 个 Java 变更文件", files.size());
+        }
+        return files;
+    }
+
+    @SuppressWarnings("unchecked")
+    private void addFiles(List<String> target, Object filesObj) {
+        if (filesObj instanceof List) {
+            for (Object f : (List<Object>) filesObj) {
+                if (f instanceof String && !target.contains(f)) {
+                    target.add((String) f);
+                }
+            }
+        }
+    }
+
+    /**
+     * 异步执行调用关系增量扫描，不阻塞 Webhook 返回
+     */
+    @Async
+    public void asyncIncrementalScan(List<String> changedFiles) {
+        try {
+            log.info("开始异步调用关系增量扫描，变更文件数：{}", changedFiles.size());
+            Map<String, Object> result = callRelationScanService.incrementalScan(changedFiles);
+            log.info("调用关系增量扫描完成：重新扫描 {} 个 Impl 文件，新增 {} 条边，耗时 {}ms",
+                    result.get("rescanFiles"), result.get("newEdges"), result.get("costMs"));
+        } catch (Exception e) {
+            log.error("调用关系增量扫描异常", e);
+        }
     }
 }

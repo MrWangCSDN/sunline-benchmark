@@ -3,6 +3,7 @@ package com.sunline.dict.controller;
 import com.sunline.dict.common.Result;
 import com.sunline.dict.dto.ValidationResult;
 import com.sunline.dict.service.ExportService;
+import com.sunline.dict.service.FileTemplateExportService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +29,9 @@ public class ExportController {
     
     @Autowired
     private ExportService exportService;
+
+    @Autowired
+    private FileTemplateExportService fileTemplateExportService;
     
     /**
      * 导出所有数据到Excel
@@ -81,6 +85,52 @@ public class ExportController {
         } catch (Exception e) {
             log.error("校验全量数据失败", e);
             return Result.error("校验失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 导出文件模版骨架工作簿
+     *
+     * @param scope 导出范围：all/deposit/loan/public/settlement
+     */
+    @GetMapping("/file-template")
+    public ResponseEntity<ByteArrayResource> exportFileTemplate(
+            @org.springframework.web.bind.annotation.RequestParam(value = "scope", defaultValue = "all") String scope) {
+        try {
+            log.info("开始导出文件模版，范围: {}", scope);
+
+            byte[] excelBytes = fileTemplateExportService.exportTemplateWorkbook(scope);
+            ByteArrayResource resource = new ByteArrayResource(excelBytes);
+
+            String fileName = buildFileTemplateFileName(scope);
+            String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replaceAll("\\+", "%20");
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
+                    .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                    .contentLength(excelBytes.length)
+                    .body(resource);
+        } catch (Exception e) {
+            log.error("文件模版导出失败，范围: {}", scope, e);
+            throw new RuntimeException("文件模版导出失败: " + e.getMessage(), e);
+        }
+    }
+
+    private String buildFileTemplateFileName(String scope) {
+        if (scope == null) {
+            return "文件模版_全领域.xlsx";
+        }
+        switch (scope.toLowerCase()) {
+            case "deposit":
+                return "文件模版_存款领域.xlsx";
+            case "loan":
+                return "文件模版_贷款领域.xlsx";
+            case "public":
+                return "文件模版_公共领域.xlsx";
+            case "settlement":
+                return "文件模版_结算领域.xlsx";
+            default:
+                return "文件模版_全领域.xlsx";
         }
     }
 }
