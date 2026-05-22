@@ -2933,10 +2933,11 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
                 }
 
                 // 比对单 sheet
-                // 本 Task 4 只走通 baseline (compareOneSheet 当前是空体，无真正 diff)
-                // Task 5/6 会通过 Edit 替换 compareOneSheet 方法体加入 diffMeta/diffFields
                 if (oldSheet != null) {
                     compareOneSheet(oldSheet, newSheet, resultSheet, name, styles, revisions);
+                } else {
+                    // 新版本独有的 sheet：整 sheet 右半边标绿
+                    paintWholeSheetGreen(newSheet, resultSheet, name, styles, revisions);
                 }
             }
 
@@ -3034,6 +3035,44 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
         Map<String, FieldRow> oldFields = readFields(oldSheet, oldHeaderRow + 1, oldCols);
         Map<String, FieldRow> newFields = readFields(newSheet, newHeaderRow + 1, newCols);
         diffFields(oldFields, newFields, unionCols, sheetName, resultSheet, styles, revisions);
+    }
+
+    /** 新版本独有 sheet：右半边整体标绿 + 追加"接口新增"修订条目 */
+    private void paintWholeSheetGreen(Sheet newSheet, Sheet resultSheet, String sheetName,
+                                       StyleCache styles, List<RevisionEntry> revisions) {
+        if (isSheetEmpty(newSheet)) {
+            revisions.add(RevisionEntry.sheetAdded(sheetName, ""));
+            return;
+        }
+
+        int headerRow = findHeaderRow(newSheet);  // 找不到会抛错（沿用一致策略）
+        List<String> cols = scanHeaderCols(newSheet, headerRow);
+
+        // 元信息区：J + K 所有非空单元格标绿（行 0 到 headerRow-1）
+        for (int r = 0; r < headerRow; r++) {
+            Row row = newSheet.getRow(r);
+            if (row == null) continue;
+            for (int c = 9; c <= 10; c++) {
+                Cell cell = row.getCell(c);
+                if (cell != null && !new DataFormatter().formatCellValue(cell).trim().isEmpty()) {
+                    paintCell(resultSheet, r, c, styles.addedBgWithBorder);
+                }
+            }
+        }
+
+        // 字段表头行 + 明细行：J 起 cols.size() 个单元格标绿
+        for (int r = headerRow; r <= newSheet.getLastRowNum(); r++) {
+            Row row = newSheet.getRow(r);
+            if (row == null) continue;
+            for (int i = 0; i < cols.size(); i++) {
+                Cell cell = row.getCell(9 + i);
+                if (cell != null && !new DataFormatter().formatCellValue(cell).trim().isEmpty()) {
+                    paintCell(resultSheet, r, 9 + i, styles.addedBgWithBorder);
+                }
+            }
+        }
+
+        revisions.add(RevisionEntry.sheetAdded(sheetName, readInterfaceName(newSheet)));
     }
 
     /** sheet 是否完全空（无非空单元格） */

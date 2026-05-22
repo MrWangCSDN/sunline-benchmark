@@ -144,6 +144,61 @@ class NewOldCoreInterfaceCompareServiceImplTest {
     }
 
     @Test
+    void sheet_added_and_deleted() throws Exception {
+        MultipartFile oldFile = ExcelFixtureBuilder.newBuilder("old.xlsx")
+                .sheet("985501")
+                    .meta("交易码", "UD49")
+                    .meta("接口名称", "理财业务销账销户处理")
+                    .headerCols("列中文名", "列顺序", "列数据类型")
+                    .field("产品编号", "1", "string")
+                .sheet("OLD_ONLY")  // 旧独有 → 接口删除
+                    .meta("交易码", "OLD001")
+                    .meta("接口名称", "老接口")
+                    .headerCols("列中文名", "列顺序", "列数据类型")
+                    .field("旧字段", "1", "string")
+                .buildAsMultipartFile("oldFile");
+
+        MultipartFile newFile = ExcelFixtureBuilder.newBuilder("new.xlsx")
+                .sheet("985501")
+                    .meta("交易码", "UD49")
+                    .meta("接口名称", "理财业务销账销户处理")
+                    .headerCols("列中文名", "列顺序", "列数据类型")
+                    .field("产品编号", "1", "string")
+                .sheet("NEW_ONLY")  // 新独有 → 接口新增
+                    .meta("交易码", "NEW001")
+                    .meta("接口名称", "新接口")
+                    .headerCols("列中文名", "列顺序", "列数据类型")
+                    .field("新字段", "1", "string")
+                .buildAsMultipartFile("newFile");
+
+        Map<String, Object> result = service.compareFiles(oldFile, newFile, "说明,修订记录,索引");
+        resultFile = service.getResultFile((String) result.get("fileName"));
+
+        try (Workbook wb = ExcelAssert.open(resultFile)) {
+            // 985501 不变 / NEW_ONLY 在结果里 / OLD_ONLY 不在结果里
+            sheet(wb, "985501");
+            sheet(wb, "NEW_ONLY");
+            noSheet(wb, "OLD_ONLY");
+
+            // NEW_ONLY 整体标绿（J 列起所有非空单元格）
+            Sheet newOnly = wb.getSheet("NEW_ONLY");
+            cellBgColor(newOnly, 1, 9, IndexedColors.LIGHT_GREEN.getIndex(), "NEW_ONLY 交易码 J");
+            cellBgColor(newOnly, 1, 10, IndexedColors.LIGHT_GREEN.getIndex(), "NEW_ONLY 交易码 K");
+
+            // 修订记录
+            Sheet rev = sheet(wb, "修订记录");
+            int foundAdded = 0, foundDeleted = 0;
+            for (int r = 1; r <= rev.getLastRowNum(); r++) {
+                String detail = rev.getRow(r).getCell(3).getStringCellValue();
+                if (detail.contains("新增接口") && detail.contains("新接口")) foundAdded++;
+                if (detail.contains("删除接口") && detail.contains("老接口")) foundDeleted++;
+            }
+            assertEquals(1, foundAdded);
+            assertEquals(1, foundDeleted);
+        }
+    }
+
+    @Test
     void metainfo_modified() throws Exception {
         MultipartFile oldFile = ExcelFixtureBuilder.newBuilder("old.xlsx")
                 .sheet("985501")
