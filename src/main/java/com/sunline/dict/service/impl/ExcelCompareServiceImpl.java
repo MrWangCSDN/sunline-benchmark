@@ -2998,11 +2998,136 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
         }
     }
 
-    /** 单 sheet 比对 —— Task 4 只跑空骨架，后续 task 填充实际 diff */
+    /** 单 sheet 比对（元信息 + 字段，本 task 仅实现元信息） */
     private void compareOneSheet(Sheet oldSheet, Sheet newSheet, Sheet resultSheet,
                                   String sheetName, StyleCache styles, List<RevisionEntry> revisions) {
-        // Task 5+ 实现：findHeaderRow / diffMeta / diffFields
-        // 当前 Task 4 留空，保证 baseline 跑通
+
+        // ⓪ 空 sheet 短路
+        boolean oldEmpty = isSheetEmpty(oldSheet);
+        boolean newEmpty = isSheetEmpty(newSheet);
+        if (oldEmpty && newEmpty) return;
+        if (oldEmpty) {
+            // sheet 新增（旧无新有）—— Task 8 完整实现
+            revisions.add(RevisionEntry.sheetAdded(sheetName, readInterfaceName(newSheet)));
+            return;
+        }
+        if (newEmpty) {
+            revisions.add(RevisionEntry.sheetDeleted(sheetName, readInterfaceName(oldSheet)));
+            return;
+        }
+
+        // ① 找分界点
+        int oldHeaderRow = findHeaderRow(oldSheet);
+        int newHeaderRow = findHeaderRow(newSheet);
+
+        // ② 元信息区：J=label, K=value
+        Map<String, MetaCell> oldMeta = readMeta(oldSheet, 0, oldHeaderRow);
+        Map<String, MetaCell> newMeta = readMeta(newSheet, 0, newHeaderRow);
+        diffMeta(oldMeta, newMeta, sheetName, resultSheet, styles, revisions);
+
+        // ③ 字段明细区 —— Task 6 实现
+    }
+
+    /** sheet 是否完全空（无非空单元格） */
+    private boolean isSheetEmpty(Sheet sheet) {
+        if (sheet == null || sheet.getLastRowNum() < 0) return true;
+        for (int r = sheet.getFirstRowNum(); r <= sheet.getLastRowNum(); r++) {
+            Row row = sheet.getRow(r);
+            if (row == null) continue;
+            for (int c = 0; c < row.getLastCellNum(); c++) {
+                Cell cell = row.getCell(c);
+                if (cell != null && !new DataFormatter().formatCellValue(cell).trim().isEmpty()) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /** J 列出现"列中文名"的行号；找不到抛错（非空 sheet 强制） */
+    private int findHeaderRow(Sheet sheet) {
+        for (int r = sheet.getFirstRowNum(); r <= sheet.getLastRowNum(); r++) {
+            Row row = sheet.getRow(r);
+            if (row == null) continue;
+            Cell j = row.getCell(9);
+            if (j == null) continue;
+            String v = new DataFormatter().formatCellValue(j).trim();
+            if ("列中文名".equals(v)) return r;
+        }
+        throw new RuntimeException("sheet[" + sheet.getSheetName() + "] 在 J 列未找到'列中文名'表头行");
+    }
+
+    /** 读元信息区：fromRow（含）到 toRow（不含），key=J列, value={K列值, 行号} */
+    private Map<String, MetaCell> readMeta(Sheet sheet, int fromRow, int toRow) {
+        Map<String, MetaCell> map = new LinkedHashMap<>();
+        for (int r = fromRow; r < toRow; r++) {
+            Row row = sheet.getRow(r);
+            if (row == null) continue;
+            Cell j = row.getCell(9);
+            if (j == null) continue;
+            String label = new DataFormatter().formatCellValue(j).trim();
+            if (label.isEmpty()) continue;
+            // 跳过类似"原输出文件"/"新输出文件"这种 merge 标题行（只有 J，没有 K）—— 但保险起见也读
+            Cell k = row.getCell(10);
+            String value = k == null ? "" : new DataFormatter().formatCellValue(k).trim();
+            if (map.containsKey(label)) {
+                log.warn("sheet[{}] 元信息区 J 列重复标签: {}（后值覆盖前值）", sheet.getSheetName(), label);
+            }
+            map.put(label, new MetaCell(value, r));
+        }
+        return map;
+    }
+
+    /** 元信息区比对：标颜色 + 累积修订条目 */
+    private void diffMeta(Map<String, MetaCell> oldMeta, Map<String, MetaCell> newMeta,
+                           String sheetName, Sheet resultSheet, StyleCache styles, List<RevisionEntry> revisions) {
+
+        // 修改 + 新增（遍历新版本）
+        for (Map.Entry<String, MetaCell> e : newMeta.entrySet()) {
+            String label = e.getKey();
+            MetaCell newCell = e.getValue();
+            MetaCell oldCell = oldMeta.get(label);
+
+            if (oldCell == null) {
+                // 新增：J + K 标绿
+                paintCell(resultSheet, newCell.row, 9, styles.addedBgWithBorder);
+                paintCell(resultSheet, newCell.row, 10, styles.addedBgWithBorder);
+                revisions.add(RevisionEntry.metaAdded(sheetName, label, newCell.value, newCell.row));
+            } else if (!Objects.equals(normalize(oldCell.value), normalize(newCell.value))) {
+                // 修改：K 标黄
+                paintCell(resultSheet, newCell.row, 10, styles.modifiedBgWithBorder);
+                revisions.add(RevisionEntry.metaModified(sheetName, label, oldCell.value, newCell.value, newCell.row));
+            }
+            // 完全一致：不标
+        }
+
+        // 删除（遍历旧版本找新版本没有的）
+        for (Map.Entry<String, MetaCell> e : oldMeta.entrySet()) {
+            if (!newMeta.containsKey(e.getKey())) {
+                revisions.add(RevisionEntry.metaDeleted(sheetName, e.getKey(), e.getValue().value));
+            }
+        }
+    }
+
+    /** 给目标 sheet 的指定单元格涂色（若行/单元格不存在则创建） */
+    private void paintCell(Sheet sheet, int row, int col, CellStyle style) {
+        Row r = sheet.getRow(row);
+        if (r == null) r = sheet.createRow(row);
+        Cell c = r.getCell(col);
+        if (c == null) c = r.createCell(col);
+        c.setCellStyle(style);
+    }
+
+    /** 单元格值归一化：null/""/" " 视为相等 */
+    private String normalize(String s) {
+        return s == null ? "" : s.trim();
+    }
+
+    /** 元信息单元格 */
+    private static class MetaCell {
+        final String value;
+        final int row;
+        MetaCell(String v, int r) { value = v; row = r; }
     }
 
     /** 修订记录 sheet 写入 */
@@ -3078,6 +3203,48 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
             e.level = "接口";
             e.way = "删除";
             e.detail = "删除接口：" + (interfaceName.isEmpty() ? sheetName : interfaceName);
+            return e;
+        }
+
+        static RevisionEntry sheetAdded(String sheetName, String interfaceName) {
+            RevisionEntry e = new RevisionEntry();
+            e.txnCode = sheetName;
+            e.level = "接口";
+            e.way = "新增";
+            e.detail = "新增接口：" + (interfaceName.isEmpty() ? sheetName : interfaceName);
+            return e;
+        }
+
+        static RevisionEntry metaModified(String sheetName, String label, String oldVal, String newVal, int row) {
+            RevisionEntry e = new RevisionEntry();
+            e.txnCode = sheetName;
+            e.level = "接口";
+            e.way = "修改";
+            e.detail = label + ": " + oldVal + " → " + newVal;
+            e.linkSheetName = sheetName;
+            e.linkRow = row;
+            e.linkCol = 10;  // K 列
+            return e;
+        }
+
+        static RevisionEntry metaAdded(String sheetName, String label, String newVal, int row) {
+            RevisionEntry e = new RevisionEntry();
+            e.txnCode = sheetName;
+            e.level = "接口";
+            e.way = "新增";
+            e.detail = "新增项 " + label + ": " + newVal;
+            e.linkSheetName = sheetName;
+            e.linkRow = row;
+            e.linkCol = 10;
+            return e;
+        }
+
+        static RevisionEntry metaDeleted(String sheetName, String label, String oldVal) {
+            RevisionEntry e = new RevisionEntry();
+            e.txnCode = sheetName;
+            e.level = "接口";
+            e.way = "删除";
+            e.detail = "删除项 " + label + ": " + oldVal;
             return e;
         }
     }
