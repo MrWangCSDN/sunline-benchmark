@@ -2980,7 +2980,10 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
         return set;
     }
 
-    /** 复制源 sheet 全部内容到目标 sheet（值+样式） */
+    /**
+     * 复制源 sheet 全部内容到目标 sheet（仅复制单元格值；
+     * 颜色/样式由后续 diff 逻辑通过 paintCell 单独应用，不在此处复制）
+     */
     private void copySheetContent(Sheet src, Sheet dst) {
         for (int r = 0; r <= src.getLastRowNum(); r++) {
             Row srcRow = src.getRow(r);
@@ -3008,6 +3011,9 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
         // 避让同名：如果"修订记录"已经存在（被复制过来了），改名"修订记录_diff"
         String sheetName = wb.getSheet("修订记录") != null ? "修订记录_diff" : "修订记录";
         Sheet rev = wb.createSheet(sheetName);
+        if (rev == null) {
+            throw new RuntimeException("创建修订记录 sheet 失败: " + sheetName);
+        }
 
         // 表头
         Row header = rev.createRow(0);
@@ -3050,6 +3056,8 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
                 return kCell == null ? "" : new DataFormatter().formatCellValue(kCell).trim();
             }
         }
+        // 未找到"接口名称"标签 —— 上游会回退用 sheet 名作为标识，这里 WARN 提醒文档格式异常
+        log.warn("sheet[{}] 元信息区未找到'接口名称'标签，将回退用 sheet 名作为接口标识", sheet.getSheetName());
         return "";
     }
 
