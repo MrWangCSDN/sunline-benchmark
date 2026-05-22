@@ -5,6 +5,7 @@ import com.sunline.dict.service.ExcelCompareService;
 import org.apache.poi.common.usermodel.HyperlinkType;
 import org.apache.poi.openxml4j.util.ZipSecureFile;
 import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.ss.util.CellReference;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -3286,12 +3287,30 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
     /** 修订记录 sheet 写入 */
     private void writeRevisionSheet(Workbook wb, List<RevisionEntry> revisions,
                                      Set<String> excludeSet, StyleCache styles) {
-        // 避让同名：如果"修订记录"已经存在（被复制过来了），改名"修订记录_diff"
+        // 按 spec §5.4 排序
+        Map<String, Integer> sheetOrder = new HashMap<>();
+        for (int i = 0; i < wb.getNumberOfSheets(); i++) {
+            sheetOrder.put(wb.getSheetName(i), i);
+        }
+        revisions.sort((a, b) -> {
+            int s = Integer.compare(
+                    sheetOrder.getOrDefault(a.txnCode, Integer.MAX_VALUE),
+                    sheetOrder.getOrDefault(b.txnCode, Integer.MAX_VALUE));
+            if (s != 0) return s;
+            // 级别：接口 < 字段
+            int lv = Integer.compare(levelRank(a.level), levelRank(b.level));
+            if (lv != 0) return lv;
+            // 方式：新增 < 修改 < 删除
+            int w = Integer.compare(wayRank(a.way), wayRank(b.way));
+            if (w != 0) return w;
+            // 同方式：按 linkRow 物理顺序
+            int rA = a.linkRow == null ? Integer.MAX_VALUE : a.linkRow;
+            int rB = b.linkRow == null ? Integer.MAX_VALUE : b.linkRow;
+            return Integer.compare(rA, rB);
+        });
+
         String sheetName = wb.getSheet("修订记录") != null ? "修订记录_diff" : "修订记录";
         Sheet rev = wb.createSheet(sheetName);
-        if (rev == null) {
-            throw new RuntimeException("创建修订记录 sheet 失败: " + sheetName);
-        }
 
         // 表头
         Row header = rev.createRow(0);
@@ -3300,23 +3319,62 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
         header.createCell(2).setCellValue("修订方式");
         header.createCell(3).setCellValue("修订明细");
 
-        // 数据行
+        // 数据行 + 超链接
+        CreationHelper helper = wb.getCreationHelper();
         for (int i = 0; i < revisions.size(); i++) {
             RevisionEntry e = revisions.get(i);
-            Row row = rev.createRow(i + 1);
+            int rowIdx = i + 1;
+            Row row = rev.createRow(rowIdx);
             row.createCell(0).setCellValue(e.txnCode);
             row.createCell(1).setCellValue(e.level);
             row.createCell(2).setCellValue(e.way);
-            row.createCell(3).setCellValue(e.detail);
+            Cell detailCell = row.createCell(3);
+            detailCell.setCellValue(e.detail);
 
-            // C 列按修订方式染色
-            Cell wayCell = row.getCell(2);
+            // 染色（C 列）
             switch (e.way) {
-                case "新增": wayCell.setCellStyle(styles.addedBgWithBorder); break;
-                case "修改": wayCell.setCellStyle(styles.modifiedBgWithBorder); break;
-                case "删除": wayCell.setCellStyle(styles.deletedBgWithBorder); break;
-                default: // 不处理
+                case "新增": row.getCell(2).setCellStyle(styles.addedBgWithBorder); break;
+                case "修改": row.getCell(2).setCellStyle(styles.modifiedBgWithBorder); break;
+                case "删除": row.getCell(2).setCellStyle(styles.deletedBgWithBorder); break;
+                default:
             }
+
+            // 正向超链接：D 列 → 目标 sheet 的差异单元格
+            if (e.linkSheetName != null && e.linkRow != null && e.linkCol != null) {
+                Hyperlink link = helper.createHyperlink(HyperlinkType.DOCUMENT);
+                String address = "'" + e.linkSheetName + "'!"
+                        + CellReference.convertNumToColString(e.linkCol) + (e.linkRow + 1);
+                link.setAddress(address);
+                detailCell.setHyperlink(link);
+
+                // 反向超链接：目标单元格 → 修订记录 sheet
+                Sheet targetSheet = wb.getSheet(e.linkSheetName);
+                if (targetSheet != null) {
+                    Row targetRow = targetSheet.getRow(e.linkRow);
+                    if (targetRow != null) {
+                        Cell targetCell = targetRow.getCell(e.linkCol);
+                        if (targetCell == null) targetCell = targetRow.createCell(e.linkCol);
+                        Hyperlink back = helper.createHyperlink(HyperlinkType.DOCUMENT);
+                        back.setAddress("'" + sheetName + "'!A" + (rowIdx + 1));
+                        targetCell.setHyperlink(back);
+                    }
+                }
+            }
+        }
+    }
+
+    private int levelRank(String level) {
+        if ("接口".equals(level)) return 0;
+        if ("字段".equals(level)) return 1;
+        return 99;
+    }
+
+    private int wayRank(String way) {
+        switch (way) {
+            case "新增": return 0;
+            case "修改": return 1;
+            case "删除": return 2;
+            default: return 99;
         }
     }
 

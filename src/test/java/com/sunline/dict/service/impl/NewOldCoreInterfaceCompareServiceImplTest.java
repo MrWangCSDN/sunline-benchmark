@@ -382,6 +382,50 @@ class NewOldCoreInterfaceCompareServiceImplTest {
     }
 
     @Test
+    void revision_log_ordered_and_linked() throws Exception {
+        MultipartFile oldFile = ExcelFixtureBuilder.newBuilder("old.xlsx")
+                .sheet("S1")
+                    .meta("交易码", "A")
+                    .headerCols("列中文名", "列顺序")
+                    .field("f1", "1")
+                .sheet("S2")
+                    .meta("交易码", "B")
+                    .headerCols("列中文名", "列顺序")
+                    .field("f1", "1")
+                .buildAsMultipartFile("oldFile");
+
+        MultipartFile newFile = ExcelFixtureBuilder.newBuilder("new.xlsx")
+                .sheet("S1")
+                    .meta("交易码", "A2")  // 接口修改
+                    .headerCols("列中文名", "列顺序")
+                    .field("f1", "1")
+                    .field("f_new", "2")  // 字段新增
+                .sheet("S2")
+                    .meta("交易码", "B")
+                    .headerCols("列中文名", "列顺序")
+                    .field("f1", "1")
+                .buildAsMultipartFile("newFile");
+
+        Map<String, Object> result = service.compareFiles(oldFile, newFile, "");
+        resultFile = service.getResultFile((String) result.get("fileName"));
+
+        try (Workbook wb = ExcelAssert.open(resultFile)) {
+            Sheet rev = sheet(wb, "修订记录");
+            // 排序：S1 在前（按 sheet 顺序），同 sheet 内"接口"在"字段"前
+            // 行 1：S1 / 接口 / 修改 / 交易码: A → A2
+            // 行 2：S1 / 字段 / 新增 / 新增字段：f_new...
+            revisionRow(rev, 1, "S1", "接口", "修改", "交易码: A → A2");
+            cellValue(rev, 2, 0, "S1");
+            cellValue(rev, 2, 1, "字段");
+            cellValue(rev, 2, 2, "新增");
+            assertTrue(rev.getRow(2).getCell(3).getStringCellValue().contains("新增字段：f_new"));
+
+            // 修订记录的 D 列单元格应有超链接（hyperlink target 不为 null）
+            assertNotNull(rev.getRow(1).getCell(3).getHyperlink(), "修订记录 D 列应有超链接（行 1）");
+        }
+    }
+
+    @Test
     void column_union_when_widths_differ() throws Exception {
         MultipartFile oldFile = ExcelFixtureBuilder.newBuilder("old.xlsx")
                 .sheet("985501")
