@@ -640,17 +640,9 @@
 
         // 显示结果
         function showResult(data) {
-            const resultInfo = document.getElementById('resultInfo');
-            const html = `
-                <h4>📊 比对统计</h4>
-                <ul>
-                    <li>✅ 新增接口：${data.addedTables || 0} 个</li>
-                    <li>❌ 删除接口：${data.deletedTables || 0} 个</li>
-                    <li>✏️ 修改接口：${data.modifiedTables || 0} 个</li>
-                    <li>📝 总计：${data.totalTables || 0} 个接口</li>
-                </ul>
-            `;
-            resultInfo.innerHTML = html;
+            document.getElementById('resultInfo').innerHTML =
+                '<p>处理 sheet 数: ' + (data.totalSheets ?? '-') + '</p>' +
+                '<p>差异条目: ' + (data.totalChanges ?? 0) + '</p>';
             document.getElementById('resultSection').classList.add('show');
         }
 
@@ -687,6 +679,7 @@
             removeFile('new');
             document.getElementById('resultSection').classList.remove('show');
             document.getElementById('errorMessage').classList.remove('show');
+            document.getElementById('excludeSheets').value = '说明,修订记录,索引';
             resultFileName = null;
         }
     </script>

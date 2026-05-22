@@ -2911,63 +2911,62 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
                 throw new RuntimeException("Excel 至少需要包含一个 sheet");
             }
 
-            // 以新版本为底本：复制到目标 Workbook
-            Workbook resultWb = new XSSFWorkbook();
-            StyleCache styles = new StyleCache(resultWb);
+            try (Workbook resultWb = new XSSFWorkbook()) {
+                StyleCache styles = new StyleCache(resultWb);
 
-            // 累积修订条目
-            List<RevisionEntry> revisions = new ArrayList<>();
+                // 累积修订条目
+                List<RevisionEntry> revisions = new ArrayList<>();
 
-            // 收集新版本所有 sheet 名（保持顺序），处理或原样复制
-            for (int i = 0; i < newWb.getNumberOfSheets(); i++) {
-                String name = newWb.getSheetName(i);
-                Sheet newSheet = newWb.getSheetAt(i);
-                Sheet oldSheet = oldWb.getSheet(name);  // 同名旧 sheet
+                // 收集新版本所有 sheet 名（保持顺序），处理或原样复制
+                for (int i = 0; i < newWb.getNumberOfSheets(); i++) {
+                    String name = newWb.getSheetName(i);
+                    Sheet newSheet = newWb.getSheetAt(i);
+                    Sheet oldSheet = oldWb.getSheet(name);  // 同名旧 sheet
 
-                // 复制到结果工作簿（原样）
-                Sheet resultSheet = resultWb.createSheet(name);
-                copySheetContent(newSheet, resultSheet);
+                    // 复制到结果工作簿（原样）
+                    Sheet resultSheet = resultWb.createSheet(name);
+                    copySheetContent(newSheet, resultSheet);
 
-                if (excludeSet.contains(name)) {
-                    log.info("sheet[{}] 被排除，不参与比对", name);
-                    continue;
+                    if (excludeSet.contains(name)) {
+                        log.info("sheet[{}] 被排除，不参与比对", name);
+                        continue;
+                    }
+
+                    // 比对单 sheet
+                    if (oldSheet != null) {
+                        compareOneSheet(oldSheet, newSheet, resultSheet, name, styles, revisions);
+                    } else {
+                        // 新版本独有的 sheet：整 sheet 右半边标绿
+                        paintWholeSheetGreen(newSheet, resultSheet, name, styles, revisions);
+                    }
                 }
 
-                // 比对单 sheet
-                if (oldSheet != null) {
-                    compareOneSheet(oldSheet, newSheet, resultSheet, name, styles, revisions);
-                } else {
-                    // 新版本独有的 sheet：整 sheet 右半边标绿
-                    paintWholeSheetGreen(newSheet, resultSheet, name, styles, revisions);
+                // 处理旧版本独有 sheet（删除接口）
+                for (int i = 0; i < oldWb.getNumberOfSheets(); i++) {
+                    String name = oldWb.getSheetName(i);
+                    if (excludeSet.contains(name)) continue;
+                    if (newWb.getSheet(name) == null) {
+                        revisions.add(RevisionEntry.sheetDeleted(name, readInterfaceName(oldWb.getSheetAt(i))));
+                    }
                 }
-            }
 
-            // 处理旧版本独有 sheet（删除接口）
-            for (int i = 0; i < oldWb.getNumberOfSheets(); i++) {
-                String name = oldWb.getSheetName(i);
-                if (excludeSet.contains(name)) continue;
-                if (newWb.getSheet(name) == null) {
-                    revisions.add(RevisionEntry.sheetDeleted(name, readInterfaceName(oldWb.getSheetAt(i))));
+                // 追加修订记录 sheet
+                writeRevisionSheet(resultWb, revisions, excludeSet, styles);
+
+                // 写盘
+                String fileName = "new-old-core-compare-"
+                        + new SimpleDateFormat("yyyyMMddHHmmssSSS").format(new Date()) + ".xlsx";
+                File out = new File(resultDir, fileName);
+                try (FileOutputStream fos = new FileOutputStream(out)) {
+                    resultWb.write(fos);
                 }
+
+                Map<String, Object> ret = new HashMap<>();
+                ret.put("fileName", fileName);
+                ret.put("totalSheets", newWb.getNumberOfSheets());
+                ret.put("totalChanges", revisions.size());
+                return ret;
             }
-
-            // 追加修订记录 sheet
-            writeRevisionSheet(resultWb, revisions, excludeSet, styles);
-
-            // 写盘
-            String fileName = "new-old-core-compare-"
-                    + new SimpleDateFormat("yyyyMMddHHmmssSSS").format(new Date()) + ".xlsx";
-            File out = new File(resultDir, fileName);
-            try (FileOutputStream fos = new FileOutputStream(out)) {
-                resultWb.write(fos);
-            }
-            resultWb.close();
-
-            Map<String, Object> ret = new HashMap<>();
-            ret.put("fileName", fileName);
-            ret.put("totalSheets", newWb.getNumberOfSheets());
-            ret.put("totalChanges", revisions.size());
-            return ret;
         }
     }
 
@@ -3010,7 +3009,8 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
         if (oldEmpty && newEmpty) return;
         if (oldEmpty) {
             // sheet 新增（旧无新有）—— Task 8 完整实现
-            revisions.add(RevisionEntry.sheetAdded(sheetName, readInterfaceName(newSheet)));
+            int newHeaderRow = findHeaderRow(newSheet);
+            revisions.add(RevisionEntry.sheetAdded(sheetName, readInterfaceName(newSheet), newHeaderRow, 9));
             return;
         }
         if (newEmpty) {
@@ -3042,7 +3042,7 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
     private void paintWholeSheetGreen(Sheet newSheet, Sheet resultSheet, String sheetName,
                                        StyleCache styles, List<RevisionEntry> revisions) {
         if (isSheetEmpty(newSheet)) {
-            revisions.add(RevisionEntry.sheetAdded(sheetName, ""));
+            revisions.add(RevisionEntry.sheetAdded(sheetName, "", 0, 9));
             return;
         }
 
@@ -3073,7 +3073,7 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
             }
         }
 
-        revisions.add(RevisionEntry.sheetAdded(sheetName, readInterfaceName(newSheet)));
+        revisions.add(RevisionEntry.sheetAdded(sheetName, readInterfaceName(newSheet), headerRow, 9));
     }
 
     /** sheet 是否完全空（无非空单元格） */
@@ -3174,6 +3174,9 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
     /** 表头行从 J 列起向右扫，直到第一个空单元格 */
     private List<String> scanHeaderCols(Sheet sheet, int headerRow) {
         Row row = sheet.getRow(headerRow);
+        if (row == null) {
+            throw new RuntimeException("sheet[" + sheet.getSheetName() + "] 表头行 " + headerRow + " 不存在");
+        }
         List<String> cols = new ArrayList<>();
         int lastCellNum = row.getLastCellNum();
         for (int c = 9; c < lastCellNum; c++) {
@@ -3417,12 +3420,15 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
             return e;
         }
 
-        static RevisionEntry sheetAdded(String sheetName, String interfaceName) {
+        static RevisionEntry sheetAdded(String sheetName, String interfaceName, int row, int col) {
             RevisionEntry e = new RevisionEntry();
             e.txnCode = sheetName;
             e.level = "接口";
             e.way = "新增";
             e.detail = "新增接口：" + (interfaceName.isEmpty() ? sheetName : interfaceName);
+            e.linkSheetName = sheetName;
+            e.linkRow = row;
+            e.linkCol = col;
             return e;
         }
 
