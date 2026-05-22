@@ -253,4 +253,79 @@ class NewOldCoreInterfaceCompareServiceImplTest {
 
         assertEquals(3, ((Number) result.get("totalChanges")).intValue());
     }
+
+    @Test
+    void exclude_sheets_default() throws Exception {
+        // 旧/新都有 "说明" sheet（内容不同），但被默认排除 → 不应有差异
+        MultipartFile oldFile = ExcelFixtureBuilder.newBuilder("old.xlsx")
+                .sheet("说明").raw(0, 0, "旧说明")
+                .sheet("985501")
+                    .meta("交易码", "UD49")
+                    .headerCols("列中文名", "列顺序")
+                    .field("产品编号", "1")
+                .buildAsMultipartFile("oldFile");
+
+        MultipartFile newFile = ExcelFixtureBuilder.newBuilder("new.xlsx")
+                .sheet("说明").raw(0, 0, "新说明")
+                .sheet("985501")
+                    .meta("交易码", "UD49")
+                    .headerCols("列中文名", "列顺序")
+                    .field("产品编号", "1")
+                .buildAsMultipartFile("newFile");
+
+        Map<String, Object> result = service.compareFiles(oldFile, newFile, "说明,修订记录,索引");
+        resultFile = service.getResultFile((String) result.get("fileName"));
+
+        try (Workbook wb = ExcelAssert.open(resultFile)) {
+            Sheet shuoming = sheet(wb, "说明");
+            cellValue(shuoming, 0, 0, "新说明");
+            // 不应标颜色
+            cellNoFill(shuoming, 0, 0);
+        }
+        assertEquals(0, ((Number) result.get("totalChanges")).intValue());
+    }
+
+    @Test
+    void exclude_sheets_custom() throws Exception {
+        MultipartFile oldFile = ExcelFixtureBuilder.newBuilder("old.xlsx")
+                .sheet("封面").raw(0, 0, "旧封面")
+                .sheet("985501")
+                    .meta("交易码", "UD49")
+                    .headerCols("列中文名", "列顺序")
+                    .field("产品编号", "1")
+                .buildAsMultipartFile("oldFile");
+
+        MultipartFile newFile = ExcelFixtureBuilder.newBuilder("new.xlsx")
+                .sheet("封面").raw(0, 0, "新封面")
+                .sheet("985501")
+                    .meta("交易码", "UD49")
+                    .headerCols("列中文名", "列顺序")
+                    .field("产品编号", "1")
+                .buildAsMultipartFile("newFile");
+
+        Map<String, Object> result = service.compareFiles(oldFile, newFile, "封面");
+        assertEquals(0, ((Number) result.get("totalChanges")).intValue());
+        resultFile = service.getResultFile((String) result.get("fileName"));
+    }
+
+    @Test
+    void exclude_empty_means_no_exclude() throws Exception {
+        // 排除清空 → "说明" sheet 内容不同也会被比对（默认值不会自动回填）
+        MultipartFile oldFile = ExcelFixtureBuilder.newBuilder("old.xlsx")
+                .sheet("说明").raw(1, 9, "旧").raw(2, 9, "列中文名").raw(2, 10, "列顺序")  // 模拟一个"列中文名"表头
+                                .raw(3, 9, "fieldA").raw(3, 10, "1")
+                .buildAsMultipartFile("oldFile");
+
+        MultipartFile newFile = ExcelFixtureBuilder.newBuilder("new.xlsx")
+                .sheet("说明").raw(1, 9, "新").raw(2, 9, "列中文名").raw(2, 10, "列顺序")
+                                .raw(3, 9, "fieldA").raw(3, 10, "1")
+                .buildAsMultipartFile("newFile");
+
+        Map<String, Object> result = service.compareFiles(oldFile, newFile, "");
+        // "说明" 不被排除，元信息差异（"旧"→"新"）会被识别
+        // 即应至少有 1 条修订
+        assertTrue(((Number) result.get("totalChanges")).intValue() >= 1,
+                "排除清空时'说明'应被比对");
+        resultFile = service.getResultFile((String) result.get("fileName"));
+    }
 }
