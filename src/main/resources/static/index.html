@@ -936,7 +936,7 @@
                 </div>
             </div>
             
-            <div class="menu-group" v-if="hasMenuPermission('git-management') || hasMenuPermission('git-branch-create') || hasMenuPermission('git-permission-manage') || hasMenuPermission('jar-scan-analysis') || hasMenuPermission('service-build-scan') || hasMenuPermission('service-impl-build-scan') || hasMenuPermission('method-stack-scan') || hasMenuPermission('flow-tree-query') || hasMenuPermission('pom-dependency-tree') || hasMenuPermission('batch-clone') || hasMenuPermission('excel-compare') || hasMenuPermission('excel-clean') || hasMenuPermission('file-template-export') || hasMenuPermission('db-table-export') || hasMenuPermission('xml-db-compare') || hasMenuPermission('esf-interface-compare') || hasMenuPermission('migration-table-compare') || hasMenuPermission('layer-call-rule') || hasMenuPermission('code-push') || hasMenuPermission('xml-scan') || hasMenuPermission('call-relation')" :class="{ expanded: gitMenuExpanded }">
+            <div class="menu-group" v-if="hasMenuPermission('git-management') || hasMenuPermission('git-branch-create') || hasMenuPermission('git-permission-manage') || hasMenuPermission('jar-scan-analysis') || hasMenuPermission('service-build-scan') || hasMenuPermission('service-impl-build-scan') || hasMenuPermission('method-stack-scan') || hasMenuPermission('flow-tree-query') || hasMenuPermission('pom-dependency-tree') || hasMenuPermission('batch-clone') || hasMenuPermission('excel-compare') || hasMenuPermission('excel-clean') || hasMenuPermission('file-template-export') || hasMenuPermission('db-table-export') || hasMenuPermission('xml-db-compare') || hasMenuPermission('esf-interface-compare') || hasMenuPermission('migration-table-compare') || hasMenuPermission('new-old-core-interface-compare') || hasMenuPermission('layer-call-rule') || hasMenuPermission('code-push') || hasMenuPermission('xml-scan') || hasMenuPermission('call-relation')" :class="{ expanded: gitMenuExpanded }">
                 <div class="menu-group-title" :class="{ collapsed: !gitMenuExpanded }" @click="toggleGitMenu">
                     <span>工具箱</span>
                     <span class="arrow">▼</span>
@@ -998,6 +998,9 @@
                     </div>
                     <div class="menu-item" v-if="hasMenuPermission('migration-table-compare')" @click="switchView('migration-table-compare')" :class="{ active: currentView === 'migration-table-compare' }">
                         <span>🔄 迁移中间表比对</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('new-old-core-interface-compare')" @click="switchView('new-old-core-interface-compare')" :class="{ active: currentView === 'new-old-core-interface-compare' }">
+                        <span>🆚 新老核心接口文档比对</span>
                     </div>
                     <div class="menu-item" v-if="hasMenuPermission('layer-call-rule')" @click="switchView('layer-call-rule')" :class="{ active: currentView === 'layer-call-rule' }">
                         <span>⚙️ 分层调用规则配置</span>
@@ -1068,6 +1071,7 @@
                 <iframe v-show="currentView === 'xml-db-compare'" src="/xml-db-compare.html"></iframe>
                 <iframe v-show="currentView === 'esf-interface-compare'" src="/esf-interface-compare.html"></iframe>
                 <iframe v-show="currentView === 'migration-table-compare'" src="/migration-table-compare.html"></iframe>
+                <iframe v-show="currentView === 'new-old-core-interface-compare'" src="/new-old-core-interface-compare.html"></iframe>
                 <iframe v-show="currentView === 'layer-call-rule'" src="/layer-call-rule.html"></iframe>
                 <iframe v-show="currentView === 'call-relation'" src="/call-relation.html"></iframe>
                 <iframe v-show="currentView === 'user-management'" src="/user-management.html"></iframe>
@@ -2148,6 +2152,7 @@
                         'xml-db-compare': '🔄 XML模型与数据库比对',
                         'esf-interface-compare': '📡 ESF接口文档比对',
                         'migration-table-compare': '🔄 迁移中间表比对',
+                        'new-old-core-interface-compare': '🆚 新老核心接口文档比对',
                         'layer-call-rule': '⚙️ 分层调用规则配置',
                         'call-relation': '🕸️ 调用关系图谱扫描'
                     };
