@@ -2882,6 +2882,16 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
     public File getResultFile(String fileName) {
         return new File(RESULT_DIR, fileName);
     }
+
+    /**
+     * 新老核心接口文档比对入口（详细算法见 spec §4）
+     * 当前为占位实现，后续 Task 通过 TDD 逐步填充
+     */
+    @Override
+    public Map<String, Object> compareNewOldCoreInterfaces(
+            MultipartFile oldFile, MultipartFile newFile, String excludeSheets) throws Exception {
+        throw new UnsupportedOperationException("compareNewOldCoreInterfaces 待实现 (Task 5+)");
+    }
 }
 
 
