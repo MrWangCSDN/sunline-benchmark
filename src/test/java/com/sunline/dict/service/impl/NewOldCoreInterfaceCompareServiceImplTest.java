@@ -328,4 +328,56 @@ class NewOldCoreInterfaceCompareServiceImplTest {
                 "排除清空时'说明'应被比对");
         resultFile = service.getResultFile((String) result.get("fileName"));
     }
+
+    @Test
+    void throws_when_excel_empty() throws Exception {
+        MultipartFile oldFile = ExcelFixtureBuilder.newBuilder("old.xlsx").buildAsMultipartFile("oldFile");
+        MultipartFile newFile = ExcelFixtureBuilder.newBuilder("new.xlsx").buildAsMultipartFile("newFile");
+
+        RuntimeException ex = assertThrows(RuntimeException.class,
+                () -> service.compareFiles(oldFile, newFile, ""));
+        assertTrue(ex.getMessage().contains("至少需要包含一个 sheet"),
+                "应抛'至少需要包含一个 sheet'，实际：" + ex.getMessage());
+    }
+
+    @Test
+    void throws_when_header_row_missing() throws Exception {
+        MultipartFile oldFile = ExcelFixtureBuilder.newBuilder("old.xlsx")
+                .sheet("985501")
+                    .meta("交易码", "UD49")  // 只有元信息，没有"列中文名"表头
+                .buildAsMultipartFile("oldFile");
+
+        MultipartFile newFile = ExcelFixtureBuilder.newBuilder("new.xlsx")
+                .sheet("985501")
+                    .meta("交易码", "UD49")
+                .buildAsMultipartFile("newFile");
+
+        RuntimeException ex = assertThrows(RuntimeException.class,
+                () -> service.compareFiles(oldFile, newFile, ""));
+        assertTrue(ex.getMessage().contains("未找到'列中文名'"),
+                "应抛'未找到列中文名'，实际：" + ex.getMessage());
+    }
+
+    @Test
+    void throws_when_header_cols_blank() throws Exception {
+        // 表头只有"列中文名"自己，右侧 K 列为空 → 应抛错
+        MultipartFile oldFile = ExcelFixtureBuilder.newBuilder("old.xlsx")
+                .sheet("985501")
+                    .meta("交易码", "UD49")
+                    .raw(2, 9, "列中文名")  // 只有 J 列，K 起为空
+                    .raw(3, 9, "产品编号")
+                .buildAsMultipartFile("oldFile");
+
+        MultipartFile newFile = ExcelFixtureBuilder.newBuilder("new.xlsx")
+                .sheet("985501")
+                    .meta("交易码", "UD49")
+                    .raw(2, 9, "列中文名")
+                    .raw(3, 9, "产品编号")
+                .buildAsMultipartFile("newFile");
+
+        RuntimeException ex = assertThrows(RuntimeException.class,
+                () -> service.compareFiles(oldFile, newFile, ""));
+        assertTrue(ex.getMessage().contains("表头行 J 列右侧无有效列"),
+                "应抛'表头列为空'，实际：" + ex.getMessage());
+    }
 }
