@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.sql.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -797,7 +798,17 @@ public class DatabaseExportServiceImpl implements DatabaseExportService {
     
     @Override
     public File getResultFile(String fileName) {
-        return new File(RESULT_DIR, fileName);
+        File result = new File(RESULT_DIR, fileName);
+        try {
+            String canonicalResultDir = new File(RESULT_DIR).getCanonicalPath();
+            String canonicalResult = result.getCanonicalPath();
+            if (!canonicalResult.startsWith(canonicalResultDir + File.separator)) {
+                throw new IllegalArgumentException("非法的文件名: " + fileName);
+            }
+        } catch (IOException e) {
+            throw new IllegalArgumentException("解析文件路径失败: " + fileName, e);
+        }
+        return result;
     }
 }
 
