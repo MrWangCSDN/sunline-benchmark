@@ -380,4 +380,35 @@ class NewOldCoreInterfaceCompareServiceImplTest {
         assertTrue(ex.getMessage().contains("表头行 J 列右侧无有效列"),
                 "应抛'表头列为空'，实际：" + ex.getMessage());
     }
+
+    @Test
+    void column_union_when_widths_differ() throws Exception {
+        MultipartFile oldFile = ExcelFixtureBuilder.newBuilder("old.xlsx")
+                .sheet("985501")
+                    .meta("交易码", "UD49")
+                    .headerCols("列中文名", "列顺序", "列数据类型")  // 3 列
+                    .field("产品编号", "1", "string")
+                .buildAsMultipartFile("oldFile");
+
+        MultipartFile newFile = ExcelFixtureBuilder.newBuilder("new.xlsx")
+                .sheet("985501")
+                    .meta("交易码", "UD49")
+                    .headerCols("列中文名", "列顺序", "列数据类型", "列最大长度")  // 4 列（多了 长度）
+                    .field("产品编号", "1", "string", "10")
+                .buildAsMultipartFile("newFile");
+
+        Map<String, Object> result = service.compareFiles(oldFile, newFile, "");
+        resultFile = service.getResultFile((String) result.get("fileName"));
+
+        try (Workbook wb = ExcelAssert.open(resultFile)) {
+            Sheet rev = sheet(wb, "修订记录");
+            // "列最大长度: → 10" 这种修改条目应存在（旧无新有 = "" → "10"）
+            int found = 0;
+            for (int r = 1; r <= rev.getLastRowNum(); r++) {
+                String detail = rev.getRow(r).getCell(3).getStringCellValue();
+                if (detail.contains("列最大长度") && detail.contains("10")) found++;
+            }
+            assertEquals(1, found, "新增列'列最大长度'应被识别为差异");
+        }
+    }
 }
