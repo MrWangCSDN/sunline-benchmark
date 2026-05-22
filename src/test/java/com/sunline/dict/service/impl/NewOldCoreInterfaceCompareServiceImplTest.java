@@ -426,6 +426,55 @@ class NewOldCoreInterfaceCompareServiceImplTest {
     }
 
     @Test
+    void multi_changes_e2e() throws Exception {
+        MultipartFile oldFile = ExcelFixtureBuilder.newBuilder("old.xlsx")
+                .sheet("说明").raw(0, 0, "说明书")
+                .sheet("SHEET_SAME")
+                    .meta("交易码", "S0")
+                    .headerCols("列中文名", "列顺序")
+                    .field("f1", "1")
+                .sheet("SHEET_CHANGED")
+                    .meta("交易码", "OLD_CODE")
+                    .headerCols("列中文名", "列顺序", "列数据类型")
+                    .field("f1", "1", "string")
+                    .field("f_to_delete", "2", "string")
+                .buildAsMultipartFile("oldFile");
+
+        MultipartFile newFile = ExcelFixtureBuilder.newBuilder("new.xlsx")
+                .sheet("说明").raw(0, 0, "说明书(更新)")
+                .sheet("SHEET_SAME")
+                    .meta("交易码", "S0")
+                    .headerCols("列中文名", "列顺序")
+                    .field("f1", "1")
+                .sheet("SHEET_CHANGED")
+                    .meta("交易码", "NEW_CODE")  // 修改
+                    .headerCols("列中文名", "列顺序", "列数据类型")
+                    .field("f1", "1", "decimal")  // 修改
+                    .field("f_new", "3", "string")  // 新增
+                .sheet("SHEET_BRAND_NEW")  // 新增
+                    .meta("交易码", "NEW")
+                    .headerCols("列中文名", "列顺序")
+                    .field("f1", "1")
+                .buildAsMultipartFile("newFile");
+
+        Map<String, Object> result = service.compareFiles(oldFile, newFile, "说明,修订记录,索引");
+        resultFile = service.getResultFile((String) result.get("fileName"));
+
+        // 期望差异条目数：
+        // SHEET_CHANGED: 交易码修改(1) + f1修改(1) + f_to_delete删除(1) + f_new新增(1) = 4
+        // SHEET_BRAND_NEW: 接口新增(1) = 1
+        // 合计 5
+        assertEquals(5, ((Number) result.get("totalChanges")).intValue());
+
+        try (Workbook wb = ExcelAssert.open(resultFile)) {
+            // "说明"被排除，没标颜色
+            cellNoFill(sheet(wb, "说明"), 0, 0);
+            // SHEET_BRAND_NEW 整体标绿
+            cellBgColor(sheet(wb, "SHEET_BRAND_NEW"), 1, 10, IndexedColors.LIGHT_GREEN.getIndex(), "SHEET_BRAND_NEW 交易码 K");
+        }
+    }
+
+    @Test
     void column_union_when_widths_differ() throws Exception {
         MultipartFile oldFile = ExcelFixtureBuilder.newBuilder("old.xlsx")
                 .sheet("985501")
