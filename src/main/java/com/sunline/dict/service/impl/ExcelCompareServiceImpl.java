@@ -3025,7 +3025,15 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
         Map<String, MetaCell> newMeta = readMeta(newSheet, 0, newHeaderRow);
         diffMeta(oldMeta, newMeta, sheetName, resultSheet, styles, revisions);
 
-        // ③ 字段明细区 —— Task 6 实现
+        // ③ 字段明细区
+        List<String> oldCols = scanHeaderCols(oldSheet, oldHeaderRow);
+        List<String> newCols = scanHeaderCols(newSheet, newHeaderRow);
+        LinkedHashSet<String> unionCols = new LinkedHashSet<>(newCols);
+        unionCols.addAll(oldCols);
+
+        Map<String, FieldRow> oldFields = readFields(oldSheet, oldHeaderRow + 1, oldCols);
+        Map<String, FieldRow> newFields = readFields(newSheet, newHeaderRow + 1, newCols);
+        diffFields(oldFields, newFields, unionCols, sheetName, resultSheet, styles, revisions);
     }
 
     /** sheet 是否完全空（无非空单元格） */
@@ -3121,6 +3129,112 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
     /** 单元格值归一化：null/""/" " 视为相等 */
     private String normalize(String s) {
         return s == null ? "" : s.trim();
+    }
+
+    /** 表头行从 J 列起向右扫，直到第一个空单元格 */
+    private List<String> scanHeaderCols(Sheet sheet, int headerRow) {
+        Row row = sheet.getRow(headerRow);
+        List<String> cols = new ArrayList<>();
+        int lastCellNum = row.getLastCellNum();
+        for (int c = 9; c < lastCellNum; c++) {
+            Cell cell = row.getCell(c);
+            String v = cell == null ? "" : new DataFormatter().formatCellValue(cell).trim();
+            if (v.isEmpty()) break;
+            cols.add(v);
+        }
+        if (cols.size() <= 1) {
+            throw new RuntimeException("sheet[" + sheet.getSheetName()
+                    + "] 表头行 J 列右侧无有效列（至少需'列顺序'等属性列）");
+        }
+        return cols;
+    }
+
+    /** 字段明细区 → Map<列中文名, FieldRow> */
+    private Map<String, FieldRow> readFields(Sheet sheet, int fromRow, List<String> cols) {
+        Map<String, FieldRow> map = new LinkedHashMap<>();
+        for (int r = fromRow; r <= sheet.getLastRowNum(); r++) {
+            Row row = sheet.getRow(r);
+            if (row == null) continue;
+            Cell jCell = row.getCell(9);
+            String name = jCell == null ? "" : new DataFormatter().formatCellValue(jCell).trim();
+            if (name.isEmpty()) continue;  // 跳过空行（一般是字段表底部）
+
+            Map<String, String> values = new LinkedHashMap<>();
+            for (int i = 0; i < cols.size(); i++) {
+                Cell cell = row.getCell(9 + i);
+                values.put(cols.get(i),
+                        cell == null ? "" : new DataFormatter().formatCellValue(cell).trim());
+            }
+            if (map.containsKey(name)) {
+                log.warn("sheet[{}] 字段表'{}'重复（后行覆盖前行）", sheet.getSheetName(), name);
+            }
+            map.put(name, new FieldRow(values, r));
+        }
+        return map;
+    }
+
+    /** 字段差异比对 */
+    private void diffFields(Map<String, FieldRow> oldFields, Map<String, FieldRow> newFields,
+                             LinkedHashSet<String> unionCols, String sheetName,
+                             Sheet resultSheet, StyleCache styles, List<RevisionEntry> revisions) {
+
+        // 新增 + 修改（遍历新版本）
+        for (Map.Entry<String, FieldRow> e : newFields.entrySet()) {
+            String name = e.getKey();
+            FieldRow newRow = e.getValue();
+            FieldRow oldRow = oldFields.get(name);
+
+            if (oldRow == null) {
+                // 新增：整行 J 起标绿
+                for (int i = 0; i < unionCols.size(); i++) {
+                    paintCell(resultSheet, newRow.row, 9 + i, styles.addedBgWithBorder);
+                }
+                String summary = formatFieldSummary(newRow.values);
+                revisions.add(RevisionEntry.fieldAdded(sheetName, name, summary, newRow.row));
+            } else {
+                // 修改：仅不同的列标黄
+                List<String> diffs = new ArrayList<>();
+                int colIdx = 0;
+                for (String col : unionCols) {
+                    String oldVal = oldRow.values.getOrDefault(col, "");
+                    String newVal = newRow.values.getOrDefault(col, "");
+                    if (!Objects.equals(normalize(oldVal), normalize(newVal))) {
+                        paintCell(resultSheet, newRow.row, 9 + colIdx, styles.modifiedBgWithBorder);
+                        diffs.add(col + ": " + oldVal + " → " + newVal);
+                    }
+                    colIdx++;
+                }
+                if (!diffs.isEmpty()) {
+                    revisions.add(RevisionEntry.fieldModified(sheetName, name, diffs, newRow.row));
+                }
+            }
+        }
+
+        // 删除（遍历旧版本）
+        for (Map.Entry<String, FieldRow> e : oldFields.entrySet()) {
+            if (!newFields.containsKey(e.getKey())) {
+                String summary = formatFieldSummary(e.getValue().values);
+                revisions.add(RevisionEntry.fieldDeleted(sheetName, e.getKey(), summary));
+            }
+        }
+    }
+
+    /** 格式化字段的属性摘要，用于修订明细 */
+    private String formatFieldSummary(Map<String, String> values) {
+        StringBuilder sb = new StringBuilder("(");
+        String type = values.getOrDefault("列数据类型", "");
+        String len = values.getOrDefault("列最大长度", "");
+        sb.append(type);
+        if (!len.isEmpty()) sb.append(", 长度").append(len);
+        sb.append(")");
+        return sb.toString();
+    }
+
+    /** 字段数据结构 */
+    private static class FieldRow {
+        final Map<String, String> values;
+        final int row;
+        FieldRow(Map<String, String> v, int r) { values = v; row = r; }
     }
 
     /** 元信息单元格 */
@@ -3245,6 +3359,39 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
             e.level = "接口";
             e.way = "删除";
             e.detail = "删除项 " + label + ": " + oldVal;
+            return e;
+        }
+
+        static RevisionEntry fieldAdded(String sheetName, String fieldName, String summary, int row) {
+            RevisionEntry e = new RevisionEntry();
+            e.txnCode = sheetName;
+            e.level = "字段";
+            e.way = "新增";
+            e.detail = "新增字段：" + fieldName + summary;
+            e.linkSheetName = sheetName;
+            e.linkRow = row;
+            e.linkCol = 9;
+            return e;
+        }
+
+        static RevisionEntry fieldModified(String sheetName, String fieldName, List<String> diffs, int row) {
+            RevisionEntry e = new RevisionEntry();
+            e.txnCode = sheetName;
+            e.level = "字段";
+            e.way = "修改";
+            e.detail = "字段[" + fieldName + "] " + String.join("; ", diffs);
+            e.linkSheetName = sheetName;
+            e.linkRow = row;
+            e.linkCol = 9;
+            return e;
+        }
+
+        static RevisionEntry fieldDeleted(String sheetName, String fieldName, String summary) {
+            RevisionEntry e = new RevisionEntry();
+            e.txnCode = sheetName;
+            e.level = "字段";
+            e.way = "删除";
+            e.detail = "删除字段：" + fieldName + summary;
             return e;
         }
     }

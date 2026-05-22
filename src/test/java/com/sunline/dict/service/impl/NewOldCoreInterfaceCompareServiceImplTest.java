@@ -87,6 +87,63 @@ class NewOldCoreInterfaceCompareServiceImplTest {
     }
 
     @Test
+    void field_added_modified_deleted() throws Exception {
+        MultipartFile oldFile = ExcelFixtureBuilder.newBuilder("old.xlsx")
+                .sheet("985501")
+                    .meta("交易码", "UD49")
+                    .headerCols("列中文名", "列顺序", "列数据类型", "列最大长度", "是否非空")
+                    .field("产品编号", "1", "string", "10", "Y")
+                    .field("交易种类", "2", "string", "1", "Y")
+                    .field("废弃字段", "3", "string", "5", "N")  // 旧独有
+                .buildAsMultipartFile("oldFile");
+
+        MultipartFile newFile = ExcelFixtureBuilder.newBuilder("new.xlsx")
+                .sheet("985501")
+                    .meta("交易码", "UD49")
+                    .headerCols("列中文名", "列顺序", "列数据类型", "列最大长度", "是否非空")
+                    .field("产品编号", "1", "string", "10", "Y")
+                    .field("交易种类", "2", "decimal(24,2)", "24", "Y")  // 数据类型+长度修改
+                    .field("新字段", "4", "string", "8", "Y")  // 新独有
+                .buildAsMultipartFile("newFile");
+
+        Map<String, Object> result = service.compareFiles(oldFile, newFile, "说明,修订记录,索引");
+        resultFile = service.getResultFile((String) result.get("fileName"));
+
+        try (Workbook wb = ExcelAssert.open(resultFile)) {
+            Sheet s = sheet(wb, "985501");
+            // 数据行：表头在行 2（0-based）—— 1 行元信息 + 表头
+            // 字段从行 3 起：产品编号、交易种类、新字段
+            // 验证"交易种类"的列数据类型(L列)、列最大长度(M列)被标黄
+            cellValue(s, 4, 9, "交易种类");
+            cellBgColor(s, 4, 11, IndexedColors.YELLOW.getIndex(), "列数据类型修改");
+            cellBgColor(s, 4, 12, IndexedColors.YELLOW.getIndex(), "列最大长度修改");
+            // 其他列(列顺序、是否非空)不变 → 无填充
+            cellNoFill(s, 4, 10);  // 列顺序
+            cellNoFill(s, 4, 13);  // 是否非空
+
+            // "新字段" 整行标绿
+            cellValue(s, 5, 9, "新字段");
+            cellBgColor(s, 5, 9, IndexedColors.LIGHT_GREEN.getIndex(), "新字段 J");
+            cellBgColor(s, 5, 10, IndexedColors.LIGHT_GREEN.getIndex(), "新字段 K");
+            cellBgColor(s, 5, 11, IndexedColors.LIGHT_GREEN.getIndex(), "新字段 L");
+
+            // "废弃字段" 不在新版本里，结果文件没这一行
+            // 但应在修订记录里
+            Sheet rev = sheet(wb, "修订记录");
+            int foundDeleted = 0, foundAdded = 0, foundModified = 0;
+            for (int r = 1; r <= rev.getLastRowNum(); r++) {
+                String detail = rev.getRow(r).getCell(3).getStringCellValue();
+                if (detail.contains("删除字段") && detail.contains("废弃字段")) foundDeleted++;
+                if (detail.contains("新增字段") && detail.contains("新字段")) foundAdded++;
+                if (detail.contains("字段[交易种类]") && detail.contains("string") && detail.contains("decimal")) foundModified++;
+            }
+            assertEquals(1, foundDeleted);
+            assertEquals(1, foundAdded);
+            assertEquals(1, foundModified);
+        }
+    }
+
+    @Test
     void metainfo_modified() throws Exception {
         MultipartFile oldFile = ExcelFixtureBuilder.newBuilder("old.xlsx")
                 .sheet("985501")
