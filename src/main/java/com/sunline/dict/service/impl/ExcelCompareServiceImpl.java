@@ -2884,13 +2884,194 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
     }
 
     /**
-     * 新老核心接口文档比对入口（详细算法见 spec §4）
-     * 当前为占位实现，后续 Task 通过 TDD 逐步填充
+     * 新老核心接口文档比对入口
      */
     @Override
     public Map<String, Object> compareNewOldCoreInterfaces(
             MultipartFile oldFile, MultipartFile newFile, String excludeSheets) throws Exception {
-        throw new UnsupportedOperationException("compareNewOldCoreInterfaces 待实现 (Task 5+)");
+
+        log.info("开始新老核心接口比对");
+
+        // 解析 excludeSheets
+        Set<String> excludeSet = parseExcludeSheets(excludeSheets);
+        log.info("排除 sheet 集合: {}", excludeSet);
+
+        // 创建输出目录
+        File resultDir = new File(RESULT_DIR);
+        if (!resultDir.exists()) resultDir.mkdirs();
+
+        // 调整 Zip bomb 阈值（与现有模式一致）
+        ZipSecureFile.setMinInflateRatio(0.001);
+
+        try (Workbook oldWb = WorkbookFactory.create(oldFile.getInputStream());
+             Workbook newWb = WorkbookFactory.create(newFile.getInputStream())) {
+
+            if (newWb.getNumberOfSheets() == 0 && oldWb.getNumberOfSheets() == 0) {
+                throw new RuntimeException("Excel 至少需要包含一个 sheet");
+            }
+
+            // 以新版本为底本：复制到目标 Workbook
+            Workbook resultWb = new XSSFWorkbook();
+            StyleCache styles = new StyleCache(resultWb);
+
+            // 累积修订条目
+            List<RevisionEntry> revisions = new ArrayList<>();
+
+            // 收集新版本所有 sheet 名（保持顺序），处理或原样复制
+            for (int i = 0; i < newWb.getNumberOfSheets(); i++) {
+                String name = newWb.getSheetName(i);
+                Sheet newSheet = newWb.getSheetAt(i);
+                Sheet oldSheet = oldWb.getSheet(name);  // 同名旧 sheet
+
+                // 复制到结果工作簿（原样）
+                Sheet resultSheet = resultWb.createSheet(name);
+                copySheetContent(newSheet, resultSheet);
+
+                if (excludeSet.contains(name)) {
+                    log.info("sheet[{}] 被排除，不参与比对", name);
+                    continue;
+                }
+
+                // 比对单 sheet
+                // 本 Task 4 只走通 baseline (compareOneSheet 当前是空体，无真正 diff)
+                // Task 5/6 会通过 Edit 替换 compareOneSheet 方法体加入 diffMeta/diffFields
+                if (oldSheet != null) {
+                    compareOneSheet(oldSheet, newSheet, resultSheet, name, styles, revisions);
+                }
+            }
+
+            // 处理旧版本独有 sheet（删除接口）
+            for (int i = 0; i < oldWb.getNumberOfSheets(); i++) {
+                String name = oldWb.getSheetName(i);
+                if (excludeSet.contains(name)) continue;
+                if (newWb.getSheet(name) == null) {
+                    revisions.add(RevisionEntry.sheetDeleted(name, readInterfaceName(oldWb.getSheetAt(i))));
+                }
+            }
+
+            // 追加修订记录 sheet
+            writeRevisionSheet(resultWb, revisions, excludeSet, styles);
+
+            // 写盘
+            String fileName = "new-old-core-compare-"
+                    + new SimpleDateFormat("yyyyMMddHHmmssSSS").format(new Date()) + ".xlsx";
+            File out = new File(resultDir, fileName);
+            try (FileOutputStream fos = new FileOutputStream(out)) {
+                resultWb.write(fos);
+            }
+            resultWb.close();
+
+            Map<String, Object> ret = new HashMap<>();
+            ret.put("fileName", fileName);
+            ret.put("totalSheets", newWb.getNumberOfSheets());
+            ret.put("totalChanges", revisions.size());
+            return ret;
+        }
+    }
+
+    /** 解析 excludeSheets 字符串 */
+    private Set<String> parseExcludeSheets(String s) {
+        if (s == null || s.trim().isEmpty()) return new HashSet<>();
+        Set<String> set = new HashSet<>();
+        for (String part : s.split(",")) {
+            String trimmed = part.trim();
+            if (!trimmed.isEmpty()) set.add(trimmed);
+        }
+        return set;
+    }
+
+    /** 复制源 sheet 全部内容到目标 sheet（值+样式） */
+    private void copySheetContent(Sheet src, Sheet dst) {
+        for (int r = 0; r <= src.getLastRowNum(); r++) {
+            Row srcRow = src.getRow(r);
+            if (srcRow == null) continue;
+            Row dstRow = dst.createRow(r);
+            for (int c = 0; c < srcRow.getLastCellNum(); c++) {
+                Cell srcCell = srcRow.getCell(c);
+                if (srcCell == null) continue;
+                Cell dstCell = dstRow.createCell(c);
+                dstCell.setCellValue(new DataFormatter().formatCellValue(srcCell));
+            }
+        }
+    }
+
+    /** 单 sheet 比对 —— Task 4 只跑空骨架，后续 task 填充实际 diff */
+    private void compareOneSheet(Sheet oldSheet, Sheet newSheet, Sheet resultSheet,
+                                  String sheetName, StyleCache styles, List<RevisionEntry> revisions) {
+        // Task 5+ 实现：findHeaderRow / diffMeta / diffFields
+        // 当前 Task 4 留空，保证 baseline 跑通
+    }
+
+    /** 修订记录 sheet 写入 */
+    private void writeRevisionSheet(Workbook wb, List<RevisionEntry> revisions,
+                                     Set<String> excludeSet, StyleCache styles) {
+        // 避让同名：如果"修订记录"已经存在（被复制过来了），改名"修订记录_diff"
+        String sheetName = wb.getSheet("修订记录") != null ? "修订记录_diff" : "修订记录";
+        Sheet rev = wb.createSheet(sheetName);
+
+        // 表头
+        Row header = rev.createRow(0);
+        header.createCell(0).setCellValue("交易码");
+        header.createCell(1).setCellValue("修订级别");
+        header.createCell(2).setCellValue("修订方式");
+        header.createCell(3).setCellValue("修订明细");
+
+        // 数据行
+        for (int i = 0; i < revisions.size(); i++) {
+            RevisionEntry e = revisions.get(i);
+            Row row = rev.createRow(i + 1);
+            row.createCell(0).setCellValue(e.txnCode);
+            row.createCell(1).setCellValue(e.level);
+            row.createCell(2).setCellValue(e.way);
+            row.createCell(3).setCellValue(e.detail);
+
+            // C 列按修订方式染色
+            Cell wayCell = row.getCell(2);
+            switch (e.way) {
+                case "新增": wayCell.setCellStyle(styles.addedBgWithBorder); break;
+                case "修改": wayCell.setCellStyle(styles.modifiedBgWithBorder); break;
+                case "删除": wayCell.setCellStyle(styles.deletedBgWithBorder); break;
+                default: // 不处理
+            }
+        }
+    }
+
+    /** 从一个 sheet 的元信息区读出"接口名称"（用于"接口删除"的明细描述） */
+    private String readInterfaceName(Sheet sheet) {
+        if (sheet == null) return "";
+        for (int r = 0; r <= Math.min(sheet.getLastRowNum(), 20); r++) {
+            Row row = sheet.getRow(r);
+            if (row == null) continue;
+            Cell jCell = row.getCell(9);
+            if (jCell == null) continue;
+            String j = new DataFormatter().formatCellValue(jCell).trim();
+            if ("接口名称".equals(j)) {
+                Cell kCell = row.getCell(10);
+                return kCell == null ? "" : new DataFormatter().formatCellValue(kCell).trim();
+            }
+        }
+        return "";
+    }
+
+    /** 修订条目数据结构 */
+    private static class RevisionEntry {
+        String txnCode;  // sheet 名
+        String level;    // 接口 / 字段
+        String way;      // 新增 / 修改 / 删除
+        String detail;   // 明细描述
+        // 超链接目标（行/列，0-based，sheet 名）—— Task 10 实现
+        String linkSheetName;
+        Integer linkRow;
+        Integer linkCol;
+
+        static RevisionEntry sheetDeleted(String sheetName, String interfaceName) {
+            RevisionEntry e = new RevisionEntry();
+            e.txnCode = sheetName;
+            e.level = "接口";
+            e.way = "删除";
+            e.detail = "删除接口：" + (interfaceName.isEmpty() ? sheetName : interfaceName);
+            return e;
+        }
     }
 }
 
