@@ -17,7 +17,16 @@ public class ExcelAssert {
     /** 断言文件存在且能打开 */
     public static Workbook open(File file) throws Exception {
         assertTrue(file.exists(), "结果文件应存在: " + file.getAbsolutePath());
-        return new XSSFWorkbook(new FileInputStream(file));
+        FileInputStream fis = new FileInputStream(file);
+        try {
+            // XSSFWorkbook 读完会缓存数据，但不自动关闭 InputStream；这里手动关闭避免 fd 泄漏
+            Workbook wb = new XSSFWorkbook(fis);
+            fis.close();
+            return wb;
+        } catch (Exception e) {
+            fis.close();
+            throw e;
+        }
     }
 
     /** 断言 sheet 存在 */
@@ -37,6 +46,10 @@ public class ExcelAssert {
         Row r = sheet.getRow(row);
         assertNotNull(r, "sheet[" + sheet.getSheetName() + "] 行" + row + " 应存在");
         Cell c = r.getCell(col);
+        // 单元格不存在 + expected 非空 → 这是个 bug，明确报错（避免 null 被悄悄当成 "" 通过）
+        if (c == null && !expected.isEmpty()) {
+            fail("sheet[" + sheet.getSheetName() + "] (" + row + "," + col + ") 单元格不存在，但 expected=" + expected);
+        }
         String actual = c == null ? "" : new DataFormatter().formatCellValue(c).trim();
         assertEquals(expected, actual,
                 "sheet[" + sheet.getSheetName() + "] (" + row + "," + col + ") 单元格值不符");
@@ -44,8 +57,10 @@ public class ExcelAssert {
 
     /** 断言单元格背景色（IndexedColors 的 short index 比对） */
     public static void cellBgColor(Sheet sheet, int row, int col, short expectedIndex, String label) {
-        Cell c = sheet.getRow(row).getCell(col);
-        assertNotNull(c, label + " 单元格不存在");
+        Row r = sheet.getRow(row);
+        assertNotNull(r, label + " — 行" + row + " 不存在");
+        Cell c = r.getCell(col);
+        assertNotNull(c, label + " 单元格(" + row + "," + col + ") 不存在");
         CellStyle style = c.getCellStyle();
         assertEquals(expectedIndex, style.getFillForegroundColor(),
                 label + " 单元格(" + row + "," + col + ") 背景色不符");
@@ -53,8 +68,10 @@ public class ExcelAssert {
 
     /** 断言单元格字体含删除线 */
     public static void cellHasStrikeout(Workbook wb, Sheet sheet, int row, int col, String label) {
-        Cell c = sheet.getRow(row).getCell(col);
-        assertNotNull(c, label + " 单元格不存在");
+        Row r = sheet.getRow(row);
+        assertNotNull(r, label + " — 行" + row + " 不存在");
+        Cell c = r.getCell(col);
+        assertNotNull(c, label + " 单元格(" + row + "," + col + ") 不存在");
         Font font = wb.getFontAt(c.getCellStyle().getFontIndex());
         assertTrue(font.getStrikeout(), label + " 单元格应有删除线");
     }

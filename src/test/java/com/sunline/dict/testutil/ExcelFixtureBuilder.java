@@ -50,12 +50,18 @@ public class ExcelFixtureBuilder {
 
     /** 元信息行：J 列 = label, K 列 = value */
     public ExcelFixtureBuilder meta(String label, String value) {
+        if (currentSheet == null) {
+            throw new IllegalStateException("先调 sheet() 再调 meta()");
+        }
         currentSheet.metas.add(new MetaSpec(label, value));
         return this;
     }
 
     /** 字段表头行（出现"列中文名"标识分界点）—— 第一个元素必须是"列中文名" */
     public ExcelFixtureBuilder headerCols(String... cols) {
+        if (currentSheet == null) {
+            throw new IllegalStateException("先调 sheet() 再调 headerCols()");
+        }
         if (cols.length == 0 || !"列中文名".equals(cols[0])) {
             throw new IllegalArgumentException("headerCols 第一个必须是'列中文名'");
         }
@@ -65,11 +71,16 @@ public class ExcelFixtureBuilder {
 
     /** 字段明细行（按 headerCols 顺序传值） */
     public ExcelFixtureBuilder field(String... values) {
+        if (currentSheet == null) {
+            throw new IllegalStateException("先调 sheet() 再调 field()");
+        }
         if (currentSheet.headerCols == null) {
             throw new IllegalStateException("先调 headerCols 再调 field");
         }
         if (values.length != currentSheet.headerCols.size()) {
-            throw new IllegalArgumentException("field 列数与 headerCols 不一致");
+            throw new IllegalArgumentException(
+                "field 列数 (" + values.length + ") 与 headerCols ("
+                    + currentSheet.headerCols.size() + ") 不一致");
         }
         currentSheet.fields.add(Arrays.asList(values));
         return this;
@@ -83,6 +94,9 @@ public class ExcelFixtureBuilder {
 
     /** 在某个 sheet 的任意位置写一个字符串（用于排除 sheet 内容 / 异常 case 等） */
     public ExcelFixtureBuilder raw(int row, int col, String value) {
+        if (currentSheet == null) {
+            throw new IllegalStateException("先调 sheet() 再调 raw()");
+        }
         currentSheet.rawCells.add(new RawCell(row, col, value));
         return this;
     }
