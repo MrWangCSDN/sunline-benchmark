@@ -227,7 +227,8 @@ public class DatabaseExportServiceImpl implements DatabaseExportService {
         
         // 获取主键和索引信息
         Set<String> primaryKeys = getPrimaryKeys(metaData, tableName);
-        List<IndexInfo> indexes = getIndexes(metaData, tableName, primaryKeys);
+        String pkName = getPrimaryKeyName(metaData, tableName);
+        List<IndexInfo> indexes = getIndexes(metaData, tableName, pkName);
         
         // 第4行开始：字段数据
         int rowNum = 3;
@@ -286,16 +287,14 @@ public class DatabaseExportServiceImpl implements DatabaseExportService {
             createCellWithStyle(indexHeaderRow, i, "", borderStyle);
         }
         
-        // 索引数据（不包括primarykey）
+        // 索引数据
         for (IndexInfo index : indexes) {
-            if (!"primarykey".equalsIgnoreCase(index.type)) {
-                Row indexRow = sheet.createRow(rowNum++);
-                createCellWithStyle(indexRow, 0, index.indexName, borderStyle);
-                createCellWithStyle(indexRow, 1, index.columnName, borderStyle);
-                createCellWithStyle(indexRow, 2, index.type, borderStyle);
-                for (int i = 3; i < 10; i++) {
-                    createCellWithStyle(indexRow, i, "", borderStyle);
-                }
+            Row indexRow = sheet.createRow(rowNum++);
+            createCellWithStyle(indexRow, 0, index.indexName, borderStyle);
+            createCellWithStyle(indexRow, 1, index.columnName, borderStyle);
+            createCellWithStyle(indexRow, 2, index.type, borderStyle);
+            for (int i = 3; i < 10; i++) {
+                createCellWithStyle(indexRow, i, "", borderStyle);
             }
         }
         
@@ -307,12 +306,9 @@ public class DatabaseExportServiceImpl implements DatabaseExportService {
             createCellWithStyle(pkHeaderRow, i, "", borderStyle);
         }
         
-        // 主键数据（获取真正的主键名称，多个主键用逗号分隔）
+        // 主键数据（多个主键按 KEY_SEQ 顺序逗号分隔）
         if (!primaryKeys.isEmpty()) {
             Row pkRow = sheet.createRow(rowNum++);
-            
-            // 获取主键约束名称
-            String pkName = getPrimaryKeyName(metaData, tableName);
             createCellWithStyle(pkRow, 0, pkName.toLowerCase(), borderStyle);  // 小写
             createCellWithStyle(pkRow, 1, String.join(",", primaryKeys), borderStyle);
             for (int i = 2; i < 10; i++) {
@@ -383,26 +379,40 @@ public class DatabaseExportServiceImpl implements DatabaseExportService {
     }
     
     /**
-     * 获取索引信息（不包括主键）
+     * 获取索引信息（不包括主键索引）。
+     * 联合索引按 ORDINAL_POSITION 顺序合并为一行，字段名用逗号分隔。
+     * 过滤逻辑：按索引名与主键约束名比较，避免误删同时出现在普通索引和主键中的字段。
      */
-    private List<IndexInfo> getIndexes(DatabaseMetaData metaData, String tableName, Set<String> primaryKeys) throws SQLException {
-        List<IndexInfo> indexes = new ArrayList<>();
+    private List<IndexInfo> getIndexes(DatabaseMetaData metaData, String tableName, String pkName) throws SQLException {
+        // LinkedHashMap 保留索引首次出现的顺序；JDBC 按 ORDINAL_POSITION 返回同一索引的列
+        LinkedHashMap<String, IndexInfo> indexMap = new LinkedHashMap<>();
         ResultSet rs = metaData.getIndexInfo(null, null, tableName, false, false);
-        
+
         while (rs.next()) {
             String indexName = rs.getString("INDEX_NAME");
             String columnName = rs.getString("COLUMN_NAME");
             boolean nonUnique = rs.getBoolean("NON_UNIQUE");
-            
-            // 跳过主键索引
-            if (columnName != null && !primaryKeys.contains(columnName)) {
-                String indexType = nonUnique ? "index" : "unique";
-                indexes.add(new IndexInfo(indexName, columnName, indexType));
+
+            if (indexName == null || columnName == null) {
+                continue;
+            }
+            // 按索引名过滤主键索引，而非按字段名——避免误删同时出现在普通索引中的主键字段
+            if (indexName.equalsIgnoreCase(pkName)) {
+                continue;
+            }
+
+            String indexType = nonUnique ? "index" : "unique";
+            if (indexMap.containsKey(indexName)) {
+                // 联合索引：追加字段（JDBC 已按 ORDINAL_POSITION 排序，顺序严格正确）
+                IndexInfo existing = indexMap.get(indexName);
+                existing.columnName = existing.columnName + "," + columnName;
+            } else {
+                indexMap.put(indexName, new IndexInfo(indexName, columnName, indexType));
             }
         }
         rs.close();
-        
-        return indexes;
+
+        return new ArrayList<>(indexMap.values());
     }
     
     /**
@@ -446,16 +456,16 @@ public class DatabaseExportServiceImpl implements DatabaseExportService {
     }
     
     /**
-     * 获取主键列
+     * 获取主键列（按 KEY_SEQ 有序）
      */
     private Set<String> getPrimaryKeys(DatabaseMetaData metaData, String tableName) throws SQLException {
-        Set<String> primaryKeys = new HashSet<>();
+        TreeMap<Short, String> ordered = new TreeMap<>();
         ResultSet rs = metaData.getPrimaryKeys(null, null, tableName);
         while (rs.next()) {
-            primaryKeys.add(rs.getString("COLUMN_NAME"));
+            ordered.put(rs.getShort("KEY_SEQ"), rs.getString("COLUMN_NAME"));
         }
         rs.close();
-        return primaryKeys;
+        return new LinkedHashSet<>(ordered.values());
     }
     
     /**
