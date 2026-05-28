@@ -195,4 +195,35 @@ class PublicCoreFileBaselineCompareServiceImplTest {
         }
         assertEquals(1, ((Number) result.get("totalChanges")).intValue());
     }
+
+    @Test
+    void column_union_when_widths_differ() throws Exception {
+        // 基线 3 列；对比 4 列（多一列"文件分类"）
+        MultipartFile baseline = PublicCoreFileBaselineFixtureBuilder.newBuilder("base.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "528交易码", "文件编号")
+                    .row("/cbs/ftp/A486", "A486", "436201")
+                .buildAsMultipartFile("baselineFile");
+
+        MultipartFile compare = PublicCoreFileBaselineFixtureBuilder.newBuilder("cmp.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "528交易码", "文件编号", "文件分类")
+                    .row("/cbs/ftp/A486", "A486", "436201", "回盘文件")
+                .buildAsMultipartFile("compareFile");
+
+        Map<String, Object> result = service.compareFiles(baseline, compare);
+        resultFile = service.getResultFile((String) result.get("fileName"));
+
+        try (Workbook wb = ExcelAssert.open(resultFile)) {
+            Sheet eft = sheet(wb, "EFT文件基线");
+            // 新增的"文件分类"列应被识别为差异 → 标黄
+            cellBgColor(eft, 1, 3, IndexedColors.YELLOW.getIndex(), "新增列触发修改标记");
+
+            Sheet rev = sheet(wb, "修订记录");
+            String detail = rev.getRow(1).getCell(3).getStringCellValue();
+            assertTrue(detail.contains("文件分类") && detail.contains("回盘文件"),
+                    "新增列应出现在修订明细，实际：" + detail);
+        }
+        assertEquals(1, ((Number) result.get("totalChanges")).intValue());
+    }
 }
