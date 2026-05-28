@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>对公核心文件基线比对</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px; min-height: 100vh;
+        }
+        .container {
+            max-width: 1400px; margin: 0 auto; background: white;
+            border-radius: 10px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; padding: 30px; text-align: center;
+        }
+        .header h1 { font-size: 28px; margin-bottom: 10px; }
+        .header p { font-size: 14px; opacity: 0.9; }
+        .content { padding: 30px; }
+
+        .upload-section { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 30px; }
+        .upload-box {
+            border: 2px dashed #ddd; border-radius: 10px; padding: 30px;
+            text-align: center; transition: all 0.3s; background: #f8f9fa;
+        }
+        .upload-box:hover { border-color: #667eea; background: #f0f4ff; }
+        .upload-box.has-file { border-color: #28a745; background: #f0fff4; }
+        .upload-box h3 { color: #333; margin-bottom: 15px; font-size: 18px; }
+        .upload-box input[type="file"] { display: none; }
+
+        .upload-btn {
+            display: inline-block; padding: 12px 30px; background: #667eea;
+            color: white; border-radius: 5px; cursor: pointer; transition: all 0.3s; font-size: 14px;
+        }
+        .upload-btn:hover { background: #5568d3; transform: translateY(-2px); }
+
+        .file-info { margin-top: 15px; padding: 10px; background: white; border-radius: 5px; display: none; }
+        .file-info.show { display: block; }
+        .file-info .file-name { color: #333; font-weight: bold; margin-bottom: 5px; }
+        .file-info .file-size { color: #666; font-size: 12px; }
+        .remove-file {
+            margin-top: 10px; padding: 6px 15px; background: #dc3545;
+            color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 12px;
+        }
+        .remove-file:hover { background: #c82333; }
+
+        .button-group { display: flex; justify-content: center; gap: 20px; margin-bottom: 30px; }
+        .btn {
+            padding: 12px 40px; border: none; border-radius: 5px;
+            font-size: 16px; cursor: pointer; transition: all 0.3s; font-weight: bold;
+        }
+        .btn-primary { background: #28a745; color: white; }
+        .btn-primary:hover { background: #218838; transform: translateY(-2px); }
+        .btn-primary:disabled { background: #ccc; cursor: not-allowed; transform: none; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-secondary:hover { background: #5a6268; transform: translateY(-2px); }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-danger:hover { background: #c82333; transform: translateY(-2px); }
+
+        .result-section { display: none; margin-top: 30px; }
+        .result-section.show { display: block; }
+        .result-header {
+            background: #f8f9fa; padding: 15px; border-radius: 5px;
+            margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;
+        }
+        .result-header h3 { color: #333; font-size: 18px; }
+        .download-btn {
+            padding: 8px 20px; background: #007bff; color: white;
+            border: none; border-radius: 5px; cursor: pointer; font-size: 14px;
+        }
+        .download-btn:hover { background: #0056b3; }
+        .result-info {
+            background: #fff3cd; border-left: 4px solid #ffc107;
+            padding: 15px; margin-bottom: 20px; border-radius: 5px;
+        }
+        .result-info h4 { color: #856404; margin-bottom: 10px; }
+        .result-info ul { list-style: none; padding-left: 0; }
+        .result-info li { padding: 5px 0; color: #856404; }
+
+        .legend { background: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+        .legend h4 { color: #333; margin-bottom: 10px; font-size: 16px; }
+        .legend-items { display: flex; gap: 20px; flex-wrap: wrap; }
+        .legend-item { display: flex; align-items: center; gap: 8px; }
+        .legend-color { width: 20px; height: 20px; border-radius: 3px; border: 1px solid #ddd; }
+        .legend-color.green { background: #90EE90; }
+        .legend-color.yellow { background: #ffff99; }
+        .legend-color.gray { background: #d3d3d3; }
+
+        .loading { display: none; text-align: center; padding: 30px; }
+        .loading.show { display: block; }
+        .spinner {
+            border: 4px solid #f3f3f3; border-top: 4px solid #667eea;
+            border-radius: 50%; width: 40px; height: 40px;
+            animation: spin 1s linear infinite; margin: 0 auto 15px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .error-message {
+            background: #f8d7da; border-left: 4px solid #dc3545;
+            color: #721c24; padding: 15px; border-radius: 5px;
+            margin-top: 20px; display: none;
+        }
+        .error-message.show { display: block; }
+
+        .tips {
+            background: #d1ecf1; border-left: 4px solid #17a2b8;
+            padding: 15px; border-radius: 5px; margin-top: 20px;
+        }
+        .tips h4 { color: #0c5460; margin-bottom: 10px; }
+        .tips ul { color: #0c5460; padding-left: 20px; }
+        .tips li { margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 对公核心文件基线比对</h1>
+            <p>比对两个版本的"对公核心文件基线" Excel，只针对 EFT文件基线 sheet，按 A 列（528核心全路径文件名）整行匹配差异</p>
+        </div>
+
+        <div class="content">
+            <!-- 上传区域 -->
+            <div class="upload-section">
+                <div class="upload-box" id="baselineBox">
+                    <h3>📄 基线文件</h3>
+                    <input type="file" id="baselineFile" accept=".xlsx,.xls">
+                    <label for="baselineFile" class="upload-btn">选择文件</label>
+                    <div class="file-info" id="baselineInfo">
+                        <div class="file-name" id="baselineName"></div>
+                        <div class="file-size" id="baselineSize"></div>
+                        <button class="remove-file" onclick="removeFile('baseline')">移除</button>
+                    </div>
+                </div>
+
+                <div class="upload-box" id="compareBox">
+                    <h3>📄 对比文件</h3>
+                    <input type="file" id="compareFile" accept=".xlsx,.xls">
+                    <label for="compareFile" class="upload-btn">选择文件</label>
+                    <div class="file-info" id="compareInfo">
+                        <div class="file-name" id="compareName"></div>
+                        <div class="file-size" id="compareSize"></div>
+                        <button class="remove-file" onclick="removeFile('compare')">移除</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 按钮组（无排除 sheet 输入框） -->
+            <div class="button-group">
+                <button class="btn btn-primary" id="compareBtn" disabled>🔍 开始比较</button>
+                <button class="btn btn-secondary" onclick="cancelCompare()">❌ 取消</button>
+                <button class="btn btn-danger" onclick="resetForm()">🔄 重置</button>
+            </div>
+
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>正在比较文档，请稍候...</p>
+            </div>
+
+            <div class="error-message" id="errorMessage"></div>
+
+            <div class="result-section" id="resultSection">
+                <div class="result-header">
+                    <h3>📈 比对结果</h3>
+                    <button class="download-btn" onclick="downloadResult()">⬇️ 下载结果</button>
+                </div>
+
+                <div class="legend">
+                    <h4>📌 颜色说明</h4>
+                    <div class="legend-items">
+                        <div class="legend-item">
+                            <div class="legend-color green"></div>
+                            <span>新增（绿色）- 在修订记录中标记</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color yellow"></div>
+                            <span>修改（黄色）- 仅差异列标黄</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color gray"></div>
+                            <span>删除（灰色+删除线）- 仅在修订记录中体现</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="result-info" id="resultInfo"></div>
+            </div>
+
+            <div class="tips">
+                <h4>💡 使用说明</h4>
+                <ul>
+                    <li><strong>比对范围：</strong>只比对名为 <code>EFT文件基线</code> 的 sheet 页；其他 sheet 原样复制不参与比对。</li>
+                    <li><strong>匹配规则：</strong>从第 2 行开始，以 A 列内容（528核心全路径文件名）为唯一键，进行整行匹配。</li>
+                    <li><strong>表头行：</strong>第 1 行作为表头；如果基线和对比文件的列数不一致，取两侧并集进行比较。</li>
+                    <li><strong>差异标记：</strong>
+                        <ul>
+                            <li><span style="color:#28a745">✅ 行新增</span>：整行标绿（出现在对比文件、基线没有）</li>
+                            <li><span style="color:#ffc107">✏️ 行修改</span>：仅差异列标黄，明细在修订记录展开</li>
+                            <li><span style="color:#6c757d">❌ 行删除</span>：仅在修订记录中体现，结果文件不复制旧行</li>
+                        </ul>
+                    </li>
+                    <li><strong>修订记录：</strong>4 列 — EFT文件基线 / 文件基线 / 新增（或修改、删除）/ 明细 + 双向超链接。</li>
+                    <li><strong>异常提示：</strong>任一文件无 <code>EFT文件基线</code> sheet → 抛错终止比对。</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let baselineFile = null;
+        let compareFile = null;
+        let resultFileName = null;
+
+        document.getElementById('baselineFile').addEventListener('change', function(e) {
+            handleFileSelect(e, 'baseline');
+        });
+        document.getElementById('compareFile').addEventListener('change', function(e) {
+            handleFileSelect(e, 'compare');
+        });
+
+        function handleFileSelect(e, type) {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (type === 'baseline') {
+                baselineFile = file;
+                document.getElementById('baselineName').textContent = file.name;
+                document.getElementById('baselineSize').textContent = formatFileSize(file.size);
+                document.getElementById('baselineInfo').classList.add('show');
+                document.getElementById('baselineBox').classList.add('has-file');
+            } else {
+                compareFile = file;
+                document.getElementById('compareName').textContent = file.name;
+                document.getElementById('compareSize').textContent = formatFileSize(file.size);
+                document.getElementById('compareInfo').classList.add('show');
+                document.getElementById('compareBox').classList.add('has-file');
+            }
+            checkFilesReady();
+        }
+
+        function removeFile(type) {
+            if (type === 'baseline') {
+                baselineFile = null;
+                document.getElementById('baselineFile').value = '';
+                document.getElementById('baselineInfo').classList.remove('show');
+                document.getElementById('baselineBox').classList.remove('has-file');
+            } else {
+                compareFile = null;
+                document.getElementById('compareFile').value = '';
+                document.getElementById('compareInfo').classList.remove('show');
+                document.getElementById('compareBox').classList.remove('has-file');
+            }
+            checkFilesReady();
+        }
+
+        function checkFilesReady() {
+            document.getElementById('compareBtn').disabled = !(baselineFile && compareFile);
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        }
+
+        document.getElementById('compareBtn').addEventListener('click', async function() {
+            if (!baselineFile || !compareFile) {
+                showError('请先上传基线文件和对比文件');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('baselineFile', baselineFile);
+            formData.append('compareFile', compareFile);
+
+            document.getElementById('loading').classList.add('show');
+            document.getElementById('resultSection').classList.remove('show');
+            document.getElementById('errorMessage').classList.remove('show');
+
+            try {
+                const response = await fetch('/api/public-core-file-baseline/compare', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                if (result.code === 200) {
+                    resultFileName = result.data.fileName;
+                    showResult(result.data);
+                } else {
+                    showError(result.message || '比较失败');
+                }
+            } catch (error) {
+                console.error('比较失败', error);
+                showError('比较失败：' + error.message);
+            } finally {
+                document.getElementById('loading').classList.remove('show');
+            }
+        });
+
+        function showResult(data) {
+            document.getElementById('resultInfo').innerHTML =
+                '<p>对比文件基线行数: ' + (data.totalRows ?? '-') + '</p>' +
+                '<p>差异条目: ' + (data.totalChanges ?? 0) + '</p>';
+            document.getElementById('resultSection').classList.add('show');
+        }
+
+        function downloadResult() {
+            if (!resultFileName) {
+                showError('没有可下载的结果');
+                return;
+            }
+            window.location.href = '/api/public-core-file-baseline/download/' + encodeURIComponent(resultFileName);
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+            setTimeout(() => { errorDiv.classList.remove('show'); }, 5000);
+        }
+
+        function cancelCompare() {
+            console.log('取消比较');
+        }
+
+        function resetForm() {
+            removeFile('baseline');
+            removeFile('compare');
+            document.getElementById('resultSection').classList.remove('show');
+            document.getElementById('errorMessage').classList.remove('show');
+            resultFileName = null;
+        }
+    </script>
+</body>
+</html>

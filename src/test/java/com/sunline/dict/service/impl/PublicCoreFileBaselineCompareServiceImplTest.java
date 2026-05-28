@@ -1,0 +1,421 @@
+package com.sunline.dict.service.impl;
+
+import com.sunline.dict.service.PublicCoreFileBaselineCompareService;
+import com.sunline.dict.testutil.ExcelAssert;
+import com.sunline.dict.testutil.PublicCoreFileBaselineFixtureBuilder;
+import org.apache.poi.ss.usermodel.IndexedColors;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.File;
+import java.util.Map;
+
+import static com.sunline.dict.testutil.ExcelAssert.*;
+import static org.junit.jupiter.api.Assertions.*;
+
+@SpringBootTest
+class PublicCoreFileBaselineCompareServiceImplTest {
+
+    @Autowired PublicCoreFileBaselineCompareService service;
+
+    private File resultFile;
+
+    @AfterEach
+    void cleanup() {
+        if (resultFile != null && resultFile.exists()) {
+            //noinspection ResultOfMethodCallIgnored
+            resultFile.delete();
+        }
+    }
+
+    @Test
+    void baseline_no_diff() throws Exception {
+        MultipartFile baseline = PublicCoreFileBaselineFixtureBuilder.newBuilder("base.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "528核心接收/生成文件", "528交易码", "文件编号", "文件分类")
+                    .row("/cbs/ftp/A486", "核心生成文件", "A486", "", "回盘文件")
+                    .row("/cbs/ftp/4013", "核心接收文件", "4013", "", "回盘文件")
+                .buildAsMultipartFile("baselineFile");
+
+        MultipartFile compare = PublicCoreFileBaselineFixtureBuilder.newBuilder("cmp.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "528核心接收/生成文件", "528交易码", "文件编号", "文件分类")
+                    .row("/cbs/ftp/A486", "核心生成文件", "A486", "", "回盘文件")
+                    .row("/cbs/ftp/4013", "核心接收文件", "4013", "", "回盘文件")
+                .buildAsMultipartFile("compareFile");
+
+        Map<String, Object> result = service.compareFiles(baseline, compare);
+        String fileName = (String) result.get("fileName");
+        assertNotNull(fileName, "应有结果文件名");
+        resultFile = service.getResultFile(fileName);
+
+        try (Workbook wb = ExcelAssert.open(resultFile)) {
+            Sheet eft = sheet(wb, "EFT文件基线");
+            // 表头与数据
+            cellValue(eft, 0, 0, "528核心全路径文件名");
+            cellValue(eft, 1, 0, "/cbs/ftp/A486");
+            cellValue(eft, 2, 0, "/cbs/ftp/4013");
+            // 不应有任何颜色
+            cellNoFill(eft, 1, 0);
+            cellNoFill(eft, 2, 0);
+            cellNoFill(eft, 1, 4);
+
+            // 修订记录 sheet 应存在但仅表头
+            Sheet rev = sheet(wb, "修订记录");
+            cellValue(rev, 0, 0, "交易码");
+            cellValue(rev, 0, 1, "修订级别");
+            cellValue(rev, 0, 2, "修订方式");
+            cellValue(rev, 0, 3, "修订明细");
+            assertTrue(rev.getRow(1) == null
+                            || rev.getRow(1).getCell(0) == null
+                            || rev.getRow(1).getCell(0).toString().isEmpty(),
+                    "无差异时修订记录应仅含表头");
+        }
+        assertEquals(0, ((Number) result.get("totalChanges")).intValue());
+        assertEquals(2, ((Number) result.get("totalRows")).intValue());
+    }
+
+    @Test
+    void row_added_marked_green() throws Exception {
+        MultipartFile baseline = PublicCoreFileBaselineFixtureBuilder.newBuilder("base.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "528交易码", "文件分类")
+                    .row("/cbs/ftp/A486", "A486", "回盘文件")
+                .buildAsMultipartFile("baselineFile");
+
+        MultipartFile compare = PublicCoreFileBaselineFixtureBuilder.newBuilder("cmp.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "528交易码", "文件分类")
+                    .row("/cbs/ftp/A486", "A486", "回盘文件")
+                    .row("/cbs/ftp/NEW",  "NEW0", "来盘文件")    // 新增
+                .buildAsMultipartFile("compareFile");
+
+        Map<String, Object> result = service.compareFiles(baseline, compare);
+        resultFile = service.getResultFile((String) result.get("fileName"));
+
+        try (Workbook wb = ExcelAssert.open(resultFile)) {
+            Sheet eft = sheet(wb, "EFT文件基线");
+            // 第 0 行 = 表头；第 1 行 = A486（无变化）；第 2 行 = NEW（新增）
+            cellNoFill(eft, 1, 0);   // 原有行无填充
+            cellBgColor(eft, 2, 0, IndexedColors.LIGHT_GREEN.getIndex(), "新增行 A 列");
+            cellBgColor(eft, 2, 1, IndexedColors.LIGHT_GREEN.getIndex(), "新增行 B 列");
+            cellBgColor(eft, 2, 2, IndexedColors.LIGHT_GREEN.getIndex(), "新增行 C 列");
+
+            // 修订记录
+            Sheet rev = sheet(wb, "修订记录");
+            cellValue(rev, 1, 0, "EFT文件基线");
+            cellValue(rev, 1, 1, "文件基线");
+            cellValue(rev, 1, 2, "新增");
+            String detail = rev.getRow(1).getCell(3).getStringCellValue();
+            assertTrue(detail.contains("新增基线行") && detail.contains("/cbs/ftp/NEW"),
+                    "修订明细应含'新增基线行：/cbs/ftp/NEW'，实际：" + detail);
+            assertNotNull(rev.getRow(1).getCell(3).getHyperlink(),
+                    "新增行的修订记录 D 列应有正向超链接");
+        }
+        assertEquals(2, ((Number) result.get("totalRows")).intValue());
+        assertEquals(1, ((Number) result.get("totalChanges")).intValue());
+    }
+
+    @Test
+    void row_modified_only_diff_cols_yellow() throws Exception {
+        MultipartFile baseline = PublicCoreFileBaselineFixtureBuilder.newBuilder("base.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "528交易码", "文件编号", "文件分类")
+                    .row("/cbs/ftp/A486", "A486", "436201", "回盘文件")
+                .buildAsMultipartFile("baselineFile");
+
+        MultipartFile compare = PublicCoreFileBaselineFixtureBuilder.newBuilder("cmp.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "528交易码", "文件编号", "文件分类")
+                    .row("/cbs/ftp/A486", "A486", "466201", "来盘文件")  // 文件编号 + 文件分类两列修改
+                .buildAsMultipartFile("compareFile");
+
+        Map<String, Object> result = service.compareFiles(baseline, compare);
+        resultFile = service.getResultFile((String) result.get("fileName"));
+
+        try (Workbook wb = ExcelAssert.open(resultFile)) {
+            Sheet eft = sheet(wb, "EFT文件基线");
+            // 列 0 / 1 不变 → 无填充；列 2 / 3 改 → 标黄
+            cellNoFill(eft, 1, 0);
+            cellNoFill(eft, 1, 1);
+            cellBgColor(eft, 1, 2, IndexedColors.YELLOW.getIndex(), "文件编号修改");
+            cellBgColor(eft, 1, 3, IndexedColors.YELLOW.getIndex(), "文件分类修改");
+
+            // 修订记录
+            Sheet rev = sheet(wb, "修订记录");
+            cellValue(rev, 1, 2, "修改");
+            String detail = rev.getRow(1).getCell(3).getStringCellValue();
+            assertTrue(detail.contains("文件编号: 436201 → 466201"), "应包含文件编号 diff，实际：" + detail);
+            assertTrue(detail.contains("文件分类: 回盘文件 → 来盘文件"), "应包含文件分类 diff，实际：" + detail);
+        }
+        assertEquals(1, ((Number) result.get("totalRows")).intValue());
+        assertEquals(1, ((Number) result.get("totalChanges")).intValue());
+    }
+
+    @Test
+    void row_deleted_in_revision_only() throws Exception {
+        MultipartFile baseline = PublicCoreFileBaselineFixtureBuilder.newBuilder("base.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "528交易码")
+                    .row("/cbs/ftp/A486", "A486")
+                    .row("/cbs/ftp/OLD", "OLD0")   // 基线独有 → 删除
+                .buildAsMultipartFile("baselineFile");
+
+        MultipartFile compare = PublicCoreFileBaselineFixtureBuilder.newBuilder("cmp.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "528交易码")
+                    .row("/cbs/ftp/A486", "A486")
+                .buildAsMultipartFile("compareFile");
+
+        Map<String, Object> result = service.compareFiles(baseline, compare);
+        resultFile = service.getResultFile((String) result.get("fileName"));
+
+        try (Workbook wb = ExcelAssert.open(resultFile)) {
+            Sheet eft = sheet(wb, "EFT文件基线");
+            // 结果文件以对比文件为底本 → 只有 A486 一行数据
+            cellValue(eft, 1, 0, "/cbs/ftp/A486");
+            assertTrue(eft.getLastRowNum() == 1
+                            || eft.getRow(2) == null
+                            || eft.getRow(2).getCell(0) == null
+                            || "".equals(eft.getRow(2).getCell(0).toString()),
+                    "对比文件没有 OLD 行，结果文件也不应该有");
+
+            // 修订记录：A486 不变 + OLD 删除 = 1 条
+            Sheet rev = sheet(wb, "修订记录");
+            cellValue(rev, 1, 2, "删除");
+            String detail = rev.getRow(1).getCell(3).getStringCellValue();
+            assertTrue(detail.contains("删除基线行") && detail.contains("/cbs/ftp/OLD"),
+                    "应包含删除明细，实际：" + detail);
+            // 删除条目不应有正向超链接（基线行在结果文件不存在）
+            assertNull(rev.getRow(1).getCell(3).getHyperlink(),
+                    "删除条目不应有超链接");
+        }
+        assertEquals(1, ((Number) result.get("totalRows")).intValue());
+        assertEquals(1, ((Number) result.get("totalChanges")).intValue());
+    }
+
+    @Test
+    void column_union_when_widths_differ() throws Exception {
+        // 基线 3 列；对比 4 列（多一列"文件分类"）
+        MultipartFile baseline = PublicCoreFileBaselineFixtureBuilder.newBuilder("base.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "528交易码", "文件编号")
+                    .row("/cbs/ftp/A486", "A486", "436201")
+                .buildAsMultipartFile("baselineFile");
+
+        MultipartFile compare = PublicCoreFileBaselineFixtureBuilder.newBuilder("cmp.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "528交易码", "文件编号", "文件分类")
+                    .row("/cbs/ftp/A486", "A486", "436201", "回盘文件")
+                .buildAsMultipartFile("compareFile");
+
+        Map<String, Object> result = service.compareFiles(baseline, compare);
+        resultFile = service.getResultFile((String) result.get("fileName"));
+
+        try (Workbook wb = ExcelAssert.open(resultFile)) {
+            Sheet eft = sheet(wb, "EFT文件基线");
+            // 新增的"文件分类"列应被识别为差异 → 标黄
+            cellBgColor(eft, 1, 3, IndexedColors.YELLOW.getIndex(), "新增列触发修改标记");
+
+            Sheet rev = sheet(wb, "修订记录");
+            String detail = rev.getRow(1).getCell(3).getStringCellValue();
+            assertTrue(detail.contains("文件分类") && detail.contains("回盘文件"),
+                    "新增列应出现在修订明细，实际：" + detail);
+        }
+        assertEquals(1, ((Number) result.get("totalChanges")).intValue());
+    }
+
+    @Test
+    void duplicate_key_warn_and_overwrite() throws Exception {
+        // 对比文件中 A 列重复（同一路径两行）：后行覆盖前行，与新老核心一致
+        MultipartFile baseline = PublicCoreFileBaselineFixtureBuilder.newBuilder("base.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "文件编号")
+                    .row("/cbs/ftp/DUP", "OLD001")
+                .buildAsMultipartFile("baselineFile");
+
+        MultipartFile compare = PublicCoreFileBaselineFixtureBuilder.newBuilder("cmp.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "文件编号")
+                    .row("/cbs/ftp/DUP", "FIRST")    // 第一次
+                    .row("/cbs/ftp/DUP", "SECOND")   // 后行覆盖
+                .buildAsMultipartFile("compareFile");
+
+        Map<String, Object> result = service.compareFiles(baseline, compare);
+        resultFile = service.getResultFile((String) result.get("fileName"));
+
+        try (Workbook wb = ExcelAssert.open(resultFile)) {
+            Sheet rev = sheet(wb, "修订记录");
+            // 应只有一条 modified（基于 SECOND）
+            assertEquals(1, ((Number) result.get("totalChanges")).intValue());
+            String detail = rev.getRow(1).getCell(3).getStringCellValue();
+            assertTrue(detail.contains("OLD001") && detail.contains("SECOND"),
+                    "应基于后行(SECOND)对比，实际：" + detail);
+        }
+    }
+
+    @Test
+    void other_sheets_passed_through_unchanged() throws Exception {
+        MultipartFile baseline = PublicCoreFileBaselineFixtureBuilder.newBuilder("base.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名")
+                    .row("/cbs/ftp/A486")
+                .buildAsMultipartFile("baselineFile");
+
+        MultipartFile compare = PublicCoreFileBaselineFixtureBuilder.newBuilder("cmp.xlsx")
+                .sheet("变更历史").raw(0, 0, "v1.0 → v2.0")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名")
+                    .row("/cbs/ftp/A486")
+                .sheet("汇总").raw(0, 0, "1063").raw(0, 1, "总记录数")
+                .buildAsMultipartFile("compareFile");
+
+        Map<String, Object> result = service.compareFiles(baseline, compare);
+        resultFile = service.getResultFile((String) result.get("fileName"));
+
+        try (Workbook wb = ExcelAssert.open(resultFile)) {
+            // 三个 sheet 都应存在，"变更历史" 和 "汇总" 原样
+            cellValue(sheet(wb, "变更历史"), 0, 0, "v1.0 → v2.0");
+            cellValue(sheet(wb, "汇总"), 0, 0, "1063");
+            cellValue(sheet(wb, "汇总"), 0, 1, "总记录数");
+            // 不应有任何颜色
+            cellNoFill(sheet(wb, "变更历史"), 0, 0);
+            cellNoFill(sheet(wb, "汇总"), 0, 0);
+        }
+        assertEquals(0, ((Number) result.get("totalChanges")).intValue());
+    }
+
+    @Test
+    void throws_when_baseline_missing_target_sheet() throws Exception {
+        MultipartFile baseline = PublicCoreFileBaselineFixtureBuilder.newBuilder("base.xlsx")
+                .sheet("汇总").raw(0, 0, "无 EFT文件基线")
+                .buildAsMultipartFile("baselineFile");
+
+        MultipartFile compare = PublicCoreFileBaselineFixtureBuilder.newBuilder("cmp.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名")
+                    .row("/cbs/ftp/A486")
+                .buildAsMultipartFile("compareFile");
+
+        RuntimeException ex = assertThrows(RuntimeException.class,
+                () -> service.compareFiles(baseline, compare));
+        assertTrue(ex.getMessage().contains("基线文件缺少 sheet[EFT文件基线]"),
+                "实际：" + ex.getMessage());
+    }
+
+    @Test
+    void throws_when_compare_missing_target_sheet() throws Exception {
+        MultipartFile baseline = PublicCoreFileBaselineFixtureBuilder.newBuilder("base.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名")
+                    .row("/cbs/ftp/A486")
+                .buildAsMultipartFile("baselineFile");
+
+        MultipartFile compare = PublicCoreFileBaselineFixtureBuilder.newBuilder("cmp.xlsx")
+                .sheet("汇总").raw(0, 0, "无 EFT文件基线")
+                .buildAsMultipartFile("compareFile");
+
+        RuntimeException ex = assertThrows(RuntimeException.class,
+                () -> service.compareFiles(baseline, compare));
+        assertTrue(ex.getMessage().contains("对比文件缺少 sheet[EFT文件基线]"),
+                "实际：" + ex.getMessage());
+    }
+
+    @Test
+    void throws_when_header_row_empty() throws Exception {
+        // EFT文件基线 sheet 存在但 row 0 完全为空（既没 header() 也没 row()）
+        MultipartFile baseline = PublicCoreFileBaselineFixtureBuilder.newBuilder("base.xlsx")
+                .sheet("EFT文件基线")
+                    .raw(1, 0, "/cbs/ftp/A486")   // 直接写数据行，没表头
+                .buildAsMultipartFile("baselineFile");
+
+        MultipartFile compare = PublicCoreFileBaselineFixtureBuilder.newBuilder("cmp.xlsx")
+                .sheet("EFT文件基线")
+                    .raw(1, 0, "/cbs/ftp/A486")
+                .buildAsMultipartFile("compareFile");
+
+        RuntimeException ex = assertThrows(RuntimeException.class,
+                () -> service.compareFiles(baseline, compare));
+        assertTrue(ex.getMessage().contains("EFT文件基线")
+                        && (ex.getMessage().contains("表头行") || ex.getMessage().contains("A 列为空")),
+                "实际：" + ex.getMessage());
+    }
+
+    @Test
+    void empty_baseline_data_treats_all_as_added() throws Exception {
+        // 基线只有表头无数据；对比有数据 → 所有对比行视为新增
+        MultipartFile baseline = PublicCoreFileBaselineFixtureBuilder.newBuilder("base.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "文件分类")
+                    // 无 row()，数据区为空
+                .buildAsMultipartFile("baselineFile");
+
+        MultipartFile compare = PublicCoreFileBaselineFixtureBuilder.newBuilder("cmp.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "文件分类")
+                    .row("/cbs/ftp/A486", "回盘文件")
+                    .row("/cbs/ftp/4013", "来盘文件")
+                .buildAsMultipartFile("compareFile");
+
+        Map<String, Object> result = service.compareFiles(baseline, compare);
+        resultFile = service.getResultFile((String) result.get("fileName"));
+
+        // 所有对比行都按新增登记
+        assertEquals(2, ((Number) result.get("totalRows")).intValue());
+        assertEquals(2, ((Number) result.get("totalChanges")).intValue());
+
+        try (Workbook wb = ExcelAssert.open(resultFile)) {
+            Sheet eft = sheet(wb, "EFT文件基线");
+            // 两行都标绿
+            cellBgColor(eft, 1, 0, IndexedColors.LIGHT_GREEN.getIndex(), "新增行 1 A 列");
+            cellBgColor(eft, 2, 0, IndexedColors.LIGHT_GREEN.getIndex(), "新增行 2 A 列");
+
+            // 修订记录：2 条全部"新增"
+            Sheet rev = sheet(wb, "修订记录");
+            int addedCount = 0;
+            for (int r = 1; r <= rev.getLastRowNum(); r++) {
+                if ("新增".equals(rev.getRow(r).getCell(2).getStringCellValue())) addedCount++;
+            }
+            assertEquals(2, addedCount, "应有 2 条新增修订条目");
+        }
+    }
+
+    @Test
+    void empty_compare_data_treats_all_as_deleted() throws Exception {
+        // 对比只有表头无数据；基线有数据 → 所有基线行视为删除
+        MultipartFile baseline = PublicCoreFileBaselineFixtureBuilder.newBuilder("base.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "文件分类")
+                    .row("/cbs/ftp/A486", "回盘文件")
+                    .row("/cbs/ftp/4013", "来盘文件")
+                .buildAsMultipartFile("baselineFile");
+
+        MultipartFile compare = PublicCoreFileBaselineFixtureBuilder.newBuilder("cmp.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "文件分类")
+                    // 无 row()，数据区为空
+                .buildAsMultipartFile("compareFile");
+
+        Map<String, Object> result = service.compareFiles(baseline, compare);
+        resultFile = service.getResultFile((String) result.get("fileName"));
+
+        // 对比文件无数据 → totalRows=0；全部基线行登记删除
+        assertEquals(0, ((Number) result.get("totalRows")).intValue());
+        assertEquals(2, ((Number) result.get("totalChanges")).intValue());
+
+        try (Workbook wb = ExcelAssert.open(resultFile)) {
+            // 修订记录：2 条全部"删除"
+            Sheet rev = sheet(wb, "修订记录");
+            int deletedCount = 0;
+            for (int r = 1; r <= rev.getLastRowNum(); r++) {
+                if ("删除".equals(rev.getRow(r).getCell(2).getStringCellValue())) deletedCount++;
+            }
+            assertEquals(2, deletedCount, "应有 2 条删除修订条目");
+        }
+    }
+}
