@@ -119,4 +119,39 @@ class PublicCoreFileBaselineCompareServiceImplTest {
         }
         assertEquals(1, ((Number) result.get("totalChanges")).intValue());
     }
+
+    @Test
+    void row_modified_only_diff_cols_yellow() throws Exception {
+        MultipartFile baseline = PublicCoreFileBaselineFixtureBuilder.newBuilder("base.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "528交易码", "文件编号", "文件分类")
+                    .row("/cbs/ftp/A486", "A486", "436201", "回盘文件")
+                .buildAsMultipartFile("baselineFile");
+
+        MultipartFile compare = PublicCoreFileBaselineFixtureBuilder.newBuilder("cmp.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "528交易码", "文件编号", "文件分类")
+                    .row("/cbs/ftp/A486", "A486", "466201", "来盘文件")  // 文件编号 + 文件分类两列修改
+                .buildAsMultipartFile("compareFile");
+
+        Map<String, Object> result = service.compareFiles(baseline, compare);
+        resultFile = service.getResultFile((String) result.get("fileName"));
+
+        try (Workbook wb = ExcelAssert.open(resultFile)) {
+            Sheet eft = sheet(wb, "EFT文件基线");
+            // 列 0 / 1 不变 → 无填充；列 2 / 3 改 → 标黄
+            cellNoFill(eft, 1, 0);
+            cellNoFill(eft, 1, 1);
+            cellBgColor(eft, 1, 2, IndexedColors.YELLOW.getIndex(), "文件编号修改");
+            cellBgColor(eft, 1, 3, IndexedColors.YELLOW.getIndex(), "文件分类修改");
+
+            // 修订记录
+            Sheet rev = sheet(wb, "修订记录");
+            cellValue(rev, 1, 2, "修改");
+            String detail = rev.getRow(1).getCell(3).getStringCellValue();
+            assertTrue(detail.contains("文件编号: 436201 → 466201"), "应包含文件编号 diff，实际：" + detail);
+            assertTrue(detail.contains("文件分类: 回盘文件 → 来盘文件"), "应包含文件分类 diff，实际：" + detail);
+        }
+        assertEquals(1, ((Number) result.get("totalChanges")).intValue());
+    }
 }
