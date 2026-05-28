@@ -79,4 +79,44 @@ class PublicCoreFileBaselineCompareServiceImplTest {
         assertEquals(0, ((Number) result.get("totalChanges")).intValue());
         assertEquals(2, ((Number) result.get("totalRows")).intValue());
     }
+
+    @Test
+    void row_added_marked_green() throws Exception {
+        MultipartFile baseline = PublicCoreFileBaselineFixtureBuilder.newBuilder("base.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "528交易码", "文件分类")
+                    .row("/cbs/ftp/A486", "A486", "回盘文件")
+                .buildAsMultipartFile("baselineFile");
+
+        MultipartFile compare = PublicCoreFileBaselineFixtureBuilder.newBuilder("cmp.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "528交易码", "文件分类")
+                    .row("/cbs/ftp/A486", "A486", "回盘文件")
+                    .row("/cbs/ftp/NEW",  "NEW0", "来盘文件")    // 新增
+                .buildAsMultipartFile("compareFile");
+
+        Map<String, Object> result = service.compareFiles(baseline, compare);
+        resultFile = service.getResultFile((String) result.get("fileName"));
+
+        try (Workbook wb = ExcelAssert.open(resultFile)) {
+            Sheet eft = sheet(wb, "EFT文件基线");
+            // 第 0 行 = 表头；第 1 行 = A486（无变化）；第 2 行 = NEW（新增）
+            cellNoFill(eft, 1, 0);   // 原有行无填充
+            cellBgColor(eft, 2, 0, IndexedColors.LIGHT_GREEN.getIndex(), "新增行 A 列");
+            cellBgColor(eft, 2, 1, IndexedColors.LIGHT_GREEN.getIndex(), "新增行 B 列");
+            cellBgColor(eft, 2, 2, IndexedColors.LIGHT_GREEN.getIndex(), "新增行 C 列");
+
+            // 修订记录
+            Sheet rev = sheet(wb, "修订记录");
+            cellValue(rev, 1, 0, "EFT文件基线");
+            cellValue(rev, 1, 1, "文件基线");
+            cellValue(rev, 1, 2, "新增");
+            String detail = rev.getRow(1).getCell(3).getStringCellValue();
+            assertTrue(detail.contains("新增基线行") && detail.contains("/cbs/ftp/NEW"),
+                    "修订明细应含'新增基线行：/cbs/ftp/NEW'，实际：" + detail);
+            assertNotNull(rev.getRow(1).getCell(3).getHyperlink(),
+                    "新增行的修订记录 D 列应有正向超链接");
+        }
+        assertEquals(1, ((Number) result.get("totalChanges")).intValue());
+    }
 }
