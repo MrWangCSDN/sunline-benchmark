@@ -117,6 +117,7 @@ class PublicCoreFileBaselineCompareServiceImplTest {
             assertNotNull(rev.getRow(1).getCell(3).getHyperlink(),
                     "新增行的修订记录 D 列应有正向超链接");
         }
+        assertEquals(2, ((Number) result.get("totalRows")).intValue());
         assertEquals(1, ((Number) result.get("totalChanges")).intValue());
     }
 
@@ -152,6 +153,7 @@ class PublicCoreFileBaselineCompareServiceImplTest {
             assertTrue(detail.contains("文件编号: 436201 → 466201"), "应包含文件编号 diff，实际：" + detail);
             assertTrue(detail.contains("文件分类: 回盘文件 → 来盘文件"), "应包含文件分类 diff，实际：" + detail);
         }
+        assertEquals(1, ((Number) result.get("totalRows")).intValue());
         assertEquals(1, ((Number) result.get("totalChanges")).intValue());
     }
 
@@ -193,6 +195,7 @@ class PublicCoreFileBaselineCompareServiceImplTest {
             assertNull(rev.getRow(1).getCell(3).getHyperlink(),
                     "删除条目不应有超链接");
         }
+        assertEquals(1, ((Number) result.get("totalRows")).intValue());
         assertEquals(1, ((Number) result.get("totalChanges")).intValue());
     }
 
@@ -341,5 +344,78 @@ class PublicCoreFileBaselineCompareServiceImplTest {
         assertTrue(ex.getMessage().contains("EFT文件基线")
                         && (ex.getMessage().contains("表头行") || ex.getMessage().contains("A 列为空")),
                 "实际：" + ex.getMessage());
+    }
+
+    @Test
+    void empty_baseline_data_treats_all_as_added() throws Exception {
+        // 基线只有表头无数据；对比有数据 → 所有对比行视为新增
+        MultipartFile baseline = PublicCoreFileBaselineFixtureBuilder.newBuilder("base.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "文件分类")
+                    // 无 row()，数据区为空
+                .buildAsMultipartFile("baselineFile");
+
+        MultipartFile compare = PublicCoreFileBaselineFixtureBuilder.newBuilder("cmp.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "文件分类")
+                    .row("/cbs/ftp/A486", "回盘文件")
+                    .row("/cbs/ftp/4013", "来盘文件")
+                .buildAsMultipartFile("compareFile");
+
+        Map<String, Object> result = service.compareFiles(baseline, compare);
+        resultFile = service.getResultFile((String) result.get("fileName"));
+
+        // 所有对比行都按新增登记
+        assertEquals(2, ((Number) result.get("totalRows")).intValue());
+        assertEquals(2, ((Number) result.get("totalChanges")).intValue());
+
+        try (Workbook wb = ExcelAssert.open(resultFile)) {
+            Sheet eft = sheet(wb, "EFT文件基线");
+            // 两行都标绿
+            cellBgColor(eft, 1, 0, IndexedColors.LIGHT_GREEN.getIndex(), "新增行 1 A 列");
+            cellBgColor(eft, 2, 0, IndexedColors.LIGHT_GREEN.getIndex(), "新增行 2 A 列");
+
+            // 修订记录：2 条全部"新增"
+            Sheet rev = sheet(wb, "修订记录");
+            int addedCount = 0;
+            for (int r = 1; r <= rev.getLastRowNum(); r++) {
+                if ("新增".equals(rev.getRow(r).getCell(2).getStringCellValue())) addedCount++;
+            }
+            assertEquals(2, addedCount, "应有 2 条新增修订条目");
+        }
+    }
+
+    @Test
+    void empty_compare_data_treats_all_as_deleted() throws Exception {
+        // 对比只有表头无数据；基线有数据 → 所有基线行视为删除
+        MultipartFile baseline = PublicCoreFileBaselineFixtureBuilder.newBuilder("base.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "文件分类")
+                    .row("/cbs/ftp/A486", "回盘文件")
+                    .row("/cbs/ftp/4013", "来盘文件")
+                .buildAsMultipartFile("baselineFile");
+
+        MultipartFile compare = PublicCoreFileBaselineFixtureBuilder.newBuilder("cmp.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "文件分类")
+                    // 无 row()，数据区为空
+                .buildAsMultipartFile("compareFile");
+
+        Map<String, Object> result = service.compareFiles(baseline, compare);
+        resultFile = service.getResultFile((String) result.get("fileName"));
+
+        // 对比文件无数据 → totalRows=0；全部基线行登记删除
+        assertEquals(0, ((Number) result.get("totalRows")).intValue());
+        assertEquals(2, ((Number) result.get("totalChanges")).intValue());
+
+        try (Workbook wb = ExcelAssert.open(resultFile)) {
+            // 修订记录：2 条全部"删除"
+            Sheet rev = sheet(wb, "修订记录");
+            int deletedCount = 0;
+            for (int r = 1; r <= rev.getLastRowNum(); r++) {
+                if ("删除".equals(rev.getRow(r).getCell(2).getStringCellValue())) deletedCount++;
+            }
+            assertEquals(2, deletedCount, "应有 2 条删除修订条目");
+        }
     }
 }
