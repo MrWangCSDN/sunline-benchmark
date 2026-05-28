@@ -66,7 +66,10 @@ public class PublicCoreFileBaselineFixtureBuilder {
         return this;
     }
 
-    /** 任意位置写值（用于"汇总"等无结构 sheet 或边界 case） */
+    /**
+     * 任意位置写值（用于"汇总"等无结构 sheet 或边界 case）。
+     * 注意：若坐标与 header()/row() 已写入的单元格重合，将静默覆盖旧值。
+     */
     public PublicCoreFileBaselineFixtureBuilder raw(int row, int col, String value) {
         ensureSheet();
         currentSheet.rawCells.add(new RawCell(row, col, value));
