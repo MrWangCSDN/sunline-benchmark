@@ -2982,12 +2982,175 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
     }
 
     /**
-     * 对公核心文件基线比对入口（占位实现，Task 3 起填充）
+     * 对公核心文件基线比对入口
      */
     @Override
     public Map<String, Object> comparePublicCoreFileBaseline(
             MultipartFile baselineFile, MultipartFile compareFile) throws Exception {
-        throw new UnsupportedOperationException("尚未实现（计划由 Task 3 起 TDD 实现）");
+
+        final String TARGET_SHEET = "EFT文件基线";
+        log.info("开始对公核心文件基线比对，目标 sheet=[{}]", TARGET_SHEET);
+
+        // 创建输出目录
+        File resultDir = new File(RESULT_DIR);
+        if (!resultDir.exists()) resultDir.mkdirs();
+
+        // 调整 Zip bomb 阈值（与现有模式一致）
+        ZipSecureFile.setMinInflateRatio(0.001);
+
+        try (Workbook baselineWb = WorkbookFactory.create(baselineFile.getInputStream());
+             Workbook compareWb  = WorkbookFactory.create(compareFile.getInputStream());
+             Workbook resultWb   = new XSSFWorkbook()) {
+
+            StyleCache styles = new StyleCache(resultWb);
+            List<RevisionEntry> revisions = new ArrayList<>();
+
+            // ① 复制对比文件所有 sheet（保持顺序）
+            Sheet targetResultSheet = null;
+            for (int i = 0; i < compareWb.getNumberOfSheets(); i++) {
+                String name = compareWb.getSheetName(i);
+                Sheet src = compareWb.getSheetAt(i);
+                Sheet dst = resultWb.createSheet(name);
+                copySheetContent(src, dst);
+                if (TARGET_SHEET.equals(name)) targetResultSheet = dst;
+            }
+
+            // ② 校验：两侧都必须有 EFT文件基线
+            Sheet baselineSheet = baselineWb.getSheet(TARGET_SHEET);
+            Sheet compareSheet  = compareWb.getSheet(TARGET_SHEET);
+            if (baselineSheet == null) {
+                throw new RuntimeException("基线文件缺少 sheet[" + TARGET_SHEET + "]");
+            }
+            if (compareSheet == null) {
+                throw new RuntimeException("对比文件缺少 sheet[" + TARGET_SHEET + "]");
+            }
+
+            // ③ 表头并集
+            List<String> baselineCols = scanHeaderColsFromA(baselineSheet, 0);
+            List<String> compareCols  = scanHeaderColsFromA(compareSheet,  0);
+            LinkedHashSet<String> unionCols = new LinkedHashSet<>(compareCols);
+            unionCols.addAll(baselineCols);   // 基线独有列追加在尾部
+
+            // ④ 读数据区
+            Map<String, RowData> baselineRows = readRowsFromA(baselineSheet, 1, baselineCols);
+            Map<String, RowData> compareRows  = readRowsFromA(compareSheet,  1, compareCols);
+
+            // ⑤ 整行 diff
+            diffRows(baselineRows, compareRows, unionCols, TARGET_SHEET,
+                     targetResultSheet, styles, revisions);
+
+            // ⑥ 修订记录 sheet
+            writeRevisionSheet(resultWb, revisions, Collections.emptySet(), styles);
+
+            // ⑦ 写盘
+            String fileName = "public-core-file-baseline-compare-"
+                    + new SimpleDateFormat("yyyyMMddHHmmssSSS").format(new Date()) + ".xlsx";
+            File out = new File(resultDir, fileName);
+            try (FileOutputStream fos = new FileOutputStream(out)) {
+                resultWb.write(fos);
+            }
+
+            log.info("对公核心文件基线比对完成，对比行数={}，差异数={}",
+                    compareRows.size(), revisions.size());
+
+            Map<String, Object> ret = new HashMap<>();
+            ret.put("fileName", fileName);
+            ret.put("totalRows", compareRows.size());
+            ret.put("totalChanges", revisions.size());
+            return ret;
+        }
+    }
+
+    /** 表头行从 A 列起向右扫，直到第一个空单元格 */
+    private List<String> scanHeaderColsFromA(Sheet sheet, int headerRow) {
+        Row row = sheet.getRow(headerRow);
+        if (row == null) {
+            throw new RuntimeException("sheet[" + sheet.getSheetName() + "] 表头行 "
+                    + (headerRow + 1) + " 不存在");
+        }
+        DataFormatter df = new DataFormatter();
+        List<String> cols = new ArrayList<>();
+        int lastCellNum = row.getLastCellNum();
+        for (int c = 0; c < lastCellNum; c++) {
+            Cell cell = row.getCell(c);
+            String v = cell == null ? "" : df.formatCellValue(cell).trim();
+            if (v.isEmpty()) break;
+            cols.add(v);
+        }
+        if (cols.isEmpty()) {
+            throw new RuntimeException("sheet[" + sheet.getSheetName() + "] 表头行 A 列为空");
+        }
+        return cols;
+    }
+
+    /** 数据区 → Map<A列文本, RowData>（保持物理顺序） */
+    private Map<String, RowData> readRowsFromA(Sheet sheet, int fromRow, List<String> cols) {
+        DataFormatter df = new DataFormatter();
+        Map<String, RowData> map = new LinkedHashMap<>();
+        for (int r = fromRow; r <= sheet.getLastRowNum(); r++) {
+            Row row = sheet.getRow(r);
+            if (row == null) continue;
+            Cell aCell = row.getCell(0);
+            String key = aCell == null ? "" : df.formatCellValue(aCell).trim();
+            if (key.isEmpty()) continue;   // 空 A 列视为空行，跳过
+
+            Map<String, String> values = new LinkedHashMap<>();
+            for (int i = 0; i < cols.size(); i++) {
+                Cell cell = row.getCell(i);
+                values.put(cols.get(i),
+                        cell == null ? "" : df.formatCellValue(cell).trim());
+            }
+            if (map.containsKey(key)) {
+                log.warn("sheet[{}] A 列 key '{}' 重复（后行覆盖前行）",
+                        sheet.getSheetName(), key);
+            }
+            map.put(key, new RowData(values, r));
+        }
+        return map;
+    }
+
+    /** 整行 diff（基线 vs 对比） */
+    private void diffRows(Map<String, RowData> baseRows, Map<String, RowData> cmpRows,
+                           LinkedHashSet<String> unionCols, String sheetName,
+                           Sheet resultSheet, StyleCache styles, List<RevisionEntry> revisions) {
+
+        // 新增 + 修改（遍历对比文件）
+        for (Map.Entry<String, RowData> e : cmpRows.entrySet()) {
+            String key = e.getKey();
+            RowData cmp = e.getValue();
+            RowData base = baseRows.get(key);
+
+            if (base == null) {
+                // 新增：整行 A 列起 union 范围标绿
+                for (int i = 0; i < unionCols.size(); i++) {
+                    paintCell(resultSheet, cmp.row, i, styles.addedBgWithBorder);
+                }
+                revisions.add(RevisionEntry.baselineAdded(sheetName, key, cmp.row));
+            } else {
+                // 修改：仅差异列标黄
+                List<String> diffs = new ArrayList<>();
+                int colIdx = 0;
+                for (String col : unionCols) {
+                    String oldVal = base.values.getOrDefault(col, "");
+                    String newVal = cmp.values.getOrDefault(col, "");
+                    if (!Objects.equals(normalize(oldVal), normalize(newVal))) {
+                        paintCell(resultSheet, cmp.row, colIdx, styles.modifiedBgWithBorder);
+                        diffs.add(col + ": " + oldVal + " → " + newVal);
+                    }
+                    colIdx++;
+                }
+                if (!diffs.isEmpty()) {
+                    revisions.add(RevisionEntry.baselineModified(sheetName, key, diffs, cmp.row));
+                }
+            }
+        }
+
+        // 删除（遍历基线）
+        for (Map.Entry<String, RowData> e : baseRows.entrySet()) {
+            if (!cmpRows.containsKey(e.getKey())) {
+                revisions.add(RevisionEntry.baselineDeleted(sheetName, e.getKey()));
+            }
+        }
     }
 
     /** 解析 excludeSheets 字符串 */
@@ -3307,6 +3470,13 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
         MetaCell(String v, int r) { value = v; row = r; }
     }
 
+    /** 对公核心文件基线 — 一行数据 */
+    private static class RowData {
+        final Map<String, String> values;  // 列名 → 单元格显示值（trim 后）
+        final int row;                      // 在对比文件中的物理行号（0-based）
+        RowData(Map<String, String> v, int r) { values = v; row = r; }
+    }
+
     /** 修订记录 sheet 写入 */
     private void writeRevisionSheet(Workbook wb, List<RevisionEntry> revisions,
                                      Set<String> excludeSet, StyleCache styles) {
@@ -3515,6 +3685,41 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
             e.level = "字段";
             e.way = "删除";
             e.detail = "删除字段：" + fieldName + summary;
+            return e;
+        }
+
+        // ===== 对公核心文件基线比对（PUBLIC_CORE_FILE_BASELINE）专用工厂 =====
+
+        static RevisionEntry baselineAdded(String sheetName, String key, int row) {
+            RevisionEntry e = new RevisionEntry();
+            e.txnCode = sheetName;
+            e.level = "文件基线";
+            e.way = "新增";
+            e.detail = "新增基线行：" + key;
+            e.linkSheetName = sheetName;
+            e.linkRow = row;
+            e.linkCol = 0;
+            return e;
+        }
+
+        static RevisionEntry baselineModified(String sheetName, String key, List<String> diffs, int row) {
+            RevisionEntry e = new RevisionEntry();
+            e.txnCode = sheetName;
+            e.level = "文件基线";
+            e.way = "修改";
+            e.detail = "基线行[" + key + "] " + String.join("; ", diffs);
+            e.linkSheetName = sheetName;
+            e.linkRow = row;
+            e.linkCol = 0;
+            return e;
+        }
+
+        static RevisionEntry baselineDeleted(String sheetName, String key) {
+            RevisionEntry e = new RevisionEntry();
+            e.txnCode = sheetName;
+            e.level = "文件基线";
+            e.way = "删除";
+            e.detail = "删除基线行：" + key;
             return e;
         }
     }
