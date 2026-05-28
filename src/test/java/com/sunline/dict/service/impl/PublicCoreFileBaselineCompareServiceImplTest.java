@@ -154,4 +154,45 @@ class PublicCoreFileBaselineCompareServiceImplTest {
         }
         assertEquals(1, ((Number) result.get("totalChanges")).intValue());
     }
+
+    @Test
+    void row_deleted_in_revision_only() throws Exception {
+        MultipartFile baseline = PublicCoreFileBaselineFixtureBuilder.newBuilder("base.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "528交易码")
+                    .row("/cbs/ftp/A486", "A486")
+                    .row("/cbs/ftp/OLD", "OLD0")   // 基线独有 → 删除
+                .buildAsMultipartFile("baselineFile");
+
+        MultipartFile compare = PublicCoreFileBaselineFixtureBuilder.newBuilder("cmp.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "528交易码")
+                    .row("/cbs/ftp/A486", "A486")
+                .buildAsMultipartFile("compareFile");
+
+        Map<String, Object> result = service.compareFiles(baseline, compare);
+        resultFile = service.getResultFile((String) result.get("fileName"));
+
+        try (Workbook wb = ExcelAssert.open(resultFile)) {
+            Sheet eft = sheet(wb, "EFT文件基线");
+            // 结果文件以对比文件为底本 → 只有 A486 一行数据
+            cellValue(eft, 1, 0, "/cbs/ftp/A486");
+            assertTrue(eft.getLastRowNum() == 1
+                            || eft.getRow(2) == null
+                            || eft.getRow(2).getCell(0) == null
+                            || "".equals(eft.getRow(2).getCell(0).toString()),
+                    "对比文件没有 OLD 行，结果文件也不应该有");
+
+            // 修订记录：A486 不变 + OLD 删除 = 1 条
+            Sheet rev = sheet(wb, "修订记录");
+            cellValue(rev, 1, 2, "删除");
+            String detail = rev.getRow(1).getCell(3).getStringCellValue();
+            assertTrue(detail.contains("删除基线行") && detail.contains("/cbs/ftp/OLD"),
+                    "应包含删除明细，实际：" + detail);
+            // 删除条目不应有正向超链接（基线行在结果文件不存在）
+            assertNull(rev.getRow(1).getCell(3).getHyperlink(),
+                    "删除条目不应有超链接");
+        }
+        assertEquals(1, ((Number) result.get("totalChanges")).intValue());
+    }
 }
