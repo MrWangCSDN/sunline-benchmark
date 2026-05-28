@@ -3005,17 +3005,7 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
             StyleCache styles = new StyleCache(resultWb);
             List<RevisionEntry> revisions = new ArrayList<>();
 
-            // ① 复制对比文件所有 sheet（保持顺序）
-            Sheet targetResultSheet = null;
-            for (int i = 0; i < compareWb.getNumberOfSheets(); i++) {
-                String name = compareWb.getSheetName(i);
-                Sheet src = compareWb.getSheetAt(i);
-                Sheet dst = resultWb.createSheet(name);
-                copySheetContent(src, dst);
-                if (TARGET_SHEET.equals(name)) targetResultSheet = dst;
-            }
-
-            // ② 校验：两侧都必须有 EFT文件基线
+            // ① 校验：两侧都必须有 EFT文件基线（fail-fast，先校验后复制）
             Sheet baselineSheet = baselineWb.getSheet(TARGET_SHEET);
             Sheet compareSheet  = compareWb.getSheet(TARGET_SHEET);
             if (baselineSheet == null) {
@@ -3023,6 +3013,16 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
             }
             if (compareSheet == null) {
                 throw new RuntimeException("对比文件缺少 sheet[" + TARGET_SHEET + "]");
+            }
+
+            // ② 复制对比文件所有 sheet（保持顺序）
+            Sheet targetResultSheet = null;
+            for (int i = 0; i < compareWb.getNumberOfSheets(); i++) {
+                String name = compareWb.getSheetName(i);
+                Sheet src = compareWb.getSheetAt(i);
+                Sheet dst = resultWb.createSheet(name);
+                copySheetContent(src, dst);
+                if (TARGET_SHEET.equals(name)) targetResultSheet = dst;
             }
 
             // ③ 表头并集
@@ -3559,6 +3559,7 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
     private int levelRank(String level) {
         if ("接口".equals(level)) return 0;
         if ("字段".equals(level)) return 1;
+        if ("文件基线".equals(level)) return 2;
         return 99;
     }
 
