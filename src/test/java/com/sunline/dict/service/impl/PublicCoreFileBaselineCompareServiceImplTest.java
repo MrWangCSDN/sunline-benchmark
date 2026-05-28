@@ -286,4 +286,60 @@ class PublicCoreFileBaselineCompareServiceImplTest {
         }
         assertEquals(0, ((Number) result.get("totalChanges")).intValue());
     }
+
+    @Test
+    void throws_when_baseline_missing_target_sheet() throws Exception {
+        MultipartFile baseline = PublicCoreFileBaselineFixtureBuilder.newBuilder("base.xlsx")
+                .sheet("汇总").raw(0, 0, "无 EFT文件基线")
+                .buildAsMultipartFile("baselineFile");
+
+        MultipartFile compare = PublicCoreFileBaselineFixtureBuilder.newBuilder("cmp.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名")
+                    .row("/cbs/ftp/A486")
+                .buildAsMultipartFile("compareFile");
+
+        RuntimeException ex = assertThrows(RuntimeException.class,
+                () -> service.compareFiles(baseline, compare));
+        assertTrue(ex.getMessage().contains("基线文件缺少 sheet[EFT文件基线]"),
+                "实际：" + ex.getMessage());
+    }
+
+    @Test
+    void throws_when_compare_missing_target_sheet() throws Exception {
+        MultipartFile baseline = PublicCoreFileBaselineFixtureBuilder.newBuilder("base.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名")
+                    .row("/cbs/ftp/A486")
+                .buildAsMultipartFile("baselineFile");
+
+        MultipartFile compare = PublicCoreFileBaselineFixtureBuilder.newBuilder("cmp.xlsx")
+                .sheet("汇总").raw(0, 0, "无 EFT文件基线")
+                .buildAsMultipartFile("compareFile");
+
+        RuntimeException ex = assertThrows(RuntimeException.class,
+                () -> service.compareFiles(baseline, compare));
+        assertTrue(ex.getMessage().contains("对比文件缺少 sheet[EFT文件基线]"),
+                "实际：" + ex.getMessage());
+    }
+
+    @Test
+    void throws_when_header_row_empty() throws Exception {
+        // EFT文件基线 sheet 存在但 row 0 完全为空（既没 header() 也没 row()）
+        MultipartFile baseline = PublicCoreFileBaselineFixtureBuilder.newBuilder("base.xlsx")
+                .sheet("EFT文件基线")
+                    .raw(1, 0, "/cbs/ftp/A486")   // 直接写数据行，没表头
+                .buildAsMultipartFile("baselineFile");
+
+        MultipartFile compare = PublicCoreFileBaselineFixtureBuilder.newBuilder("cmp.xlsx")
+                .sheet("EFT文件基线")
+                    .raw(1, 0, "/cbs/ftp/A486")
+                .buildAsMultipartFile("compareFile");
+
+        RuntimeException ex = assertThrows(RuntimeException.class,
+                () -> service.compareFiles(baseline, compare));
+        assertTrue(ex.getMessage().contains("EFT文件基线")
+                        && (ex.getMessage().contains("表头行") || ex.getMessage().contains("A 列为空")),
+                "实际：" + ex.getMessage());
+    }
 }
