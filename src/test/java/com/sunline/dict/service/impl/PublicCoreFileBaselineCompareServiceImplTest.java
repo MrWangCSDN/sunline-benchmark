@@ -226,4 +226,64 @@ class PublicCoreFileBaselineCompareServiceImplTest {
         }
         assertEquals(1, ((Number) result.get("totalChanges")).intValue());
     }
+
+    @Test
+    void duplicate_key_warn_and_overwrite() throws Exception {
+        // 对比文件中 A 列重复（同一路径两行）：后行覆盖前行，与新老核心一致
+        MultipartFile baseline = PublicCoreFileBaselineFixtureBuilder.newBuilder("base.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "文件编号")
+                    .row("/cbs/ftp/DUP", "OLD001")
+                .buildAsMultipartFile("baselineFile");
+
+        MultipartFile compare = PublicCoreFileBaselineFixtureBuilder.newBuilder("cmp.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名", "文件编号")
+                    .row("/cbs/ftp/DUP", "FIRST")    // 第一次
+                    .row("/cbs/ftp/DUP", "SECOND")   // 后行覆盖
+                .buildAsMultipartFile("compareFile");
+
+        Map<String, Object> result = service.compareFiles(baseline, compare);
+        resultFile = service.getResultFile((String) result.get("fileName"));
+
+        try (Workbook wb = ExcelAssert.open(resultFile)) {
+            Sheet rev = sheet(wb, "修订记录");
+            // 应只有一条 modified（基于 SECOND）
+            assertEquals(1, ((Number) result.get("totalChanges")).intValue());
+            String detail = rev.getRow(1).getCell(3).getStringCellValue();
+            assertTrue(detail.contains("OLD001") && detail.contains("SECOND"),
+                    "应基于后行(SECOND)对比，实际：" + detail);
+        }
+    }
+
+    @Test
+    void other_sheets_passed_through_unchanged() throws Exception {
+        MultipartFile baseline = PublicCoreFileBaselineFixtureBuilder.newBuilder("base.xlsx")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名")
+                    .row("/cbs/ftp/A486")
+                .buildAsMultipartFile("baselineFile");
+
+        MultipartFile compare = PublicCoreFileBaselineFixtureBuilder.newBuilder("cmp.xlsx")
+                .sheet("变更历史").raw(0, 0, "v1.0 → v2.0")
+                .sheet("EFT文件基线")
+                    .header("528核心全路径文件名")
+                    .row("/cbs/ftp/A486")
+                .sheet("汇总").raw(0, 0, "1063").raw(0, 1, "总记录数")
+                .buildAsMultipartFile("compareFile");
+
+        Map<String, Object> result = service.compareFiles(baseline, compare);
+        resultFile = service.getResultFile((String) result.get("fileName"));
+
+        try (Workbook wb = ExcelAssert.open(resultFile)) {
+            // 三个 sheet 都应存在，"变更历史" 和 "汇总" 原样
+            cellValue(sheet(wb, "变更历史"), 0, 0, "v1.0 → v2.0");
+            cellValue(sheet(wb, "汇总"), 0, 0, "1063");
+            cellValue(sheet(wb, "汇总"), 0, 1, "总记录数");
+            // 不应有任何颜色
+            cellNoFill(sheet(wb, "变更历史"), 0, 0);
+            cellNoFill(sheet(wb, "汇总"), 0, 0);
+        }
+        assertEquals(0, ((Number) result.get("totalChanges")).intValue());
+    }
 }
