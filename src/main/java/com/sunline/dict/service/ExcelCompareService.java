@@ -41,6 +41,17 @@ public interface ExcelCompareService {
             MultipartFile oldFile, MultipartFile newFile, String excludeSheets) throws Exception;
 
     /**
+     * 对公核心文件基线比对模式
+     * 只比对名为 "EFT文件基线" 的 sheet，整行 diff，A 列为唯一键
+     *
+     * @param baselineFile 基线文件（比对基准）
+     * @param compareFile  对比文件（作为输出底本，差异画在它上面）
+     * @return 比较结果信息，包含 fileName, totalRows, totalChanges 等字段
+     */
+    Map<String, Object> comparePublicCoreFileBaseline(
+            MultipartFile baselineFile, MultipartFile compareFile) throws Exception;
+
+    /**
      * 获取结果文件
      * @param fileName 文件名
      * @return 文件对象

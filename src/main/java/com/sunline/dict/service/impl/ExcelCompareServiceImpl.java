@@ -2981,6 +2981,15 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
         }
     }
 
+    /**
+     * 对公核心文件基线比对入口（占位实现，Task 3 起填充）
+     */
+    @Override
+    public Map<String, Object> comparePublicCoreFileBaseline(
+            MultipartFile baselineFile, MultipartFile compareFile) throws Exception {
+        throw new UnsupportedOperationException("尚未实现（计划由 Task 3 起 TDD 实现）");
+    }
+
     /** 解析 excludeSheets 字符串 */
     private Set<String> parseExcludeSheets(String s) {
         if (s == null || s.trim().isEmpty()) return new HashSet<>();
