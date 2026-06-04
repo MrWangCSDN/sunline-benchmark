@@ -2,6 +2,8 @@ package com.sunline.dict.controller;
 
 import com.sunline.dict.common.Result;
 import com.sunline.dict.entity.FlowFieldDetail;
+import com.sunline.dict.entity.Flowtran;
+import com.sunline.dict.mapper.FlowtranMapper;
 import com.sunline.dict.service.FlowFieldDetailService;
 import com.sunline.dict.service.FlowFieldRescanService;
 import org.slf4j.Logger;
@@ -29,6 +31,9 @@ public class FlowFieldController {
     @Autowired
     private FlowFieldRescanService flowFieldRescanService;
 
+    @Autowired
+    private FlowtranMapper flowtranMapper;
+
     /**
      * 缺省源码目录配置（与 XmlScan 共用一份配置）。
      * 若 application.yml 未配置，缺省为空字符串，请求需显式传 sourcePath。
@@ -36,10 +41,13 @@ public class FlowFieldController {
     @Value("${xml-scan.default-source-path:}")
     private String defaultSourcePath;
 
-    /** 按 flow_id 查字段清单（同时返回 input + output） */
+    /** 按 flow_id 查字段清单（同时返回 input + output + flow 元信息） */
     @GetMapping("/by-flow/{flowId}")
-    public Result<Map<String, List<FlowFieldDetail>>> byFlow(@PathVariable String flowId) {
-        Map<String, List<FlowFieldDetail>> ret = new HashMap<>();
+    public Result<Map<String, Object>> byFlow(@PathVariable String flowId) {
+        Map<String, Object> ret = new HashMap<>();
+        ret.put("flowId", flowId);
+        Flowtran flow = flowtranMapper.selectById(flowId);
+        ret.put("longname", flow == null ? null : flow.getLongname());
         ret.put("input",  flowFieldDetailService.getByFlowIdAndIoType(flowId, "input"));
         ret.put("output", flowFieldDetailService.getByFlowIdAndIoType(flowId, "output"));
         return Result.success(ret);

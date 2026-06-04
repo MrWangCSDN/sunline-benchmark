@@ -5,6 +5,7 @@ import com.sunline.dict.service.FlowXmlParseService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -31,6 +32,11 @@ public class FlowFieldRescanServiceImpl implements FlowFieldRescanService {
 
     @Autowired
     private FlowXmlParseService flowXmlParseService;
+
+    /** 自注入用于绕过 @Async 同类调用代理失效问题 */
+    @Autowired
+    @Lazy
+    private FlowFieldRescanServiceImpl self;
 
     /** 进度对象内存表，仅保留最近 10 个 operationId */
     private final Map<String, Progress> progressMap = new ConcurrentHashMap<>();
@@ -75,8 +81,8 @@ public class FlowFieldRescanServiceImpl implements FlowFieldRescanService {
         runningOperationId = operationId;
         trimProgressMap();
 
-        // 异步执行
-        runAsync(operationId, files);
+        // 异步执行（通过自注入代理触发 @Async）
+        self.runAsync(operationId, files);
 
         Map<String, Object> ret = new HashMap<>();
         ret.put("operationId", operationId);
@@ -172,10 +178,10 @@ public class FlowFieldRescanServiceImpl implements FlowFieldRescanService {
         String operationId;
         int total;
         AtomicInteger processed;
-        String current;
-        String status;          // RUNNING | COMPLETED | FAILED
+        volatile String current;
+        volatile String status;          // RUNNING | COMPLETED | FAILED
         List<String> errors;
         LocalDateTime startTime;
-        LocalDateTime endTime;
+        volatile LocalDateTime endTime;
     }
 }
