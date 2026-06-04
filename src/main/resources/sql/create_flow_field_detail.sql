@@ -1,3 +1,4 @@
+-- Target: OpenGauss / PostgreSQL（BIGSERIAL / TIMESTAMP DEFAULT NOW() / COMMENT ON 均为 PG 方言）
 -- flow_field_detail：.flowtrans.xml 的 input/output 字段平铺表
 CREATE TABLE IF NOT EXISTS flow_field_detail (
     id              BIGSERIAL    PRIMARY KEY,
@@ -25,3 +26,5 @@ COMMENT ON COLUMN flow_field_detail.io_type    IS 'input | output';
 COMMENT ON COLUMN flow_field_detail.field_id   IS '<field id="...">';
 COMMENT ON COLUMN flow_field_detail.ref        IS 'MDict.X.yyy（无 ref 不入库）';
 COMMENT ON COLUMN flow_field_detail.array_flag IS 'true=该 field 出现在 <fields> 容器内';
+COMMENT ON COLUMN flow_field_detail.required   IS 'required="true" 属性；无属性时默认 false';
+COMMENT ON COLUMN flow_field_detail.multi      IS 'multi="true" 属性；无属性时默认 false';

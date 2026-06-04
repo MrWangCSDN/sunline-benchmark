@@ -7,11 +7,10 @@
         DELETE FROM flow_field_detail WHERE flow_id = #{flowId}
     </delete>
 
+    <!-- 列名 snake_case ↔ camelCase 自动映射依赖
+         application.yml 中 mybatis-plus.configuration.map-underscore-to-camel-case: true -->
     <select id="selectByFlowIdAndIoType" resultType="com.sunline.dict.entity.FlowFieldDetail">
-        SELECT id, flow_id AS flowId, io_type AS ioType, field_id AS fieldId,
-               field_type AS fieldType, longname, ref, required, multi,
-               array_flag AS arrayFlag, source_info AS sourceInfo,
-               create_time AS createTime, update_time AS updateTime
+        SELECT *
         FROM   flow_field_detail
         WHERE  flow_id = #{flowId}
           AND  io_type = #{ioType}

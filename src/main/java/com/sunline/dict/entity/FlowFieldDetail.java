@@ -90,4 +90,23 @@ public class FlowFieldDetail implements Serializable {
 
     public LocalDateTime getUpdateTime() { return updateTime; }
     public void setUpdateTime(LocalDateTime updateTime) { this.updateTime = updateTime; }
+
+    @Override
+    public String toString() {
+        return "FlowFieldDetail{" +
+                "id=" + id +
+                ", flowId='" + flowId + '\'' +
+                ", ioType='" + ioType + '\'' +
+                ", fieldId='" + fieldId + '\'' +
+                ", fieldType='" + fieldType + '\'' +
+                ", longname='" + longname + '\'' +
+                ", ref='" + ref + '\'' +
+                ", required=" + required +
+                ", multi=" + multi +
+                ", arrayFlag=" + arrayFlag +
+                ", sourceInfo='" + sourceInfo + '\'' +
+                ", createTime=" + createTime +
+                ", updateTime=" + updateTime +
+                '}';
+    }
 }
