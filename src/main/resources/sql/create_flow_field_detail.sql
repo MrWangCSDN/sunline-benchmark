@@ -1,3 +1,11 @@
+-- ============================================================
+-- 执行说明：
+--   在每个环境（dev/sit/uat/prod）的 OpenGauss/PostgreSQL 数据库手动执行：
+--     psql -h <host> -U <user> -d <db> -f create_flow_field_detail.sql
+--   或 IDE 工具（DataGrip/Navicat）打开本文件直接执行。
+--
+--   表与索引带 IF NOT EXISTS，重复执行幂等。
+-- ============================================================
 -- Target: OpenGauss / PostgreSQL（BIGSERIAL / TIMESTAMP DEFAULT NOW() / COMMENT ON 均为 PG 方言）
 -- flow_field_detail：.flowtrans.xml 的 input/output 字段平铺表
 CREATE TABLE IF NOT EXISTS flow_field_detail (
