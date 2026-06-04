@@ -32,7 +32,7 @@ public class FlowFieldExtractor {
         public final List<FieldRow> inputs;
         public final List<FieldRow> outputs;
 
-        ExtractResult(List<FieldRow> inputs, List<FieldRow> outputs) {
+        public ExtractResult(List<FieldRow> inputs, List<FieldRow> outputs) {
             this.inputs = inputs;
             this.outputs = outputs;
         }
@@ -77,7 +77,11 @@ public class FlowFieldExtractor {
                                   new ArrayList<>(outputBag.values()));
     }
 
-    /** 找根下第一个 tagName 匹配的元素（递归） */
+    /**
+     * 找根下第一个 tagName 匹配的元素（递归全文档）。
+     * .flowtrans.xml 规范保证 <input>/<output> 在文档内唯一，取第 0 个即可；
+     * 若未来扩展出现嵌套同名标签，此处会返回错误元素，请同步调整。
+     */
     private Element firstByTag(Element parent, String tagName) {
         NodeList list = parent.getElementsByTagName(tagName);
         return list.getLength() > 0 ? (Element) list.item(0) : null;
