@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.sunline.dict.mapper.FlowFieldDetailMapper">
+
+    <delete id="deleteByFlowId">
+        DELETE FROM flow_field_detail WHERE flow_id = #{flowId}
+    </delete>
+
+    <!-- 列名 snake_case ↔ camelCase 自动映射依赖
+         application.yml 中 mybatis-plus.configuration.map-underscore-to-camel-case: true -->
+    <select id="selectByFlowIdAndIoType" resultType="com.sunline.dict.entity.FlowFieldDetail">
+        SELECT *
+        FROM   flow_field_detail
+        WHERE  flow_id = #{flowId}
+          AND  io_type = #{ioType}
+        ORDER BY id ASC
+    </select>
+
+</mapper>

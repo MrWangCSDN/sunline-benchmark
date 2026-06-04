@@ -37,9 +37,12 @@ public class FlowXmlParseServiceImpl implements FlowXmlParseService {
     
     @Autowired
     private FlowtranMapper flowtranMapper;
-    
+
     @Autowired
     private FlowStepMapper flowStepMapper;
+
+    @Autowired
+    private com.sunline.dict.service.FlowFieldDetailService flowFieldDetailService;
     
     @Override
     public Map<String, Object> parseAndSave(String xmlContent, String sourceInfo) throws Exception {
@@ -147,8 +150,19 @@ public class FlowXmlParseServiceImpl implements FlowXmlParseService {
                     flowStepCount++;
                 }
             }
+
+            // 新增：字段平铺入 flow_field_detail（错误隔离，不影响 flowtran/flow_step 主流程）
+            try {
+                Map<String, Integer> fieldResult = flowFieldDetailService.extractAndSave(root, id, sourceInfo);
+                result.put("inputFieldCount",  fieldResult.get("inputCount"));
+                result.put("outputFieldCount", fieldResult.get("outputCount"));
+            } catch (Exception e) {
+                log.warn("flow_field_detail 入库失败 flowId={}", id, e);
+                result.put("inputFieldCount",  0);
+                result.put("outputFieldCount", 0);
+            }
         }
-        
+
         result.put("flowtranCount", flowtranCount);
         result.put("flowStepCount", flowStepCount);
         
