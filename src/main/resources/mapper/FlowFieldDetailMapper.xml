@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.sunline.dict.mapper.FlowFieldDetailMapper">
+
+    <delete id="deleteByFlowId">
+        DELETE FROM flow_field_detail WHERE flow_id = #{flowId}
+    </delete>
+
+    <select id="selectByFlowIdAndIoType" resultType="com.sunline.dict.entity.FlowFieldDetail">
+        SELECT id, flow_id AS flowId, io_type AS ioType, field_id AS fieldId,
+               field_type AS fieldType, longname, ref, required, multi,
+               array_flag AS arrayFlag, source_info AS sourceInfo,
+               create_time AS createTime, update_time AS updateTime
+        FROM   flow_field_detail
+        WHERE  flow_id = #{flowId}
+          AND  io_type = #{ioType}
+        ORDER BY id ASC
+    </select>
+
+</mapper>
