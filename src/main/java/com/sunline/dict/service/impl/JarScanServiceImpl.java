@@ -40,9 +40,12 @@ public class JarScanServiceImpl implements JarScanService {
     
     @Autowired
     private FlowtranMapper flowtranMapper;
-    
+
     @Autowired
     private FlowStepMapper flowStepMapper;
+
+    @Autowired
+    private com.sunline.dict.service.FlowFieldDetailService flowFieldDetailService;
     
     // 扫描进度信息
     private volatile Map<String, Object> scanProgress = new ConcurrentHashMap<>();
@@ -559,11 +562,18 @@ public class JarScanServiceImpl implements JarScanService {
                     flowStepCount++;
                 }
             }
+
+            // 新增：字段平铺入 flow_field_detail（错误隔离）
+            try {
+                flowFieldDetailService.extractAndSave(root, id, fromJar);
+            } catch (Exception e) {
+                log.warn("JarScan flow_field_detail 入库失败 flowId={}", id, e);
+            }
         }
-        
+
         result.put("flowtranCount", flowtranCount);
         result.put("flowStepCount", flowStepCount);
-        
+
         log.info("parseFlowtranXml完成，返回：flowtranCount={}, flowStepCount={}", flowtranCount, flowStepCount);
         
         return result;
