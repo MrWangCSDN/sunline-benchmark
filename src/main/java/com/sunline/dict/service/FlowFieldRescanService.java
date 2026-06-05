@@ -1,5 +1,7 @@
 package com.sunline.dict.service;
 
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -14,6 +16,12 @@ public interface FlowFieldRescanService {
      * @return { "operationId": uuid, "totalFiles": N, "status": "RUNNING" }
      */
     Map<String, Object> startRescan(String sourcePath) throws Exception;
+
+    /**
+     * 实际异步执行重扫（由 startRescan 自注入代理调用以触发 @Async）。
+     * 不应被 Controller 直接调用。
+     */
+    void runAsync(String operationId, List<Path> files);
 
     /**
      * 重扫单个 flow（同步）。

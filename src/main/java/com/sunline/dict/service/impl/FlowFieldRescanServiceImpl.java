@@ -33,10 +33,14 @@ public class FlowFieldRescanServiceImpl implements FlowFieldRescanService {
     @Autowired
     private FlowXmlParseService flowXmlParseService;
 
-    /** 自注入用于绕过 @Async 同类调用代理失效问题 */
+    /**
+     * 自注入用于绕过 @Async 同类调用代理失效问题。
+     * 必须用接口类型（FlowFieldRescanService），因 Spring 默认创建 JDK 动态代理（基于接口），
+     * 不能 cast 到 FlowFieldRescanServiceImpl 实现类，否则启动期类型不匹配。
+     */
     @Autowired
     @Lazy
-    private FlowFieldRescanServiceImpl self;
+    private FlowFieldRescanService self;
 
     /** 进度对象内存表，仅保留最近 10 个 operationId */
     private final Map<String, Progress> progressMap = new ConcurrentHashMap<>();
@@ -91,6 +95,7 @@ public class FlowFieldRescanServiceImpl implements FlowFieldRescanService {
         return ret;
     }
 
+    @Override
     @Async
     public void runAsync(String operationId, List<Path> files) {
         Progress p = progressMap.get(operationId);
