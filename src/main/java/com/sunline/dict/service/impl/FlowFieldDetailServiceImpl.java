@@ -1,5 +1,6 @@
 package com.sunline.dict.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.sunline.dict.entity.FlowFieldDetail;
 import com.sunline.dict.mapper.FlowFieldDetailMapper;
 import com.sunline.dict.service.FlowFieldDetailService;
@@ -32,7 +33,10 @@ public class FlowFieldDetailServiceImpl implements FlowFieldDetailService {
     public Map<String, Integer> extractAndSave(Element flowtranRoot, String flowId, String sourceInfo) {
         FlowFieldExtractor.ExtractResult parsed = extractor.extract(flowtranRoot);
 
-        flowFieldDetailMapper.deleteByFlowId(flowId);
+        // 先删后插：用 QueryWrapper 替代自定义 mapper XML（与 sibling FlowStep 等一致）
+        QueryWrapper<FlowFieldDetail> deleteWrapper = new QueryWrapper<>();
+        deleteWrapper.eq("flow_id", flowId);
+        flowFieldDetailMapper.delete(deleteWrapper);
 
         LocalDateTime now = LocalDateTime.now();
         for (FlowFieldExtractor.FieldRow row : parsed.inputs) {
@@ -53,7 +57,11 @@ public class FlowFieldDetailServiceImpl implements FlowFieldDetailService {
 
     @Override
     public List<FlowFieldDetail> getByFlowIdAndIoType(String flowId, String ioType) {
-        return flowFieldDetailMapper.selectByFlowIdAndIoType(flowId, ioType);
+        QueryWrapper<FlowFieldDetail> wrapper = new QueryWrapper<>();
+        wrapper.eq("flow_id", flowId)
+               .eq("io_type", ioType)
+               .orderByAsc("id");
+        return flowFieldDetailMapper.selectList(wrapper);
     }
 
     private FlowFieldDetail toEntity(FlowFieldExtractor.FieldRow row, String flowId,
