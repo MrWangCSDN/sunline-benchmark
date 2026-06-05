@@ -71,6 +71,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
                     "/api/build/project/**",   // 单工程编译触发（免鉴权）
                     "/api/build/clone/**",     // 全量clone（免鉴权）
                     "/api/relation/**",        // 调用关系图谱（免鉴权）
+                    "/api/flow-field/**",      // 交易字段明细查询/重扫（免鉴权）
                     "/js/**",
                     "/css/**",
                     "/*.html",
