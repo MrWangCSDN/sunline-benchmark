@@ -214,6 +214,8 @@ public class FileTemplateExportServiceImpl implements FileTemplateExportService 
             item.id = trim(element.getAttribute("id"));
             item.longName = trim(element.getAttribute("longname"));
             item.type = trim(element.getAttribute("type"));
+            // ref 原始值：无该属性时 getAttribute 返回 ""，用于"是否贯标"判定
+            item.ref = trim(element.getAttribute("ref"));
             fields.add(item);
         }
         return fields;
@@ -226,7 +228,7 @@ public class FileTemplateExportServiceImpl implements FileTemplateExportService 
 
         String[] headers = {
                 "序号", "领域", "文件编号", "老交易码", "老交易名称", "528全路径文件名",
-                "文件接口变化情况", "新交易码", "新交易名称", "新全路径文件名", "行内负责人", "开发负责人（厂商/行员）", "备注"
+                "文件接口变化情况", "新交易码", "新交易名称", "新全路径文件名", "行内负责人", "开发负责人（厂商/行员）", "是否贯标", "备注"
         };
         Row headerRow = sheet.createRow(0);
         for (int i = 0; i < headers.length; i++) {
@@ -250,10 +252,12 @@ public class FileTemplateExportServiceImpl implements FileTemplateExportService 
             setCell(row, 9, "", styles.dataStyle);
             setCell(row, 10, "", styles.dataStyle);
             setCell(row, 11, "", styles.dataStyle);
-            setCell(row, 12, "", styles.dataStyle);
+            // 是否贯标：汇总该文件模版所有字段，存在任一未贯标即未贯标
+            setCell(row, 12, resolveRecordStandardization(record), styles.dataStyle);
+            setCell(row, 13, "", styles.dataStyle);
         }
 
-        int[] widths = {8, 14, 14, 14, 18, 20, 28, 14, 22, 20, 14, 22, 12};
+        int[] widths = {8, 14, 14, 14, 18, 20, 28, 14, 22, 20, 14, 22, 12, 12};
         for (int i = 0; i < widths.length; i++) {
             sheet.setColumnWidth(i, widths[i] * 256);
         }
@@ -268,7 +272,7 @@ public class FileTemplateExportServiceImpl implements FileTemplateExportService 
         createFieldHeader(sheet, styles);
         createFieldSections(sheet, styles, record, lookupContext);
 
-        int[] widths = {24, 10, 18, 16, 14, 16, 18, 18, 18};
+        int[] widths = {24, 10, 18, 16, 14, 16, 18, 18, 18, 12, 30};
         for (int i = 0; i < widths.length; i++) {
             sheet.setColumnWidth(i, widths[i] * 256);
         }
@@ -290,28 +294,28 @@ public class FileTemplateExportServiceImpl implements FileTemplateExportService 
         labelCell.setCellStyle(styles.labelStyle);
         merge(sheet, 8, 9, 0, 0);
 
-        fillCells(formatRow, 1, 8, styles.multilineValueStyle);
+        fillCells(formatRow, 1, 10, styles.multilineValueStyle);
         Cell valueCell = formatRow.createCell(1);
         valueCell.setCellValue(buildFormatText(record));
         valueCell.setCellStyle(styles.multilineValueStyle);
-        merge(sheet, 8, 9, 1, 8);
+        merge(sheet, 8, 9, 1, 10);
         formatRow.setHeightInPoints(120);
         Row row10 = sheet.createRow(9);
-        for (int i = 1; i <= 8; i++) {
+        for (int i = 1; i <= 10; i++) {
             Cell cell = row10.createCell(i);
             cell.setCellStyle(styles.multilineValueStyle);
         }
 
-        merge(sheet, 10, 10, 0, 8);
+        merge(sheet, 10, 10, 0, 10);
         setCell(sheet, 10, 0, "read".equalsIgnoreCase(record.kind) ? "新输入文件" : "新输出文件", styles.sectionTitleStyle);
     }
 
     private void createFixedRow(Sheet sheet, Styles styles, int rowIndex, String label, String value) {
         Row row = sheet.createRow(rowIndex);
         setCell(row, 0, label, styles.labelStyle);
-        fillCells(row, 1, 8, styles.valueStyle);
+        fillCells(row, 1, 10, styles.valueStyle);
         setCell(row, 1, value, styles.valueStyle);
-        merge(sheet, rowIndex, rowIndex, 1, 8);
+        merge(sheet, rowIndex, rowIndex, 1, 10);
     }
 
     private String buildFormatText(BatchTemplateRecord record) {
@@ -330,7 +334,8 @@ public class FileTemplateExportServiceImpl implements FileTemplateExportService 
         Row headerRow = sheet.createRow(11);
         String[] headers = {
                 "列名", "列顺序", "列基础类型", "列最大长度（字节）",
-                "是否非空", "列描述", "枚举值", "备注", "差异化分析"
+                "是否非空", "列描述", "枚举值", "备注", "差异化分析",
+                "是否贯标", "ref原始值"
         };
         for (int i = 0; i < headers.length; i++) {
             setCell(headerRow, i, headers[i], styles.headerStyle);
@@ -346,9 +351,9 @@ public class FileTemplateExportServiceImpl implements FileTemplateExportService 
 
     private int writeSection(Sheet sheet, Styles styles, int currentRow, String sectionName, List<FieldItem> fields, LookupContext lookupContext) {
         Row sectionRow = sheet.createRow(currentRow++);
-        fillCells(sectionRow, 0, 8, styles.blockStyle);
+        fillCells(sectionRow, 0, 10, styles.blockStyle);
         setCell(sectionRow, 0, sectionName, styles.blockStyle);
-        merge(sheet, currentRow - 1, currentRow - 1, 0, 8);
+        merge(sheet, currentRow - 1, currentRow - 1, 0, 10);
 
         if (fields == null || fields.isEmpty()) {
             return currentRow;
@@ -371,6 +376,9 @@ public class FileTemplateExportServiceImpl implements FileTemplateExportService 
             }
             setCell(row, 5, field.longName, styles.dataStyle);
             setCell(row, 6, resolvedField.enumerationValues, styles.dataStyle);
+            // 新增列：是否贯标 + ref 原始值
+            setCell(row, 9, resolveStandardization(field.ref), styles.dataStyle);
+            setCell(row, 10, field.ref, styles.dataStyle);
         }
 
         return currentRow;
@@ -445,6 +453,39 @@ public class FileTemplateExportServiceImpl implements FileTemplateExportService 
         resolvedField.displayType = "string";
         resolvedField.enumerationValues = enumerationValues;
         return resolvedField;
+    }
+
+    /**
+     * 单字段"是否贯标"判定。
+     * 规则：ref 为空 → 未贯标；ref 以 "MDict" 开头 → 已贯标；其他前缀 → 未贯标。
+     */
+    private String resolveStandardization(String ref) {
+        String value = trim(ref);
+        if (value.isEmpty()) {
+            return "未贯标";
+        }
+        return value.startsWith("MDict") ? "已贯标" : "未贯标";
+    }
+
+    /**
+     * 整个文件模版"是否贯标"汇总。
+     * 规则：header + body + foot 中只要有任一字段未贯标 → 未贯标；全部已贯标 → 已贯标；
+     * 无任何字段时视为未贯标。
+     */
+    private String resolveRecordStandardization(BatchTemplateRecord record) {
+        List<FieldItem> allFields = new ArrayList<>();
+        allFields.addAll(record.headerFields);
+        allFields.addAll(record.bodyFields);
+        allFields.addAll(record.footFields);
+        if (allFields.isEmpty()) {
+            return "未贯标";
+        }
+        for (FieldItem field : allFields) {
+            if (!"已贯标".equals(resolveStandardization(field.ref))) {
+                return "未贯标";
+            }
+        }
+        return "已贯标";
     }
 
     private String buildDisplayMaxLength(UschemaRestrictionValue value) {
@@ -693,6 +734,7 @@ public class FileTemplateExportServiceImpl implements FileTemplateExportService 
         private String id;
         private String longName;
         private String type;
+        private String ref = "";
     }
 
     private static final class LookupContext {
