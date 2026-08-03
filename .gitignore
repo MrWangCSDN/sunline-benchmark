@@ -86,3 +86,6 @@ output/
 .cursor/
 .specify/
 tools/
+
+# Local isolated feature worktrees
+.worktrees/
