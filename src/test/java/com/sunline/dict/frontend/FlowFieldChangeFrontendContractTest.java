@@ -1,13 +1,28 @@
 package com.sunline.dict.frontend;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.http.WebSocket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.Comparator;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -19,6 +34,7 @@ class FlowFieldChangeFrontendContractTest {
 
     private static final Pattern INLINE_SCRIPT = Pattern.compile(
             "<script>\\s*(.*?)\\s*</script>", Pattern.DOTALL);
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     @Test
     void index_wires_history_menu_permission_iframe_and_title() throws IOException {
@@ -134,13 +150,48 @@ class FlowFieldChangeFrontendContractTest {
     }
 
     @Test
-    void page_contains_a_390px_safe_layout_with_internal_table_scrolling() throws IOException {
+    void page_contains_a_390px_safe_layout_with_internal_table_scrolling() throws Exception {
         String page = resource("/static/flow-field-change-history.html");
-        String compact = page.replaceAll("\\s+", " ");
+        Path fixture = Files.createTempFile("flow-field-change-layout-", ".html");
+        Path browserLog = Files.createTempFile("flow-field-change-layout-", ".log");
+        Path browserProfile = Files.createTempDirectory("flow-field-change-chrome-");
+        try {
+            String vueUri = Path.of(getClass().getResource("/static/js/vue.global.js").toURI())
+                    .toUri().toString();
+            String browserPage = page
+                    .replace("<script src=\"/js/vue.global.js\"></script>",
+                            "<script src=\"" + vueUri + "\"></script>")
+                    .replace("<script src=\"/js/axios.min.js\"></script>", BROWSER_AXIOS_FIXTURE)
+                    .replace("</body>", BROWSER_LAYOUT_PROBE + "</body>");
+            Files.writeString(fixture, browserPage, StandardCharsets.UTF_8);
 
-        assertTrue(compact.contains("body { overflow-x: hidden;"));
-        assertTrue(compact.contains(".workspace { width: 100%; max-width: 100%;"));
-        assertTrue(compact.contains(".table-scroll { width: 100%; max-width: 100%; overflow-x: auto;"));
+            BrowserLayout layout = measureBrowserLayout(fixture, browserProfile, browserLog);
+            assertEquals(390, layout.clientWidth(), "browser viewport must be exactly 390px");
+            assertTrue(layout.documentScrollWidth() <= layout.clientWidth(),
+                    "page overflowed: scrollWidth=" + layout.documentScrollWidth()
+                            + ", clientWidth=" + layout.clientWidth());
+            assertFalse("hidden".equals(layout.bodyOverflowX()),
+                    "overflow-x:hidden can conceal real page overflow");
+            assertEquals(3, layout.tableScrollCount(),
+                    "representative history, scan, and detail tables must all render");
+            assertEquals(layout.tableScrollCount(), layout.oversizedTableCount(),
+                    "each wide table must exceed its own .table-scroll client width");
+            assertEquals(layout.tableScrollCount(), layout.internalAutoCount(),
+                    "each wide table must assign horizontal scrolling to .table-scroll");
+        } finally {
+            Files.deleteIfExists(fixture);
+            Files.deleteIfExists(browserLog);
+            try (var paths = Files.walk(browserProfile)) {
+                paths.sorted(Comparator.reverseOrder()).forEach(path -> {
+                    try {
+                        Files.deleteIfExists(path);
+                    } catch (IOException exception) {
+                        throw new IllegalStateException(exception);
+                    }
+                });
+            }
+        }
+
         assertTrue(page.contains("@media (max-width: 390px)"));
         assertTrue(page.contains("@media (prefers-reduced-motion: reduce)"));
     }
@@ -189,6 +240,122 @@ class FlowFieldChangeFrontendContractTest {
             index += needle.length();
         }
         return count;
+    }
+
+    private String browserExecutable() {
+        String configured = System.getenv("FLOW_FIELD_CHANGE_BROWSER");
+        if (configured != null && Files.isExecutable(Path.of(configured))) {
+            return configured;
+        }
+        for (String candidate : new String[]{
+                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+                "/Applications/Chromium.app/Contents/MacOS/Chromium",
+                "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+                "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"}) {
+            if (Files.isExecutable(Path.of(candidate))) {
+                return candidate;
+            }
+        }
+        throw new IllegalStateException(
+                "Chrome/Chromium is required; set FLOW_FIELD_CHANGE_BROWSER to its executable");
+    }
+
+    private BrowserLayout measureBrowserLayout(Path fixture, Path browserProfile, Path browserLog)
+            throws Exception {
+        ProcessBuilder processBuilder = new ProcessBuilder(
+                browserExecutable(), "--headless=new", "--disable-gpu", "--no-sandbox",
+                "--disable-dev-shm-usage", "--disable-background-networking",
+                "--no-first-run", "--no-default-browser-check", "--allow-file-access-from-files",
+                "--remote-debugging-port=0", "--user-data-dir=" + browserProfile, "about:blank");
+        processBuilder.redirectErrorStream(true);
+        processBuilder.redirectOutput(browserLog.toFile());
+        Process browser = processBuilder.start();
+        try {
+            int port = waitForDevToolsPort(browserProfile, browser, browserLog);
+            URI webSocketUri = pageWebSocketUri(port);
+            try (CdpClient cdp = CdpClient.connect(webSocketUri)) {
+                ObjectNode metrics = JSON.createObjectNode();
+                metrics.put("width", 390);
+                metrics.put("height", 844);
+                metrics.put("deviceScaleFactor", 1);
+                metrics.put("mobile", false);
+                metrics.put("screenWidth", 390);
+                metrics.put("screenHeight", 844);
+                cdp.send("Emulation.setDeviceMetricsOverride", metrics);
+
+                ObjectNode navigate = JSON.createObjectNode();
+                navigate.put("url", fixture.toUri().toString());
+                cdp.send("Page.navigate", navigate);
+
+                long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+                while (System.nanoTime() < deadline) {
+                    JsonNode value = cdp.evaluate("""
+                            (() => {
+                                const result = document.getElementById('browser-layout-result');
+                                if (!result) return null;
+                                return {
+                                    clientWidth: Number(result.dataset.clientWidth),
+                                    documentScrollWidth: Number(result.dataset.documentScrollWidth),
+                                    bodyOverflowX: result.dataset.bodyOverflowX,
+                                    tableScrollCount: Number(result.dataset.tableScrollCount),
+                                    oversizedTableCount: Number(result.dataset.oversizedTableCount),
+                                    internalAutoCount: Number(result.dataset.internalAutoCount)
+                                };
+                            })()
+                            """);
+                    if (value != null && value.isObject()) {
+                        return new BrowserLayout(
+                                value.path("clientWidth").asInt(),
+                                value.path("documentScrollWidth").asInt(),
+                                value.path("bodyOverflowX").asText(),
+                                value.path("tableScrollCount").asInt(),
+                                value.path("oversizedTableCount").asInt(),
+                                value.path("internalAutoCount").asInt());
+                    }
+                    Thread.sleep(50);
+                }
+                throw new IllegalStateException("browser layout probe timed out:\n"
+                        + Files.readString(browserLog, StandardCharsets.UTF_8));
+            }
+        } finally {
+            browser.destroy();
+            if (!browser.waitFor(2, TimeUnit.SECONDS)) {
+                browser.destroyForcibly();
+                browser.waitFor(2, TimeUnit.SECONDS);
+            }
+        }
+    }
+
+    private int waitForDevToolsPort(Path browserProfile, Process browser, Path browserLog)
+            throws Exception {
+        Path portFile = browserProfile.resolve("DevToolsActivePort");
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline) {
+            if (Files.isRegularFile(portFile)) {
+                return Integer.parseInt(Files.readAllLines(portFile, StandardCharsets.UTF_8).get(0));
+            }
+            if (!browser.isAlive()) {
+                throw new IllegalStateException("browser exited before DevTools was ready:\n"
+                        + Files.readString(browserLog, StandardCharsets.UTF_8));
+            }
+            Thread.sleep(50);
+        }
+        throw new IllegalStateException("DevTools port was not created:\n"
+                + Files.readString(browserLog, StandardCharsets.UTF_8));
+    }
+
+    private URI pageWebSocketUri(int port) throws Exception {
+        HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
+        HttpRequest request = HttpRequest.newBuilder(
+                        URI.create("http://127.0.0.1:" + port + "/json/list"))
+                .timeout(Duration.ofSeconds(5)).GET().build();
+        JsonNode targets = JSON.readTree(client.send(request, HttpResponse.BodyHandlers.ofString()).body());
+        for (JsonNode target : targets) {
+            if ("page".equals(target.path("type").asText())) {
+                return URI.create(target.path("webSocketDebuggerUrl").asText());
+            }
+        }
+        throw new IllegalStateException("Chrome did not expose a page target: " + targets);
     }
 
     private void assertHistoryMenuSql(String sql) {
@@ -265,6 +432,173 @@ class FlowFieldChangeFrontendContractTest {
               return vm;
             }
             """;
+
+    private static final String BROWSER_AXIOS_FIXTURE = """
+            <script>
+                const layoutLongText = 'VERY-LONG-FLOWTRANS-AUDIT-VALUE-'.repeat(12);
+                const layoutHistoryRecord = {
+                    logId: 101, detailId: 1001, changeDate: '2026-08-20', projectId: 123,
+                    projectName: layoutLongText, projectPath: 'group/' + layoutLongText,
+                    filePath: 'src/main/resources/' + layoutLongText + '.flowtrans.xml',
+                    flowId: 'TC-LONG', flowLongname: layoutLongText, fileChangeType: 'MODIFY',
+                    captureStatus: 'SUCCESS', ioType: 'input', fieldPath: '/fields/' + layoutLongText,
+                    fieldId: layoutLongText, changeType: 'MODIFY',
+                    changedAttributes: { required: { old: layoutLongText, new: layoutLongText + '-new' } },
+                    commitSha: layoutLongText, commitMessage: layoutLongText,
+                    commitAuthor: layoutLongText, commitEmail: layoutLongText + '@example.com',
+                    commitTime: '2026-08-20T10:11:12'
+                };
+                const layoutScanRun = {
+                    id: 5001, projectId: 123, projectName: layoutLongText,
+                    projectPath: 'group/' + layoutLongText, branch: 'master',
+                    windowStart: '2026-08-19T22:00:00', windowEnd: '2026-08-20T22:00:00',
+                    status: 'COMPLETED_WITH_ERRORS', commitCount: 18, changedFileCount: 9,
+                    historyCount: 7, failedFileCount: 2, skippedCount: 4, cursorAdvanced: true,
+                    errorMessage: layoutLongText, startedAt: '2026-08-20T22:00:00',
+                    finishedAt: '2026-08-20T22:00:12'
+                };
+                const axios = {
+                    get(url) {
+                        if (url.includes('/detail/')) {
+                            return Promise.resolve({ data: { code: 200, data: {
+                                log: layoutHistoryRecord,
+                                details: [{
+                                    id: 1001, ioType: 'input', fieldPath: '/fields/' + layoutLongText,
+                                    fieldId: layoutLongText, changeType: 'MODIFY',
+                                    oldSnapshot: { required: layoutLongText },
+                                    newSnapshot: { required: layoutLongText + '-new' },
+                                    changedAttributes: {
+                                        required: { old: layoutLongText, new: layoutLongText + '-new' }
+                                    }
+                                }]
+                            } } });
+                        }
+                        const records = url.includes('/scan-runs') ? [layoutScanRun] : [layoutHistoryRecord];
+                        return Promise.resolve({ data: { code: 200, data: {
+                            current: 1, size: 20, total: records.length, records
+                        } } });
+                    }
+                };
+            </script>
+            """;
+
+    private static final String BROWSER_LAYOUT_PROBE = """
+            <script>
+                setTimeout(() => {
+                    const detailButton = document.querySelector('button.button--text');
+                    if (detailButton) detailButton.click();
+                    setTimeout(() => {
+                        const containers = Array.from(document.querySelectorAll('.table-scroll'));
+                        const oversized = containers.filter(container => {
+                            const table = container.querySelector('table');
+                            return table && table.scrollWidth > container.clientWidth;
+                        });
+                        const internalAuto = containers.filter(container =>
+                            getComputedStyle(container).overflowX === 'auto');
+                        const result = document.createElement('div');
+                        result.id = 'browser-layout-result';
+                        result.dataset.clientWidth = String(document.documentElement.clientWidth);
+                        result.dataset.documentScrollWidth = String(document.documentElement.scrollWidth);
+                        result.dataset.bodyOverflowX = getComputedStyle(document.body).overflowX;
+                        result.dataset.tableScrollCount = String(containers.length);
+                        result.dataset.oversizedTableCount = String(oversized.length);
+                        result.dataset.internalAutoCount = String(internalAuto.length);
+                        document.body.appendChild(result);
+                    }, 250);
+                }, 150);
+            </script>
+            """;
+
+    private record BrowserLayout(
+            int clientWidth,
+            int documentScrollWidth,
+            String bodyOverflowX,
+            int tableScrollCount,
+            int oversizedTableCount,
+            int internalAutoCount) {
+    }
+
+    private static final class CdpClient implements WebSocket.Listener, AutoCloseable {
+        private final AtomicInteger nextId = new AtomicInteger();
+        private final Map<Integer, CompletableFuture<JsonNode>> responses = new ConcurrentHashMap<>();
+        private final StringBuilder incoming = new StringBuilder();
+        private WebSocket socket;
+
+        private static CdpClient connect(URI uri) {
+            CdpClient client = new CdpClient();
+            client.socket = HttpClient.newHttpClient().newWebSocketBuilder()
+                    .connectTimeout(Duration.ofSeconds(5))
+                    .buildAsync(uri, client).join();
+            return client;
+        }
+
+        private JsonNode send(String method, ObjectNode params) throws Exception {
+            int id = nextId.incrementAndGet();
+            ObjectNode request = JSON.createObjectNode();
+            request.put("id", id);
+            request.put("method", method);
+            request.set("params", params);
+            CompletableFuture<JsonNode> response = new CompletableFuture<>();
+            responses.put(id, response);
+            socket.sendText(request.toString(), true).join();
+            JsonNode message = response.get(10, TimeUnit.SECONDS);
+            if (message.has("error")) {
+                throw new IllegalStateException("CDP command failed: " + message);
+            }
+            return message;
+        }
+
+        private JsonNode evaluate(String expression) throws Exception {
+            ObjectNode params = JSON.createObjectNode();
+            params.put("expression", expression);
+            params.put("returnByValue", true);
+            params.put("awaitPromise", true);
+            JsonNode response = send("Runtime.evaluate", params);
+            return response.path("result").path("result").get("value");
+        }
+
+        @Override
+        public void onOpen(WebSocket webSocket) {
+            webSocket.request(1);
+        }
+
+        @Override
+        public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
+            synchronized (incoming) {
+                incoming.append(data);
+                if (last) {
+                    try {
+                        JsonNode message = JSON.readTree(incoming.toString());
+                        JsonNode id = message.get("id");
+                        if (id != null) {
+                            CompletableFuture<JsonNode> response = responses.remove(id.asInt());
+                            if (response != null) response.complete(message);
+                        }
+                    } catch (Exception exception) {
+                        responses.values().forEach(response -> response.completeExceptionally(exception));
+                        responses.clear();
+                    } finally {
+                        incoming.setLength(0);
+                    }
+                }
+            }
+            webSocket.request(1);
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public void onError(WebSocket webSocket, Throwable error) {
+            responses.values().forEach(response -> response.completeExceptionally(error));
+            responses.clear();
+        }
+
+        @Override
+        public void close() {
+            if (socket != null) {
+                socket.sendClose(WebSocket.NORMAL_CLOSURE, "done").join();
+            }
+        }
+    }
 
     private static final String NODE_ASSERTIONS = """
             ;(async () => {
