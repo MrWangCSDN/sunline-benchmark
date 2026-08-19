@@ -1,6 +1,8 @@
 package com.sunline.dict.service.impl;
 
 import com.sunline.dict.service.flowchange.GitLabFileVersionService;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -17,6 +19,7 @@ import java.time.Duration;
  * GitLab API adapter whose target origin is fixed by application configuration.
  */
 @Service
+@ConditionalOnProperty(name = "git.gitlab.url")
 public class GitLabFileVersionServiceImpl implements GitLabFileVersionService {
 
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
@@ -26,6 +29,7 @@ public class GitLabFileVersionServiceImpl implements GitLabFileVersionService {
     private final String accessToken;
     private final HttpClient httpClient;
 
+    @Autowired
     public GitLabFileVersionServiceImpl(
             @Value("${git.gitlab.url}") String gitLabUrl,
             @Value("${gitlab.access-token:}") String accessToken) {

@@ -20,6 +20,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpTimeoutException;
 import java.security.NoSuchAlgorithmException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -36,6 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class GitLabFileVersionServiceImplTest {
 
     private HttpServer server;
+    private HttpServer redirectServer;
 
     @BeforeEach
     void startServer() throws IOException {
@@ -46,6 +48,9 @@ class GitLabFileVersionServiceImplTest {
     @AfterEach
     void stopServer() {
         server.stop(0);
+        if (redirectServer != null) {
+            redirectServer.stop(0);
+        }
     }
 
     @Test
@@ -136,6 +141,32 @@ class GitLabFileVersionServiceImplTest {
     }
 
     @Test
+    void failsWithoutFollowingRedirectOrSendingTokenToSecondAuthority() throws IOException {
+        AtomicBoolean redirectServerReceivedRequest = new AtomicBoolean();
+        AtomicReference<String> redirectServerToken = new AtomicReference<>();
+        redirectServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        redirectServer.createContext("/redirect-target", exchange -> {
+            redirectServerReceivedRequest.set(true);
+            redirectServerToken.set(exchange.getRequestHeaders().getFirst("PRIVATE-TOKEN"));
+            respond(exchange, 200, "<flowtran/>");
+        });
+        redirectServer.start();
+        server.createContext("/api/v4/projects/123/repository/files/", exchange -> {
+            exchange.getResponseHeaders().set("Location", redirectBaseUrl() + "/redirect-target");
+            exchange.sendResponseHeaders(302, -1);
+            exchange.close();
+        });
+        GitLabFileVersionServiceImpl service = new GitLabFileVersionServiceImpl(
+                baseUrl(), "secret-token", HttpClient.newHttpClient());
+
+        FileVersionResult result = service.fetch(123L, "group/project", "file.flowtrans.xml", "abc123");
+
+        assertEquals(Status.FAILED, result.status());
+        assertFalse(redirectServerReceivedRequest.get());
+        assertEquals(null, redirectServerToken.get());
+    }
+
+    @Test
     void returnsSanitizedFailureWhenGitLabRequestTimesOut() {
         GitLabFileVersionServiceImpl service = new GitLabFileVersionServiceImpl(
                 baseUrl(), "secret-token", new TimeoutHttpClient());
@@ -150,6 +181,10 @@ class GitLabFileVersionServiceImplTest {
 
     private String baseUrl() {
         return "http://127.0.0.1:" + server.getAddress().getPort();
+    }
+
+    private String redirectBaseUrl() {
+        return "http://127.0.0.1:" + redirectServer.getAddress().getPort();
     }
 
     private static void respond(HttpExchange exchange, int statusCode, String body) throws IOException {
