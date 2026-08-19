@@ -8,6 +8,7 @@ import com.sunline.dict.service.flowchange.FlowtransInterfaceSnapshot.FieldIdent
 import com.sunline.dict.service.flowchange.FlowtransInterfaceSnapshot.FieldSnapshot;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +18,7 @@ import java.util.TreeMap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FlowFieldChangeDiffServiceTest {
@@ -150,6 +152,47 @@ class FlowFieldChangeDiffServiceTest {
                 new FieldIdentity("input", "/", "z"),
                 new FieldIdentity("input", "/fields[b]", "a"),
                 new FieldIdentity("output", "/", "z")), identities);
+    }
+
+    @Test
+    void diff_result_exposes_no_mutable_collections() {
+        FlowtransInterfaceSnapshot before = snapshot("TC045", field(
+                "input", "/", "amount", attrs("type", "T1")));
+        FlowtransInterfaceSnapshot after = snapshot("TC045", field(
+                "input", "/", "amount", attrs("type", "T2")));
+
+        FlowFieldChangeSet change = service.diff(before, after).orElseThrow();
+        FieldChange detail = change.details().get(0);
+
+        assertThrows(UnsupportedOperationException.class, () -> change.details().clear());
+        assertThrows(UnsupportedOperationException.class, () -> detail.oldSnapshot().put("type", "mutated"));
+        assertThrows(UnsupportedOperationException.class, () -> detail.newSnapshot().put("type", "mutated"));
+        assertThrows(UnsupportedOperationException.class,
+                () -> detail.changedAttributes().put("type", new ValueChange("T2", "mutated")));
+    }
+
+    @Test
+    void change_set_records_defensively_copy_mutable_constructor_arguments() {
+        FieldIdentity identity = new FieldIdentity("input", "/", "amount");
+        SortedMap<String, String> oldSnapshot = attrs("id", "amount", "type", "T1");
+        SortedMap<String, String> newSnapshot = attrs("id", "amount", "type", "T2");
+        SortedMap<String, ValueChange> changedAttributes = new TreeMap<>(
+                Map.of("type", new ValueChange("T1", "T2")));
+        FieldChange detail = new FieldChange(FieldChangeType.MODIFY, identity,
+                oldSnapshot, newSnapshot, changedAttributes);
+        List<FieldChange> details = new ArrayList<>(List.of(detail));
+        FlowFieldChangeSet change = new FlowFieldChangeSet(FileChangeType.MODIFY, "TC045", "name",
+                details, 0, 1, 0, 1, 0);
+
+        oldSnapshot.put("type", "changed");
+        newSnapshot.put("type", "changed");
+        changedAttributes.clear();
+        details.clear();
+
+        assertEquals("T1", detail.oldSnapshot().get("type"));
+        assertEquals("T2", detail.newSnapshot().get("type"));
+        assertEquals(new ValueChange("T1", "T2"), detail.changedAttributes().get("type"));
+        assertEquals(1, change.details().size());
     }
 
     private FlowtransInterfaceSnapshot snapshot(String flowId, FieldSnapshot... fields) {
