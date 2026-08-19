@@ -40,6 +40,20 @@ class FlowtransInterfaceSnapshotParserTest {
     }
 
     @Test
+    void captures_field_nested_beneath_a_field_with_its_container_path() {
+        String xml = """
+                <flowtran><interface id="TC045"><input>
+                  <field id="parent"><fields id="nested"><field id="child"/></fields></field>
+                </input></interface></flowtran>
+                """;
+
+        FlowtransInterfaceSnapshot snapshot = parser.parse(xml);
+
+        assertTrue(snapshot.fields().containsKey(
+                new FieldIdentity("input", "/fields[nested]", "child")));
+    }
+
+    @Test
     void captures_every_attribute_case_sensitively() {
         String xml = """
                 <flowtran><interface id="TC046" longname="Case">

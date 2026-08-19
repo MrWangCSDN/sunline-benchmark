@@ -97,6 +97,7 @@ public class FlowtransInterfaceSnapshotParser {
             Element element = (Element) child;
             if ("field".equals(element.getTagName())) {
                 addField(element, ioType, fieldPath, fields);
+                walk(element, ioType, fieldPath, fields);
             } else if ("fields".equals(element.getTagName())) {
                 walk(element, ioType, appendContainer(fieldPath, element), fields);
             } else {
