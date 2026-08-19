@@ -900,7 +900,7 @@
                 <h2>📊 字典管理系统</h2>
             </div>
             
-            <div class="menu-group" v-if="hasMenuPermission('dict-management') || hasMenuPermission('data-list') || hasMenuPermission('excel-import') || hasMenuPermission('excel-import-ing') || hasMenuPermission('change-history') || hasMenuPermission('excel-export') || hasMenuPermission('enum-mapping') || hasMenuPermission('domain-mapping') || hasMenuPermission('dict-usage-analysis') || hasMenuPermission('dict-batch-delete')" :class="{ expanded: menuExpanded }">
+            <div class="menu-group" v-if="hasMenuPermission('dict-management') || hasMenuPermission('data-list') || hasMenuPermission('excel-import') || hasMenuPermission('excel-import-ing') || hasMenuPermission('change-history') || hasMenuPermission('flow-field-change-history') || hasMenuPermission('excel-export') || hasMenuPermission('enum-mapping') || hasMenuPermission('domain-mapping') || hasMenuPermission('dict-usage-analysis') || hasMenuPermission('dict-batch-delete')" :class="{ expanded: menuExpanded }">
                 <div class="menu-group-title" :class="{ collapsed: !menuExpanded }" @click="toggleMenu">
                     <span>数标管理</span>
                     <span class="arrow">▼</span>
@@ -917,6 +917,9 @@
                     </div>
                     <div class="menu-item" v-if="hasMenuPermission('change-history')" :class="{ active: currentView === 'change-history' }" @click="switchView('change-history')">
                         <span>📜 变更历史</span>
+                    </div>
+                    <div class="menu-item" v-if="hasMenuPermission('flow-field-change-history')" :class="{ active: currentView === 'flow-field-change-history' }" @click="switchView('flow-field-change-history')">
+                        <span>📜 交易接口变动历史</span>
                     </div>
                     <div class="menu-item" v-if="hasMenuPermission('excel-export')" :class="{ active: currentView === 'excel-export' }" @click="switchView('excel-export')">
                         <span>📥 Excel导出</span>
@@ -1054,6 +1057,7 @@
                 <iframe v-show="currentView === 'excel-import'" src="/multi-sheet-preview.html"></iframe>
                 <iframe v-show="currentView === 'excel-import-ing'" src="/multi-sheet-ing-preview.html"></iframe>
                 <iframe v-show="currentView === 'change-history'" src="/change-history.html"></iframe>
+                <iframe v-show="currentView === 'flow-field-change-history'" src="/flow-field-change-history.html"></iframe>
                 <iframe v-show="currentView === 'excel-export'" src="/excel-export.html"></iframe>
                 <iframe v-show="currentView === 'git-branch-create'" src="/git-branch-create.html"></iframe>
                 <iframe v-show="currentView === 'code-push'" src="/code-push.html"></iframe>
@@ -2131,6 +2135,7 @@
                         'excel-import': '📊 Excel导入分析',
                         'excel-import-ing': '📊 Excel导入分析(在途)',
                         'change-history': '📜 变更历史',
+                        'flow-field-change-history': '📜 交易接口变动历史',
                         'excel-export': '📥 Excel导出',
                         'git-branch-create': '🌿 分支创建',
                         'code-push': '🚀 一键代码推送',
