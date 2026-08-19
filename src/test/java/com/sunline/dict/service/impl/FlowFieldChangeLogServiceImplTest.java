@@ -53,6 +53,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.TreeMap;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -222,6 +230,113 @@ class FlowFieldChangeLogServiceImplTest {
                 .map(FlowFieldChangeDetail::getFieldId).toList());
     }
 
+    @Test
+    void concurrent_none_writers_share_one_header_and_one_detail_without_duplicate_failure()
+            throws Exception {
+        ConcurrentHistoryStore concurrent = new ConcurrentHistoryStore();
+        FlowFieldChangeLogService concurrentService = concurrentService(concurrent);
+        FlowFieldChangeMeta meta = meta("src/concurrent-none.flowtrans.xml", "none-sha");
+        concurrent.coordinateUnlockedReads(2);
+
+        List<WriteOutcome> outcomes = runConcurrently(
+                () -> concurrentService.recordSuccess(meta, oneAddedField()),
+                () -> concurrentService.recordSuccess(meta, oneAddedField()));
+
+        assertEquals(1, concurrent.logCount());
+        assertEquals(1, concurrent.details(outcomes.get(0).logId()).size());
+        assertEquals(outcomes.get(0).logId(), outcomes.get(1).logId());
+        assertEquals(List.of(WriteDisposition.INSERTED, WriteDisposition.SKIPPED),
+                outcomes.stream().map(WriteOutcome::disposition).sorted().toList());
+    }
+
+    @Test
+    void success_locking_first_prevents_concurrent_failure_from_downgrading_or_deleting_details()
+            throws Exception {
+        ConcurrentHistoryStore concurrent = new ConcurrentHistoryStore();
+        FlowFieldChangeLogService concurrentService = concurrentService(concurrent);
+        FlowFieldChangeMeta meta = meta("src/success-first.flowtrans.xml", "success-first-sha");
+        WriteOutcome failed = concurrentService.recordFailure(meta, "initial failure");
+        concurrent.blockNextUpdate("SUCCESS");
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<WriteOutcome> success = executor.submit(
+                    () -> concurrentService.recordSuccess(meta, oneAddedField()));
+            concurrent.awaitBlockedUpdate();
+            concurrent.signalOnNextWriterAttempt();
+            Future<WriteOutcome> failure = executor.submit(
+                    () -> concurrentService.recordFailure(meta, "late failure"));
+            concurrent.awaitWriterAttempt();
+            concurrent.releaseBlockedUpdate();
+
+            WriteOutcome successOutcome = success.get(5, TimeUnit.SECONDS);
+            WriteOutcome failureOutcome = failure.get(5, TimeUnit.SECONDS);
+
+            assertEquals(failed.logId(), successOutcome.logId());
+            assertEquals(failed.logId(), failureOutcome.logId());
+            assertEquals(WriteDisposition.UPGRADED, successOutcome.disposition());
+            assertEquals(WriteDisposition.SKIPPED, failureOutcome.disposition());
+            assertEquals("SUCCESS", concurrent.log(failed.logId()).getCaptureStatus());
+            assertEquals(1, concurrent.details(failed.logId()).size());
+        } finally {
+            concurrent.releaseBlockedUpdate();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void failure_locking_first_then_success_upgrades_the_same_header_and_replaces_details()
+            throws Exception {
+        ConcurrentHistoryStore concurrent = new ConcurrentHistoryStore();
+        FlowFieldChangeLogService concurrentService = concurrentService(concurrent);
+        FlowFieldChangeMeta meta = meta("src/failure-first.flowtrans.xml", "failure-first-sha");
+        WriteOutcome original = concurrentService.recordFailure(meta, "initial failure");
+        concurrent.blockNextUpdate("FAILED");
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<WriteOutcome> failure = executor.submit(
+                    () -> concurrentService.recordFailure(meta, "retry failure"));
+            concurrent.awaitBlockedUpdate();
+            concurrent.signalOnNextWriterAttempt();
+            Future<WriteOutcome> success = executor.submit(
+                    () -> concurrentService.recordSuccess(meta, oneAddedField()));
+            concurrent.awaitWriterAttempt();
+            concurrent.releaseBlockedUpdate();
+
+            WriteOutcome failureOutcome = failure.get(5, TimeUnit.SECONDS);
+            WriteOutcome successOutcome = success.get(5, TimeUnit.SECONDS);
+
+            assertEquals(original.logId(), failureOutcome.logId());
+            assertEquals(original.logId(), successOutcome.logId());
+            assertEquals(WriteDisposition.UPGRADED, failureOutcome.disposition());
+            assertEquals(WriteDisposition.UPGRADED, successOutcome.disposition());
+            assertEquals("SUCCESS", concurrent.log(original.logId()).getCaptureStatus());
+            assertEquals(1, concurrent.details(original.logId()).size());
+        } finally {
+            concurrent.releaseBlockedUpdate();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void concurrent_writers_against_existing_success_both_skip_and_preserve_same_id_and_details()
+            throws Exception {
+        ConcurrentHistoryStore concurrent = new ConcurrentHistoryStore();
+        FlowFieldChangeLogService concurrentService = concurrentService(concurrent);
+        FlowFieldChangeMeta meta = meta("src/existing-success.flowtrans.xml", "existing-success-sha");
+        WriteOutcome original = concurrentService.recordSuccess(meta, oneAddedField());
+        concurrent.coordinateUnlockedReads(2);
+
+        List<WriteOutcome> outcomes = runConcurrently(
+                () -> concurrentService.recordFailure(meta, "late failure"),
+                () -> concurrentService.recordSuccess(meta, zeroField(FileChangeType.DELETE)));
+
+        assertTrue(outcomes.stream().allMatch(
+                outcome -> outcome.disposition() == WriteDisposition.SKIPPED));
+        assertTrue(outcomes.stream().allMatch(outcome -> outcome.logId() == original.logId()));
+        assertEquals("SUCCESS", concurrent.log(original.logId()).getCaptureStatus());
+        assertEquals("AcctNo", concurrent.details(original.logId()).get(0).getFieldId());
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {
             "password=hunter2",
@@ -343,6 +458,19 @@ class FlowFieldChangeLogServiceImplTest {
         assertEquals("SUCCESS", captor.getValue().captureStatus());
         assertEquals(LocalDate.of(2026, 8, 1), captor.getValue().startDate());
         assertEquals(LocalDate.of(2026, 8, 31), captor.getValue().endDate());
+    }
+
+    @Test
+    void field_page_keeps_counting_enabled_but_disables_left_join_count_optimization() {
+        FieldChangeQuery query = validFieldQuery();
+        when(queryMapper.selectFieldChanges(any(Page.class), eq(query))).thenReturn(new Page<>(1, 20));
+
+        service.pageFieldChanges(query);
+
+        ArgumentCaptor<Page<FieldChangeRowData>> pageCaptor = ArgumentCaptor.forClass(Page.class);
+        verify(queryMapper).selectFieldChanges(pageCaptor.capture(), eq(query));
+        assertTrue(pageCaptor.getValue().searchCount());
+        assertFalse(pageCaptor.getValue().optimizeJoinOfCountSql());
     }
 
     @ParameterizedTest
@@ -485,6 +613,275 @@ class FlowFieldChangeLogServiceImplTest {
         }
     }
 
+    private static FlowFieldChangeLogService concurrentService(ConcurrentHistoryStore store) {
+        FlowFieldChangeLogServiceImpl target = new FlowFieldChangeLogServiceImpl(
+                store.logMapper(), store.detailMapper(), mock(FlowFieldChangeQueryMapper.class),
+                new ObjectMapper());
+        ProxyFactory proxyFactory = new ProxyFactory(target);
+        TransactionInterceptor transactionInterceptor = new TransactionInterceptor();
+        transactionInterceptor.setTransactionManager(new RowLockTransactionManager(store));
+        transactionInterceptor.setTransactionAttributeSource(new AnnotationTransactionAttributeSource());
+        proxyFactory.addAdvice(transactionInterceptor);
+        return (FlowFieldChangeLogService) proxyFactory.getProxy();
+    }
+
+    private static <T> List<T> runConcurrently(Callable<T> first, Callable<T> second)
+            throws Exception {
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<T> firstResult = executor.submit(first);
+            Future<T> secondResult = executor.submit(second);
+            return List.of(firstResult.get(5, TimeUnit.SECONDS),
+                    secondResult.get(5, TimeUnit.SECONDS));
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    private static final class ConcurrentHistoryStore {
+        private final Map<Long, FlowFieldChangeLog> logs = new LinkedHashMap<>();
+        private final Map<Long, FlowFieldChangeDetail> details = new LinkedHashMap<>();
+        private final Map<String, ReentrantLock> rowLocks = new LinkedHashMap<>();
+        private final ThreadLocal<List<ReentrantLock>> heldLocks =
+                ThreadLocal.withInitial(java.util.ArrayList::new);
+        private long nextLogId = 1;
+        private long nextDetailId = 1;
+        private volatile CyclicBarrier unlockedReadBarrier;
+        private volatile String blockedUpdateStatus;
+        private volatile CountDownLatch blockedUpdateReached = new CountDownLatch(0);
+        private volatile CountDownLatch releaseBlockedUpdate = new CountDownLatch(0);
+        private volatile CountDownLatch writerAttempt = new CountDownLatch(0);
+
+        FlowFieldChangeLogMapper logMapper() {
+            return HistoryStore.proxy(FlowFieldChangeLogMapper.class, this::invokeLog);
+        }
+
+        FlowFieldChangeDetailMapper detailMapper() {
+            return HistoryStore.proxy(FlowFieldChangeDetailMapper.class, this::invokeDetail);
+        }
+
+        synchronized FlowFieldChangeLog log(long id) {
+            return HistoryStore.copy(logs.get(id));
+        }
+
+        synchronized int logCount() {
+            return logs.size();
+        }
+
+        synchronized List<FlowFieldChangeDetail> details(long logId) {
+            return details.values().stream()
+                    .filter(row -> row.getLogId().equals(logId))
+                    .sorted((left, right) -> Long.compare(left.getId(), right.getId()))
+                    .map(HistoryStore::copy).toList();
+        }
+
+        void coordinateUnlockedReads(int parties) {
+            unlockedReadBarrier = new CyclicBarrier(parties);
+        }
+
+        void blockNextUpdate(String status) {
+            blockedUpdateStatus = status;
+            blockedUpdateReached = new CountDownLatch(1);
+            releaseBlockedUpdate = new CountDownLatch(1);
+        }
+
+        void awaitBlockedUpdate() throws InterruptedException {
+            assertTrue(blockedUpdateReached.await(5, TimeUnit.SECONDS),
+                    "writer did not reach the blocked update");
+        }
+
+        void releaseBlockedUpdate() {
+            releaseBlockedUpdate.countDown();
+        }
+
+        void signalOnNextWriterAttempt() {
+            writerAttempt = new CountDownLatch(1);
+        }
+
+        void awaitWriterAttempt() throws InterruptedException {
+            assertTrue(writerAttempt.await(5, TimeUnit.SECONDS),
+                    "second writer did not reach the persistence decision");
+        }
+
+        void releaseHeldLocks() {
+            List<ReentrantLock> locks = heldLocks.get();
+            for (int index = locks.size() - 1; index >= 0; index--) {
+                locks.get(index).unlock();
+            }
+            locks.clear();
+            heldLocks.remove();
+        }
+
+        private Object invokeLog(Object proxy, Method method, Object[] args) {
+            return switch (method.getName()) {
+                case "insert" -> insertLog((FlowFieldChangeLog) args[0], true);
+                case "insertDailyPlaceholder" -> insertLog((FlowFieldChangeLog) args[0], false);
+                case "selectByDedupKey" -> selectUnlocked((String) args[0]);
+                case "selectByDedupKeyForUpdate" -> selectLocked((String) args[0]);
+                case "updateDaily" -> updateLog((FlowFieldChangeLog) args[0]);
+                case "selectById" -> log(((Number) args[0]).longValue());
+                case "toString" -> "ConcurrentHistoryLogMapperFake";
+                case "hashCode" -> System.identityHashCode(proxy);
+                case "equals" -> proxy == args[0];
+                default -> throw new UnsupportedOperationException(method.getName());
+            };
+        }
+
+        private Object invokeDetail(Object proxy, Method method, Object[] args) {
+            return switch (method.getName()) {
+                case "insert" -> insertDetail((FlowFieldChangeDetail) args[0]);
+                case "deleteByLogId" -> deleteDetails(((Number) args[0]).longValue());
+                case "selectByLogId" -> details(((Number) args[0]).longValue());
+                case "toString" -> "ConcurrentHistoryDetailMapperFake";
+                case "hashCode" -> System.identityHashCode(proxy);
+                case "equals" -> proxy == args[0];
+                default -> throw new UnsupportedOperationException(method.getName());
+            };
+        }
+
+        private FlowFieldChangeLog selectUnlocked(String dedupKey) {
+            FlowFieldChangeLog selected;
+            synchronized (this) {
+                selected = logs.values().stream()
+                        .filter(row -> dedupKey.equals(row.getDedupKey()))
+                        .findFirst().map(HistoryStore::copy).orElse(null);
+            }
+            signalWriterAttempt();
+            CyclicBarrier barrier = unlockedReadBarrier;
+            if (barrier != null) {
+                awaitBarrier(barrier);
+            }
+            return selected;
+        }
+
+        private FlowFieldChangeLog selectLocked(String dedupKey) {
+            signalWriterAttempt();
+            acquire(dedupKey);
+            synchronized (this) {
+                return logs.values().stream()
+                        .filter(row -> dedupKey.equals(row.getDedupKey()))
+                        .findFirst().map(HistoryStore::copy).orElse(null);
+            }
+        }
+
+        private int insertLog(FlowFieldChangeLog row, boolean rejectDuplicate) {
+            signalWriterAttempt();
+            acquire(row.getDedupKey());
+            synchronized (this) {
+                FlowFieldChangeLog existing = logs.values().stream()
+                        .filter(saved -> row.getDedupKey().equals(saved.getDedupKey()))
+                        .findFirst().orElse(null);
+                if (existing != null) {
+                    if (rejectDuplicate) {
+                        throw new IllegalStateException("duplicate dedup key");
+                    }
+                    return 0;
+                }
+                row.setId(nextLogId++);
+                logs.put(row.getId(), HistoryStore.copy(row));
+                return 1;
+            }
+        }
+
+        private int updateLog(FlowFieldChangeLog row) {
+            acquire(row.getDedupKey());
+            if (row.getCaptureStatus().equals(blockedUpdateStatus)) {
+                blockedUpdateStatus = null;
+                blockedUpdateReached.countDown();
+                try {
+                    if (!releaseBlockedUpdate.await(5, TimeUnit.SECONDS)) {
+                        throw new AssertionError("timed out waiting to release blocked update");
+                    }
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new AssertionError(exception);
+                }
+            }
+            synchronized (this) {
+                if (!logs.containsKey(row.getId())) {
+                    return 0;
+                }
+                logs.put(row.getId(), HistoryStore.copy(row));
+                return 1;
+            }
+        }
+
+        private int insertDetail(FlowFieldChangeDetail row) {
+            String dedupKey = dedupForLog(row.getLogId());
+            acquire(dedupKey);
+            synchronized (this) {
+                row.setId(nextDetailId++);
+                details.put(row.getId(), HistoryStore.copy(row));
+                return 1;
+            }
+        }
+
+        private int deleteDetails(long logId) {
+            acquire(dedupForLog(logId));
+            synchronized (this) {
+                int before = details.size();
+                details.entrySet().removeIf(entry -> entry.getValue().getLogId().equals(logId));
+                return before - details.size();
+            }
+        }
+
+        private synchronized String dedupForLog(long logId) {
+            FlowFieldChangeLog row = logs.get(logId);
+            if (row == null) {
+                throw new IllegalStateException("missing log " + logId);
+            }
+            return row.getDedupKey();
+        }
+
+        private void acquire(String dedupKey) {
+            ReentrantLock lock;
+            synchronized (this) {
+                lock = rowLocks.computeIfAbsent(dedupKey, ignored -> new ReentrantLock(true));
+            }
+            lock.lock();
+            heldLocks.get().add(lock);
+        }
+
+        private void signalWriterAttempt() {
+            writerAttempt.countDown();
+        }
+
+        private static void awaitBarrier(CyclicBarrier barrier) {
+            try {
+                barrier.await(5, TimeUnit.SECONDS);
+            } catch (Exception exception) {
+                throw new AssertionError(exception);
+            }
+        }
+    }
+
+    private static final class RowLockTransactionManager extends AbstractPlatformTransactionManager {
+        private final ConcurrentHistoryStore store;
+
+        private RowLockTransactionManager(ConcurrentHistoryStore store) {
+            this.store = store;
+        }
+
+        @Override
+        protected Object doGetTransaction() {
+            return new Object();
+        }
+
+        @Override
+        protected void doBegin(Object transaction, TransactionDefinition definition) {
+        }
+
+        @Override
+        protected void doCommit(DefaultTransactionStatus status) {
+            store.releaseHeldLocks();
+        }
+
+        @Override
+        protected void doRollback(DefaultTransactionStatus status) {
+            store.releaseHeldLocks();
+        }
+    }
+
     private static final class HistoryStore {
         private final Map<Long, FlowFieldChangeLog> logs = new LinkedHashMap<>();
         private final Map<Long, FlowFieldChangeDetail> details = new LinkedHashMap<>();
@@ -539,7 +936,9 @@ class FlowFieldChangeLogServiceImplTest {
         private Object invokeLog(Object proxy, Method method, Object[] args) {
             return switch (method.getName()) {
                 case "insert" -> insertLog((FlowFieldChangeLog) args[0]);
+                case "insertDailyPlaceholder" -> insertPlaceholder((FlowFieldChangeLog) args[0]);
                 case "selectByDedupKey" -> byDedup((String) args[0]);
+                case "selectByDedupKeyForUpdate" -> byDedup((String) args[0]);
                 case "updateDaily" -> updateLog((FlowFieldChangeLog) args[0]);
                 case "selectById" -> log(((Number) args[0]).longValue());
                 case "toString" -> "HistoryLogMapperFake";
@@ -568,6 +967,10 @@ class FlowFieldChangeLogServiceImplTest {
             row.setId(nextLogId++);
             logs.put(row.getId(), copy(row));
             return 1;
+        }
+
+        private int insertPlaceholder(FlowFieldChangeLog row) {
+            return byDedup(row.getDedupKey()) == null ? insertLog(row) : 0;
         }
 
         private int updateLog(FlowFieldChangeLog row) {

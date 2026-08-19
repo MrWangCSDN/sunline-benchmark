@@ -1,6 +1,7 @@
 package com.sunline.dict.sql;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.baomidou.mybatisplus.extension.plugins.inner.PaginationInnerInterceptor;
 import com.sunline.dict.dto.FlowFieldChangeDtos.FieldChangeQuery;
 import com.sunline.dict.dto.FlowFieldChangeDtos.FieldChangeRowData;
 import com.sunline.dict.dto.FlowFieldChangeDtos.ScanRunQuery;
@@ -19,6 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -69,6 +71,18 @@ class FlowFieldChangeSchemaContractTest {
         assertTrue(sql.contains("add index idx_ffcl_scan_run (scan_run_id)"));
         assertTrue(sql.contains("create table if not exists flow_field_scan_run"));
         assertTrue(sql.contains("create table if not exists flow_field_scan_cursor"));
+
+        assertGuardedColumn(sql, "scan_run_id");
+        assertGuardedColumn(sql, "change_date");
+        assertGuardedColumn(sql, "project_path");
+        assertGuardedColumn(sql, "parent_sha");
+        assertGuardedColumn(sql, "update_time");
+        assertGuardedIndex(sql, "idx_ffcl_change_date");
+        assertGuardedIndex(sql, "idx_ffcl_commit");
+        assertGuardedIndex(sql, "idx_ffcl_scan_run");
+        assertEquals(8, occurrences(sql, "prepare ffcd_ddl from @ffcd_ddl_sql"));
+        assertEquals(8, occurrences(sql, "execute ffcd_ddl"));
+        assertEquals(8, occurrences(sql, "deallocate prepare ffcd_ddl"));
 
         assertFalse(sql.contains("drop column webhook_uuid"));
         assertFalse(sql.contains("drop column before_sha"));
@@ -138,6 +152,30 @@ class FlowFieldChangeSchemaContractTest {
         assertTrue(sql.endsWith("order by r.window_end desc, r.id desc"));
     }
 
+    @Test
+    void field_count_sql_retains_left_join_so_details_and_file_only_rows_share_page_cardinality()
+            throws IOException {
+        Configuration configuration = mapperConfiguration();
+        FieldChangeQuery query = new FieldChangeQuery(
+                1, 20, LocalDate.of(2026, 8, 19), LocalDate.of(2026, 8, 19),
+                42L, null, null, null, null, null, null, null, "SUCCESS");
+        Page<FieldChangeRowData> page = new Page<>(1, 20);
+        page.setOptimizeJoinOfCountSql(false);
+        Map<String, Object> parameters = new HashMap<>();
+        parameters.put("page", page);
+        parameters.put("query", query);
+        String rowSql = configuration.getMappedStatement(
+                        FlowFieldChangeQueryMapper.class.getName() + ".selectFieldChanges")
+                .getBoundSql(parameters).getSql();
+
+        String countSql = normalize(new CountSqlProbe().countSql(page, rowSql));
+
+        assertTrue(countSql.startsWith("select count(*) as total"));
+        assertTrue(countSql.contains(
+                "from flow_field_change_log l left join flow_field_change_detail d on d.log_id = l.id"));
+        assertTrue(countSql.contains("l.scan_run_id is not null"));
+    }
+
     private Configuration mapperConfiguration() throws IOException {
         Configuration configuration = new Configuration();
         String resource = "mapper/FlowFieldChangeQueryMapper.xml";
@@ -161,5 +199,33 @@ class FlowFieldChangeSchemaContractTest {
 
     private static String normalize(String value) {
         return value.toLowerCase().replaceAll("\\s+", " ").trim();
+    }
+
+    private static void assertGuardedColumn(String sql, String column) {
+        assertTrue(sql.contains("from information_schema.columns where table_schema = database() "
+                        + "and table_name = 'flow_field_change_log' and column_name = '" + column + "'"),
+                "missing retry guard for column " + column);
+    }
+
+    private static void assertGuardedIndex(String sql, String index) {
+        assertTrue(sql.contains("from information_schema.statistics where table_schema = database() "
+                        + "and table_name = 'flow_field_change_log' and index_name = '" + index + "'"),
+                "missing retry guard for index " + index);
+    }
+
+    private static int occurrences(String value, String needle) {
+        int count = 0;
+        int offset = 0;
+        while ((offset = value.indexOf(needle, offset)) >= 0) {
+            count++;
+            offset += needle.length();
+        }
+        return count;
+    }
+
+    private static final class CountSqlProbe extends PaginationInnerInterceptor {
+        String countSql(Page<?> page, String sql) {
+            return autoCountSql(page, sql);
+        }
     }
 }

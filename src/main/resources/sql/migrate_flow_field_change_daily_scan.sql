@@ -1,22 +1,105 @@
--- Upgrade the deployed Webhook history schema without rewriting legacy facts.
--- Run once after backing up the existing flow_field_change_* tables.
+-- Retry-safe upgrade of the deployed Webhook history schema without rewriting legacy facts.
+-- Each DDL statement is independently guarded for MySQL 8.0.33 and MariaDB reruns.
 
-ALTER TABLE flow_field_change_log
-    ADD COLUMN scan_run_id BIGINT NULL COMMENT '扫描运行 ID' AFTER dedup_key,
-    ADD COLUMN change_date DATE NULL COMMENT '上海时区提交日期' AFTER scan_run_id,
-    ADD COLUMN project_path VARCHAR(512) NULL COMMENT 'GitLab path_with_namespace' AFTER project_name,
-    ADD COLUMN parent_sha VARCHAR(64) NULL COMMENT '第一父 commit SHA' AFTER after_sha,
-    ADD COLUMN update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-        ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间' AFTER create_time;
+SET @ffcd_ddl_sql = IF(
+    (SELECT COUNT(*)
+       FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = 'flow_field_change_log'
+        AND column_name = 'scan_run_id') = 0,
+    'ALTER TABLE flow_field_change_log ADD COLUMN scan_run_id BIGINT NULL COMMENT ''扫描运行 ID'' AFTER dedup_key',
+    'SELECT 1');
+PREPARE ffcd_ddl FROM @ffcd_ddl_sql;
+EXECUTE ffcd_ddl;
+DEALLOCATE PREPARE ffcd_ddl;
+
+SET @ffcd_ddl_sql = IF(
+    (SELECT COUNT(*)
+       FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = 'flow_field_change_log'
+        AND column_name = 'change_date') = 0,
+    'ALTER TABLE flow_field_change_log ADD COLUMN change_date DATE NULL COMMENT ''上海时区提交日期'' AFTER scan_run_id',
+    'SELECT 1');
+PREPARE ffcd_ddl FROM @ffcd_ddl_sql;
+EXECUTE ffcd_ddl;
+DEALLOCATE PREPARE ffcd_ddl;
+
+SET @ffcd_ddl_sql = IF(
+    (SELECT COUNT(*)
+       FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = 'flow_field_change_log'
+        AND column_name = 'project_path') = 0,
+    'ALTER TABLE flow_field_change_log ADD COLUMN project_path VARCHAR(512) NULL COMMENT ''GitLab path_with_namespace'' AFTER project_name',
+    'SELECT 1');
+PREPARE ffcd_ddl FROM @ffcd_ddl_sql;
+EXECUTE ffcd_ddl;
+DEALLOCATE PREPARE ffcd_ddl;
+
+SET @ffcd_ddl_sql = IF(
+    (SELECT COUNT(*)
+       FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = 'flow_field_change_log'
+        AND column_name = 'parent_sha') = 0,
+    'ALTER TABLE flow_field_change_log ADD COLUMN parent_sha VARCHAR(64) NULL COMMENT ''第一父 commit SHA'' AFTER after_sha',
+    'SELECT 1');
+PREPARE ffcd_ddl FROM @ffcd_ddl_sql;
+EXECUTE ffcd_ddl;
+DEALLOCATE PREPARE ffcd_ddl;
+
+SET @ffcd_ddl_sql = IF(
+    (SELECT COUNT(*)
+       FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = 'flow_field_change_log'
+        AND column_name = 'update_time') = 0,
+    'ALTER TABLE flow_field_change_log ADD COLUMN update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT ''更新时间'' AFTER create_time',
+    'SELECT 1');
+PREPARE ffcd_ddl FROM @ffcd_ddl_sql;
+EXECUTE ffcd_ddl;
+DEALLOCATE PREPARE ffcd_ddl;
 
 UPDATE flow_field_change_log
    SET change_date = DATE(COALESCE(commit_time, create_time))
  WHERE change_date IS NULL;
 
-ALTER TABLE flow_field_change_log
-    ADD INDEX idx_ffcl_change_date (change_date),
-    ADD INDEX idx_ffcl_commit (project_id, commit_sha),
-    ADD INDEX idx_ffcl_scan_run (scan_run_id);
+SET @ffcd_ddl_sql = IF(
+    (SELECT COUNT(*)
+       FROM information_schema.statistics
+      WHERE table_schema = DATABASE()
+        AND table_name = 'flow_field_change_log'
+        AND index_name = 'idx_ffcl_change_date') = 0,
+    'ALTER TABLE flow_field_change_log ADD INDEX idx_ffcl_change_date (change_date)',
+    'SELECT 1');
+PREPARE ffcd_ddl FROM @ffcd_ddl_sql;
+EXECUTE ffcd_ddl;
+DEALLOCATE PREPARE ffcd_ddl;
+
+SET @ffcd_ddl_sql = IF(
+    (SELECT COUNT(*)
+       FROM information_schema.statistics
+      WHERE table_schema = DATABASE()
+        AND table_name = 'flow_field_change_log'
+        AND index_name = 'idx_ffcl_commit') = 0,
+    'ALTER TABLE flow_field_change_log ADD INDEX idx_ffcl_commit (project_id, commit_sha)',
+    'SELECT 1');
+PREPARE ffcd_ddl FROM @ffcd_ddl_sql;
+EXECUTE ffcd_ddl;
+DEALLOCATE PREPARE ffcd_ddl;
+
+SET @ffcd_ddl_sql = IF(
+    (SELECT COUNT(*)
+       FROM information_schema.statistics
+      WHERE table_schema = DATABASE()
+        AND table_name = 'flow_field_change_log'
+        AND index_name = 'idx_ffcl_scan_run') = 0,
+    'ALTER TABLE flow_field_change_log ADD INDEX idx_ffcl_scan_run (scan_run_id)',
+    'SELECT 1');
+PREPARE ffcd_ddl FROM @ffcd_ddl_sql;
+EXECUTE ffcd_ddl;
+DEALLOCATE PREPARE ffcd_ddl;
 
 CREATE TABLE IF NOT EXISTS flow_field_scan_run (
     id                   BIGINT        PRIMARY KEY AUTO_INCREMENT,

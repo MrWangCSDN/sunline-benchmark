@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.TreeMap;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 @Service
@@ -86,14 +87,15 @@ public class FlowFieldChangeLogServiceImpl implements FlowFieldChangeLogService 
             throw new IllegalArgumentException("采集元信息和变更集不能为空");
         }
         rejectEmptyModify(changeSet);
-        FlowFieldChangeLog existing = logMapper.selectByDedupKey(meta.dedupKey());
+        LockedHistory locked = ensureLocked(meta);
+        FlowFieldChangeLog existing = locked.row();
         if (isSuccess(existing)) {
             return skipped(existing);
         }
 
         FlowFieldChangeLog row = dailyHeader(meta);
         applySuccess(row, changeSet);
-        WriteDisposition disposition = saveHeader(existing, row);
+        WriteDisposition disposition = saveLockedHeader(locked, row);
         insertDetails(row.getId(), changeSet.details());
         return new WriteOutcome(row.getId(), disposition);
     }
@@ -104,14 +106,15 @@ public class FlowFieldChangeLogServiceImpl implements FlowFieldChangeLogService 
         if (meta == null) {
             throw new IllegalArgumentException("采集元信息不能为空");
         }
-        FlowFieldChangeLog existing = logMapper.selectByDedupKey(meta.dedupKey());
+        LockedHistory locked = ensureLocked(meta);
+        FlowFieldChangeLog existing = locked.row();
         if (isSuccess(existing)) {
             return skipped(existing);
         }
 
         FlowFieldChangeLog row = dailyHeader(meta);
         applyFailure(row, safeError);
-        WriteDisposition disposition = saveHeader(existing, row);
+        WriteDisposition disposition = saveLockedHeader(locked, row);
         return new WriteOutcome(row.getId(), disposition);
     }
 
@@ -121,8 +124,10 @@ public class FlowFieldChangeLogServiceImpl implements FlowFieldChangeLogService 
             throw new IllegalArgumentException("查询条件不能为空");
         }
         query.validate();
+        Page<FieldChangeRowData> queryPage = new Page<>(query.current(), query.size());
+        queryPage.setOptimizeJoinOfCountSql(false);
         Page<FieldChangeRowData> databasePage = queryMapper.selectFieldChanges(
-                new Page<>(query.current(), query.size()), query);
+                queryPage, query);
         Page<FieldChangeRowView> result = new Page<>(
                 databasePage.getCurrent(), databasePage.getSize(), databasePage.getTotal());
         result.setRecords(databasePage.getRecords().stream().map(this::toFieldView).toList());
@@ -208,6 +213,29 @@ public class FlowFieldChangeLogServiceImpl implements FlowFieldChangeLogService 
             throw new IllegalStateException("更新变动历史失败");
         }
         return WriteDisposition.UPGRADED;
+    }
+
+    private LockedHistory ensureLocked(FlowFieldChangeMeta meta) {
+        String marker = "写入占位-" + UUID.randomUUID();
+        FlowFieldChangeLog placeholder = dailyHeader(meta);
+        applyFailure(placeholder, marker);
+        logMapper.insertDailyPlaceholder(placeholder);
+        FlowFieldChangeLog locked = logMapper.selectByDedupKeyForUpdate(meta.dedupKey());
+        if (locked == null) {
+            throw new IllegalStateException("变动历史占位行不存在");
+        }
+        boolean inserted = "FAILED".equals(locked.getCaptureStatus())
+                && marker.equals(locked.getErrorMessage());
+        return new LockedHistory(locked, inserted);
+    }
+
+    private WriteDisposition saveLockedHeader(LockedHistory locked, FlowFieldChangeLog row) {
+        row.setId(locked.row().getId());
+        detailMapper.deleteByLogId(row.getId());
+        if (logMapper.updateDaily(row) != 1) {
+            throw new IllegalStateException("更新变动历史失败");
+        }
+        return locked.inserted() ? WriteDisposition.INSERTED : WriteDisposition.UPGRADED;
     }
 
     private void insertHeader(FlowFieldChangeLog row) {
@@ -406,5 +434,8 @@ public class FlowFieldChangeLogServiceImpl implements FlowFieldChangeLogService 
 
     private static boolean hasText(String value) {
         return value != null && !value.isBlank();
+    }
+
+    private record LockedHistory(FlowFieldChangeLog row, boolean inserted) {
     }
 }
