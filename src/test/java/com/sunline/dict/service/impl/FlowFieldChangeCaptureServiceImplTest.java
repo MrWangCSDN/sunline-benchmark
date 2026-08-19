@@ -250,15 +250,44 @@ class FlowFieldChangeCaptureServiceImplTest {
         assertEquals(2, result.get("flowStepCount"));
     }
 
+    @Test
+    void webhook_service_accepts_long_project_id_and_reaches_capture_and_current_processing() throws Exception {
+        Map<String, Object> payload = gitLabPush(42L, "refs/heads/master", "oldSha", "newSha",
+                commit("c1", "modify", "A", "a@example.com", "2026-08-19T10:00:00Z",
+                        List.of(), List.of(FILE), List.of()));
+        FlowFieldChangeCaptureService captureService = mock(FlowFieldChangeCaptureService.class);
+        FlowXmlParseService flowXmlParseService = mock(FlowXmlParseService.class);
+        when(captureService.capture(payload, "event-long-id")).thenReturn(
+                new FlowFieldChangeCaptureResult(Map.of(FILE, newXml()), 1, 0, 0));
+        when(flowXmlParseService.parseAndSave(newXml(), "project:master:" + FILE))
+                .thenReturn(Map.of("flowtranCount", 1, "flowStepCount", 2));
+        WebhookServiceImpl webhookService = new WebhookServiceImpl();
+        ReflectionTestUtils.setField(webhookService, "flowFieldChangeCaptureService", captureService);
+        ReflectionTestUtils.setField(webhookService, "flowXmlParseService", flowXmlParseService);
+        ReflectionTestUtils.setField(webhookService, "vectorizationEnabled", false);
+
+        Map<String, Object> result = webhookService.handleGitLabPushEvent(payload, "event-long-id");
+
+        verify(captureService).capture(payload, "event-long-id");
+        verify(flowXmlParseService).parseAndSave(newXml(), "project:master:" + FILE);
+        assertEquals(true, result.get("success"));
+    }
+
     @SafeVarargs
     private Map<String, Object> gitLabPush(String ref, String before, String after,
+                                           Map<String, Object>... commits) {
+        return gitLabPush(42, ref, before, after, commits);
+    }
+
+    @SafeVarargs
+    private Map<String, Object> gitLabPush(Number projectId, String ref, String before, String after,
                                            Map<String, Object>... commits) {
         return Map.of(
                 "ref", ref,
                 "before", before,
                 "after", after,
                 "project", Map.of(
-                        "id", 42,
+                        "id", projectId,
                         "name", "project",
                         "path_with_namespace", "group/project",
                         "web_url", "https://attacker.invalid/group/project"),

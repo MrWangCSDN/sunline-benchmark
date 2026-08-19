@@ -439,7 +439,8 @@ public class WebhookServiceImpl implements WebhookService {
         String ref = (String) payload.get("ref");
         @SuppressWarnings("unchecked")
         Map<String, Object> project = (Map<String, Object>) payload.get("project");
-        Integer projectId = project != null ? (Integer) project.get("id") : null;
+        Number projectIdValue = project != null ? (Number) project.get("id") : null;
+        Long projectId = projectIdValue != null ? projectIdValue.longValue() : null;
         String gitlabUrl = project != null ? (String) project.get("web_url") : null;
         String pathWithNamespace = project != null ? (String) project.get("path_with_namespace") : null;
         
@@ -1209,7 +1210,7 @@ public class WebhookServiceImpl implements WebhookService {
      * 优先使用 path_with_namespace（URL 编码）作为项目标识，部分自建 GitLab 用 path 更稳定；
      * 未带 token 访问私有项目时 GitLab 会返回 404（不暴露项目存在），需配置 gitlab.access-token。
      */
-    private String downloadFileFromGitLab(String projectUrl, Integer projectId, String pathWithNamespace, String filePath, String branch) throws Exception {
+    private String downloadFileFromGitLab(String projectUrl, Long projectId, String pathWithNamespace, String filePath, String branch) throws Exception {
         if (projectUrl == null) {
             log.warn("项目 URL 为空，无法下载文件");
             return null;
@@ -1281,7 +1282,7 @@ public class WebhookServiceImpl implements WebhookService {
      * 校验 uat 分支的 commit 是否在 sit 分支存在（commit message 包含白名单关键字时跳过）
      * @return 校验失败时返回错误信息，校验通过返回 null
      */
-    private String validateCommitsInSit(Map<String, Object> payload, String gitlabUrl, Integer projectId, String pathWithNamespace) {
+    private String validateCommitsInSit(Map<String, Object> payload, String gitlabUrl, Long projectId, String pathWithNamespace) {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> commits = (List<Map<String, Object>>) payload.get("commits");
         if (commits == null || commits.isEmpty()) {
