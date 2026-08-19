@@ -283,6 +283,8 @@ git commit -m "feat: read configured GitLab commit history"
 - Produces `void finish(long runId, ProjectIdentity project, RunCounters counters, Completion completion, String safeError, LocalDateTime finishedAt)`.
 - `ProjectIdentity` is `(String projectName, String projectPath)`; `RunCounters` is `(int commitCount, int changedFileCount, int historyCount, int failedFileCount, int skippedCount)`; `Completion` is `SUCCESS`, `COMPLETED_WITH_ERRORS`, `FAILED`.
 - `SUCCESS` and `COMPLETED_WITH_ERRORS` update the project/branch cursor in the same transaction; `FAILED` never updates it.
+- `FlowFieldScanCursorMapper` provides `selectCursor(long projectId, String branch)` and `upsertCursor(FlowFieldScanCursor cursor)`; do not use MyBatis-Plus `selectById` for the composite key.
+- `FlowFieldScanRunMapper` provides `failStaleRuns(long projectId, String branch, LocalDateTime olderWindowEnd, LocalDateTime finishedAt)` for the conditional stale-run update.
 
 - [ ] **Step 1: Write RED service tests**
 
@@ -300,9 +302,9 @@ void first_claim_starts_at_midnight_and_duplicate_window_has_no_execution_right(
 @Test
 void failed_run_keeps_cursor_while_completed_with_errors_advances_it() {
     service.finish(failedRun, project, counters, FAILED, "GitLab request timed out", now);
-    assertNull(cursorMapper.selectById(key(42L, "master")));
+    assertNull(cursorMapper.selectCursor(42L, "master"));
     service.finish(nextRun, project, counters, COMPLETED_WITH_ERRORS, "1 file failed", now);
-    assertEquals(nextEnd, cursorMapper.selectById(key(42L, "master")).getLastSuccessEnd());
+    assertEquals(nextEnd, cursorMapper.selectCursor(42L, "master").getLastSuccessEnd());
 }
 ```
 
@@ -358,6 +360,7 @@ git commit -m "feat: persist flowtrans scan state"
 - Modify: `src/main/java/com/sunline/dict/entity/FlowFieldChangeLog.java`
 - Modify: `src/main/java/com/sunline/dict/service/FlowFieldChangeLogService.java`
 - Modify: `src/main/java/com/sunline/dict/service/impl/FlowFieldChangeLogServiceImpl.java`
+- Modify: `src/main/java/com/sunline/dict/entity/FlowFieldChangeLog.java`
 - Modify: `src/main/java/com/sunline/dict/mapper/FlowFieldChangeLogMapper.java`
 - Modify: `src/main/java/com/sunline/dict/mapper/FlowFieldChangeDetailMapper.java`
 - Create: `src/main/java/com/sunline/dict/mapper/FlowFieldChangeQueryMapper.java`
@@ -375,6 +378,7 @@ git commit -m "feat: persist flowtrans scan state"
 - Produces `HistoryState state(String dedupKey)` where `HistoryState` is `NONE`, `FAILED`, `SUCCESS`.
 - Produces `WriteOutcome recordSuccess(FlowFieldChangeMeta meta, FlowFieldChangeSet changeSet)` and `WriteOutcome recordFailure(FlowFieldChangeMeta meta, String safeError)`; outcome contains log ID and whether a row was inserted/upgraded/skipped.
 - Produces `Page<FieldChangeRowView> pageFieldChanges(FieldChangeQuery query)`, `FlowFieldChangeHistoryDetail getDetail(long logId)`, and `Page<ScanRunView> pageScanRuns(ScanRunQuery query)`.
+- Until Task 6 removes Webhook history capture, retain deprecated `recordSuccess(FlowFieldChangeCaptureMeta, FlowFieldChangeSet)` and `recordFailure(FlowFieldChangeCaptureMeta,String)` overloads solely so the old capture classes compile. They delegate through an isolated legacy adapter and are deleted together with capture in Task 6; the new daily scanner never calls them.
 
 - [ ] **Step 1: Write RED persistence tests for dedup and failed-row upgrade**
 
@@ -554,6 +558,8 @@ git commit -m "feat: scan daily flowtrans interface changes"
 - Modify: `src/main/java/com/sunline/dict/controller/WebhookController.java`
 - Modify: `src/main/java/com/sunline/dict/service/WebhookService.java`
 - Modify: `src/main/java/com/sunline/dict/service/impl/WebhookServiceImpl.java`
+- Modify: `src/main/java/com/sunline/dict/service/FlowFieldChangeLogService.java`
+- Modify: `src/main/java/com/sunline/dict/service/impl/FlowFieldChangeLogServiceImpl.java`
 - Delete: `src/main/java/com/sunline/dict/service/FlowFieldChangeCaptureService.java`
 - Delete: `src/main/java/com/sunline/dict/service/impl/FlowFieldChangeCaptureServiceImpl.java`
 - Delete: `src/main/java/com/sunline/dict/service/flowchange/FlowFieldChangeCaptureMeta.java`
@@ -591,6 +597,8 @@ Add `@EnableScheduling` to `DictManagerApplication`. Add only these non-secret d
 
 Remove capture imports, optional capture field, capture invocation/result response keys, event UUID service parameter and obsolete capture classes. Preserve all current-state parsing and the dirty-worktree `FlowFieldDetailService.deleteBySourceInfo(sourceInfo)` behavior. Do not stage `FlowFieldDetailService.java`, `FlowFieldDetailServiceImpl.java` or `create_flow_field_detail.sql`; the production code must compile against those existing user changes without claiming them in this task.
 
+Delete the deprecated `FlowFieldChangeCaptureMeta` overloads retained in Task 4 from `FlowFieldChangeLogService` and `FlowFieldChangeLogServiceImpl`, and remove legacy-only Java properties `webhookUuid`, `beforeSha`, and `afterSha` from `FlowFieldChangeLog`; after this step no production source references Webhook history types. The compatibility SQL columns remain untouched.
+
 - [ ] **Step 6: Run GREEN and Webhook regression**
 
 ```bash
@@ -607,6 +615,9 @@ git add src/main/java/com/sunline/dict/scheduler/DailyFlowtransChangeScheduler.j
         src/main/resources/application.yml \
         src/main/java/com/sunline/dict/controller/WebhookController.java \
         src/main/java/com/sunline/dict/service/WebhookService.java \
+        src/main/java/com/sunline/dict/service/FlowFieldChangeLogService.java \
+        src/main/java/com/sunline/dict/service/impl/FlowFieldChangeLogServiceImpl.java \
+        src/main/java/com/sunline/dict/entity/FlowFieldChangeLog.java \
         src/main/java/com/sunline/dict/service/FlowFieldChangeCaptureService.java \
         src/main/java/com/sunline/dict/service/impl/FlowFieldChangeCaptureServiceImpl.java \
         src/main/java/com/sunline/dict/service/flowchange/FlowFieldChangeCaptureMeta.java \
