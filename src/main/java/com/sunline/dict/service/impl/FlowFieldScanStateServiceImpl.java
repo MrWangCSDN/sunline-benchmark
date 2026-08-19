@@ -22,10 +22,8 @@ public class FlowFieldScanStateServiceImpl implements FlowFieldScanStateService 
             "(?is)(?:"
                     + "authorization|bearer|token|secret|password"
                     + "|\\b[a-z][a-z0-9+.-]*://|\\bjdbc:"
-                    + "|\\b(?:select\\b.+?\\bfrom|insert\\s+into|update\\s+\\S+\\s+set"
-                    + "|delete\\s+from|merge\\s+into"
-                    + "|(?:create|alter|drop|truncate)\\s+(?:table|database|schema|index|view|user|role)"
-                    + "|call\\s+[\\w.$]+|grant\\b.+?\\bto|revoke\\b.+?\\bfrom)\\b"
+                    + "|\\b(?:select|insert|update|delete|alter|drop|create|truncate|merge|call|grant|revoke)"
+                    + "\\b\\s+\\S+"
                     + "|(?:^|\\R)\\s*at\\s+(?:[^\\s/]+/)?[\\w.$]+\\([^\\r\\n)]*\\)"
                     + "|\\bcaused\\s+by:|\\b[\\w.$]+(?:exception|error):"
                     + ")");

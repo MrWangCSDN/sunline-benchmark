@@ -187,6 +187,8 @@ class FlowFieldScanStateServiceImplTest {
             "ssh://gitlab.example/internal/repository.git",
             "SELECT * FROM credentials WHERE user_id = 42",
             "TRUNCATE TABLE flow_field_scan_run",
+            "TRUNCATE flow_field_scan_run",
+            "INSERT flow_field_scan_run SET status = 'FAILED'",
             "at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)",
             "java.lang.IllegalStateException: boom\n\tat com.acme.Scanner.run(Scanner.java:42)"
     })
