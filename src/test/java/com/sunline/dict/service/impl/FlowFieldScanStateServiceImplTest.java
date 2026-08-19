@@ -180,9 +180,14 @@ class FlowFieldScanStateServiceImplTest {
             "PRIVATE-TOKEN=private-secret",
             "private_token=query-secret",
             "access_token=access-secret",
+            "accessToken=camel-secret",
+            "dbPassword=database-secret",
             "GET https://gitlab.example/api/projects/42",
             "jdbc:mysql://db.internal:3306/flow",
+            "ssh://gitlab.example/internal/repository.git",
             "SELECT * FROM credentials WHERE user_id = 42",
+            "TRUNCATE TABLE flow_field_scan_run",
+            "at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)",
             "java.lang.IllegalStateException: boom\n\tat com.acme.Scanner.run(Scanner.java:42)"
     })
     void finish_replaces_secret_and_structured_error_content_with_a_generic_summary(String unsafe) {

@@ -20,12 +20,13 @@ public class FlowFieldScanStateServiceImpl implements FlowFieldScanStateService 
     private static final int MAX_ERROR_LENGTH = 2000;
     private static final Pattern UNSAFE_ERROR = Pattern.compile(
             "(?is)(?:"
-                    + "\\b(?:authorization|password|client[-_]?secret|bearer"
-                    + "|(?:[a-z][a-z0-9]*[-_])*token)\\b"
-                    + "|\\b(?:https?|ftp|file)://|\\bjdbc:"
+                    + "authorization|bearer|token|secret|password"
+                    + "|\\b[a-z][a-z0-9+.-]*://|\\bjdbc:"
                     + "|\\b(?:select\\b.+?\\bfrom|insert\\s+into|update\\s+\\S+\\s+set"
-                    + "|delete\\s+from|merge\\s+into|create\\s+table|alter\\s+table|drop\\s+table)\\b"
-                    + "|(?:^|\\R)\\s*at\\s+[\\w.$]+\\("
+                    + "|delete\\s+from|merge\\s+into"
+                    + "|(?:create|alter|drop|truncate)\\s+(?:table|database|schema|index|view|user|role)"
+                    + "|call\\s+[\\w.$]+|grant\\b.+?\\bto|revoke\\b.+?\\bfrom)\\b"
+                    + "|(?:^|\\R)\\s*at\\s+(?:[^\\s/]+/)?[\\w.$]+\\([^\\r\\n)]*\\)"
                     + "|\\bcaused\\s+by:|\\b[\\w.$]+(?:exception|error):"
                     + ")");
 
