@@ -64,6 +64,20 @@ public class FlowFieldDetailServiceImpl implements FlowFieldDetailService {
         return flowFieldDetailMapper.selectList(wrapper);
     }
 
+    @Override
+    public List<FlowFieldDetail> getBySourceInfo(String sourceInfo) {
+        QueryWrapper<FlowFieldDetail> wrapper = new QueryWrapper<>();
+        wrapper.eq("source_info", sourceInfo).orderByAsc("id");
+        return flowFieldDetailMapper.selectList(wrapper);
+    }
+
+    @Override
+    public int deleteBySourceInfo(String sourceInfo) {
+        QueryWrapper<FlowFieldDetail> wrapper = new QueryWrapper<>();
+        wrapper.eq("source_info", sourceInfo);
+        return flowFieldDetailMapper.delete(wrapper);
+    }
+
     private FlowFieldDetail toEntity(FlowFieldExtractor.FieldRow row, String flowId,
                                       String ioType, String sourceInfo, LocalDateTime now) {
         FlowFieldDetail e = new FlowFieldDetail();

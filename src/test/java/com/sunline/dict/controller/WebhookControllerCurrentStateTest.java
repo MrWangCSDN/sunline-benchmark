@@ -11,6 +11,7 @@ import com.sunline.dict.service.CallRelationScanService;
 import com.sunline.dict.service.FlowFieldDetailService;
 import com.sunline.dict.service.WebhookService;
 import com.sunline.dict.service.impl.FlowXmlParseServiceImpl;
+import com.sunline.dict.service.impl.GitLabApiClientImpl;
 import com.sunline.dict.service.impl.WebhookServiceImpl;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,7 +37,6 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -78,6 +78,7 @@ class WebhookControllerCurrentStateTest {
         ReflectionTestUtils.setField(webhookService, "flowXmlParseService", parser);
         ReflectionTestUtils.setField(webhookService, "flowtranMapper", flowtranMapper);
         ReflectionTestUtils.setField(webhookService, "flowStepMapper", flowStepMapper);
+        ReflectionTestUtils.setField(webhookService, "flowFieldDetailService", flowFieldDetailService);
         ReflectionTestUtils.setField(webhookService, "vectorizationEnabled", false);
     }
 
@@ -135,7 +136,7 @@ class WebhookControllerCurrentStateTest {
     }
 
     @Test
-    void removed_flowtrans_keeps_the_existing_transaction_and_step_cleanup() throws Exception {
+    void removed_flowtrans_cleans_transaction_steps_and_fields_by_exact_source() throws Exception {
         Flowtran existing = new Flowtran();
         existing.setId("TC001");
         when(flowtranMapper.selectList(any(QueryWrapper.class))).thenReturn(List.of(existing));
@@ -147,7 +148,7 @@ class WebhookControllerCurrentStateTest {
 
         verify(flowStepMapper).delete(any(QueryWrapper.class));
         verify(flowtranMapper).deleteById("TC001");
-        verifyNoInteractions(flowFieldDetailService);
+        verify(flowFieldDetailService).deleteBySourceInfo(SOURCE_INFO);
         assertEquals(-1, result.get("flowtranCount"));
         assertEquals(-2, result.get("flowStepCount"));
         assertNoWebhookHistorySemantics(result);
@@ -162,6 +163,8 @@ class WebhookControllerCurrentStateTest {
             exchange.close();
         });
         server.start();
+        ReflectionTestUtils.setField(webhookService, "gitLabApiClient",
+                new GitLabApiClientImpl("http://127.0.0.1:" + server.getAddress().getPort(), ""));
     }
 
     private Map<String, Object> pushPayload(List<String> modified,

@@ -19,10 +19,8 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -74,14 +72,13 @@ class DailyFlowtransChangeSchedulerTest {
     }
 
     @Test
-    void enabled_scheduler_does_not_break_contexts_without_gitlab_scan_infrastructure() {
+    void enabled_scheduler_requires_daily_scan_infrastructure() {
         new ApplicationContextRunner()
                 .withUserConfiguration(SchedulerOnlyTestConfiguration.class)
                 .run(context -> {
-                    assertNull(context.getStartupFailure());
-                    DailyFlowtransChangeScheduler scheduler =
-                            context.getBean(DailyFlowtransChangeScheduler.class);
-                    assertDoesNotThrow(scheduler::scanDailyChanges);
+                    Throwable failure = context.getStartupFailure();
+                    assertNotNull(failure);
+                    assertTrue(failure.getMessage().contains("FlowFieldDailyScanService"));
                 });
     }
 

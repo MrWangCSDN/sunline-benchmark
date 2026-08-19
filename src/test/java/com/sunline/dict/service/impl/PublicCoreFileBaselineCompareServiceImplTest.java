@@ -18,7 +18,7 @@ import java.util.Map;
 import static com.sunline.dict.testutil.ExcelAssert.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-@SpringBootTest
+@SpringBootTest(properties = "flow-field-change.scan.enabled=false")
 class PublicCoreFileBaselineCompareServiceImplTest {
 
     @Autowired PublicCoreFileBaselineCompareService service;

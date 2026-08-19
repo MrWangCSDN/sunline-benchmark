@@ -10,12 +10,14 @@ import com.sunline.dict.service.CallRelationScanService;
 import com.sunline.dict.service.ComponentXmlParseService;
 import com.sunline.dict.service.DictXmlParseService;
 import com.sunline.dict.service.EschemaXmlParseService;
+import com.sunline.dict.service.FlowFieldDetailService;
 import com.sunline.dict.service.FlowXmlParseService;
 import com.sunline.dict.service.ServiceFileXmlParseService;
 import com.sunline.dict.service.ServiceImplXmlParseService;
 import com.sunline.dict.service.TablesXmlParseService;
 import com.sunline.dict.service.UschemaXmlParseService;
 import com.sunline.dict.service.WebhookService;
+import com.sunline.dict.service.flowchange.GitLabApiClient;
 import com.sunline.dict.vectorization.ComplexVectorizationService;
 import com.sunline.dict.vectorization.DictVectorizationService;
 import com.sunline.dict.vectorization.EschemaVectorizationService;
@@ -34,6 +36,7 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 /**
@@ -79,9 +82,12 @@ public class WebhookServiceImpl implements WebhookService {
     
     @Autowired
     private FlowStepMapper flowStepMapper;
-    
-    @Value("${gitlab.access-token:}")
-    private String gitlabAccessToken;
+
+    @Autowired
+    private FlowFieldDetailService flowFieldDetailService;
+
+    @Autowired(required = false)
+    private GitLabApiClient gitLabApiClient;
     
     @Value("${gitlab.validate-uat-from-sit:false}")
     private boolean validateUatFromSit;
@@ -436,13 +442,12 @@ public class WebhookServiceImpl implements WebhookService {
         Map<String, Object> project = (Map<String, Object>) payload.get("project");
         Number projectIdValue = project != null ? (Number) project.get("id") : null;
         Long projectId = projectIdValue != null ? projectIdValue.longValue() : null;
-        String gitlabUrl = project != null ? (String) project.get("web_url") : null;
         String pathWithNamespace = project != null ? (String) project.get("path_with_namespace") : null;
         
         // UAT 分支校验：检查 commit 是否在 sit 分支存在
         if (ref != null && ref.equals("refs/heads/uat") && validateUatFromSit) {
             log.info("检测到 uat 分支 push，开始校验 commit 是否在 sit 分支存在");
-            String validationError = validateCommitsInSit(payload, gitlabUrl, projectId, pathWithNamespace);
+            String validationError = validateCommitsInSit(payload, projectId, pathWithNamespace);
             if (validationError != null) {
                 log.error("UAT 分支校验失败: {}", validationError);
                 return createResult(false, validationError, 0, 0);
@@ -527,6 +532,12 @@ public class WebhookServiceImpl implements WebhookService {
             int[] deleted = deleteFlowtranBySourceInfo(sourceInfo);
             totalFlowtran -= deleted[0];
             totalFlowStep -= deleted[1];
+            // 清理 flow_field_detail（避免孤儿数据影响后续 diff）
+            try {
+                flowFieldDetailService.deleteBySourceInfo(sourceInfo);
+            } catch (Exception cleanEx) {
+                log.warn("清理 flow_field_detail 失败（不影响主流程）：{}", cleanEx.getMessage());
+            }
             // 同步删除 Qdrant 向量数据
             vectorDeleteFlowtran(sourceInfo);
         }
@@ -580,8 +591,7 @@ public class WebhookServiceImpl implements WebhookService {
         // 处理 flowtrans.xml 新增/修改
         for (String filePath : flowtransFiles) {
             try {
-                String fileContent = downloadFileFromGitLab(
-                        gitlabUrl, projectId, pathWithNamespace, filePath, "master");
+                String fileContent = downloadFileFromGitLab(projectId, pathWithNamespace, filePath, "master");
                 if (fileContent != null) {
                     String sourceInfo = projectName + ":master:" + filePath;
                     Map<String, Object> parseResult = flowXmlParseService.parseAndSave(fileContent, sourceInfo);
@@ -597,7 +607,7 @@ public class WebhookServiceImpl implements WebhookService {
         // 处理 c_schema.xml 新增/修改
         for (String filePath : schemaFiles) {
             try {
-                String fileContent = downloadFileFromGitLab(gitlabUrl, projectId, pathWithNamespace, filePath, "master");
+                String fileContent = downloadFileFromGitLab(projectId, pathWithNamespace, filePath, "master");
                 if (fileContent != null) {
                     String sourceInfo = projectName + ":master:" + filePath;
                     Map<String, Object> parseResult = complexXmlParseService.parseAndSave(fileContent, sourceInfo);
@@ -612,7 +622,7 @@ public class WebhookServiceImpl implements WebhookService {
         // 处理 d_schema.xml 新增/修改
         for (String filePath : dictFiles) {
             try {
-                String fileContent = downloadFileFromGitLab(gitlabUrl, projectId, pathWithNamespace, filePath, "master");
+                String fileContent = downloadFileFromGitLab(projectId, pathWithNamespace, filePath, "master");
                 if (fileContent != null) {
                     String sourceInfo = projectName + ":master:" + filePath;
                     Map<String, Object> parseResult = dictXmlParseService.parseAndSave(fileContent, sourceInfo);
@@ -627,7 +637,7 @@ public class WebhookServiceImpl implements WebhookService {
         // 处理 u_schema.xml 新增/修改
         for (String filePath : uschemaFiles) {
             try {
-                String fileContent = downloadFileFromGitLab(gitlabUrl, projectId, pathWithNamespace, filePath, "master");
+                String fileContent = downloadFileFromGitLab(projectId, pathWithNamespace, filePath, "master");
                 if (fileContent != null) {
                     String sourceInfo = projectName + ":master:" + filePath;
                     Map<String, Object> parseResult = uschemaXmlParseService.parseAndSave(fileContent, sourceInfo);
@@ -642,7 +652,7 @@ public class WebhookServiceImpl implements WebhookService {
         // 处理 e_schema.xml 新增/修改
         for (String filePath : eschemaFiles) {
             try {
-                String fileContent = downloadFileFromGitLab(gitlabUrl, projectId, pathWithNamespace, filePath, "master");
+                String fileContent = downloadFileFromGitLab(projectId, pathWithNamespace, filePath, "master");
                 if (fileContent != null) {
                     String sourceInfo = projectName + ":master:" + filePath;
                     Map<String, Object> parseResult = eschemaXmlParseService.parseAndSave(fileContent, sourceInfo);
@@ -657,7 +667,7 @@ public class WebhookServiceImpl implements WebhookService {
         // 处理 .tables.xml 新增/修改
         for (String filePath : tablesFiles) {
             try {
-                String fileContent = downloadFileFromGitLab(gitlabUrl, projectId, pathWithNamespace, filePath, "master");
+                String fileContent = downloadFileFromGitLab(projectId, pathWithNamespace, filePath, "master");
                 if (fileContent != null) {
                     String sourceInfo = projectName + ":master:" + filePath;
                     Map<String, Object> parseResult = tablesXmlParseService.parseAndSave(fileContent, sourceInfo);
@@ -675,7 +685,7 @@ public class WebhookServiceImpl implements WebhookService {
             String filePath = entry.getKey();
             String componentType = entry.getValue();
             try {
-                String fileContent = downloadFileFromGitLab(gitlabUrl, projectId, pathWithNamespace, filePath, "master");
+                String fileContent = downloadFileFromGitLab(projectId, pathWithNamespace, filePath, "master");
                 if (fileContent != null) {
                     String sourceInfo = projectName + ":master:" + filePath;
                     Map<String, Object> parseResult = componentXmlParseService.parseAndSave(fileContent, sourceInfo, componentType);
@@ -692,7 +702,7 @@ public class WebhookServiceImpl implements WebhookService {
             String filePath = entry.getKey();
             String svcType = entry.getValue();
             try {
-                String fileContent = downloadFileFromGitLab(gitlabUrl, projectId, pathWithNamespace, filePath, "master");
+                String fileContent = downloadFileFromGitLab(projectId, pathWithNamespace, filePath, "master");
                 if (fileContent != null) {
                     String sourceInfo = projectName + ":master:" + filePath;
                     Map<String, Object> parseResult = serviceFileXmlParseService.parseAndSave(fileContent, sourceInfo, svcType);
@@ -710,7 +720,7 @@ public class WebhookServiceImpl implements WebhookService {
             String filePath = entry.getKey();
             String implType = entry.getValue();
             try {
-                String fileContent = downloadFileFromGitLab(gitlabUrl, projectId, pathWithNamespace, filePath, "master");
+                String fileContent = downloadFileFromGitLab(projectId, pathWithNamespace, filePath, "master");
                 if (fileContent != null) {
                     String sourceInfo = projectName + ":master:" + filePath;
                     Map<String, Object> parseResult = serviceImplXmlParseService.parseAndSave(fileContent, sourceInfo, implType);
@@ -1188,84 +1198,34 @@ public class WebhookServiceImpl implements WebhookService {
         }
     }
     
-    /**
-     * 从GitLab下载文件。
-     * 优先使用 path_with_namespace（URL 编码）作为项目标识，部分自建 GitLab 用 path 更稳定；
-     * 未带 token 访问私有项目时 GitLab 会返回 404（不暴露项目存在），需配置 gitlab.access-token。
-     */
-    private String downloadFileFromGitLab(String projectUrl, Long projectId, String pathWithNamespace, String filePath, String branch) throws Exception {
-        if (projectUrl == null) {
-            log.warn("项目 URL 为空，无法下载文件");
+    /** 从受信任的 GitLab API 边界下载文件。 */
+    private String downloadFileFromGitLab(Long projectId, String pathWithNamespace,
+                                          String filePath, String branch) {
+        String projectIdentifier = projectIdentifier(projectId, pathWithNamespace);
+        if (gitLabApiClient == null || projectIdentifier == null || filePath == null || branch == null) {
+            log.warn("GitLab 客户端或项目信息不完整，无法下载文件: {}", filePath);
             return null;
         }
-        // 项目标识：优先 path_with_namespace（URL 编码），否则用数字 id
-        String projectIdentifier = (pathWithNamespace != null && !pathWithNamespace.isEmpty())
-                ? pathWithNamespace.replace("/", "%2F")
-                : (projectId != null ? String.valueOf(projectId) : null);
-        if (projectIdentifier == null) {
-            log.warn("项目信息不完整（无 id 且无 path_with_namespace），无法下载文件");
-            return null;
+
+        GitLabApiClient.ApiResponse response = gitLabApiClient.get(
+                "/projects/" + projectIdentifier + "/repository/files/" + percentEncode(filePath) + "/raw",
+                Map.of("ref", branch));
+        if (response.status() == GitLabApiClient.Status.SUCCESS) {
+            log.info("文件下载成功: {}, 大小: {} 字节", filePath,
+                    response.body() == null ? 0 : response.body().length());
+            return response.body();
         }
-        
-        // 提取 GitLab 域名
-        String gitlabDomain = projectUrl.substring(0, projectUrl.indexOf("/", 8));
-        
-        // 构建 API URL（文件路径中斜杠编码为 %2F）
-        String encodedFilePath = filePath.replace("/", "%2F");
-        String apiUrl = gitlabDomain + "/api/v4/projects/" + projectIdentifier + "/repository/files/" + encodedFilePath + "/raw?ref=" + branch;
-        
-        boolean hasToken = gitlabAccessToken != null && !gitlabAccessToken.isEmpty();
-        if (!hasToken) {
-            log.warn("未配置 gitlab.access-token，若项目为私有或内部项目，GitLab 可能返回 404");
-        }
-        log.info("下载文件: {}, 原始路径: {}, 使用项目标识: {}", apiUrl, filePath, projectIdentifier);
-        
-        URL url = new URL(apiUrl);
-        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-        connection.setRequestMethod("GET");
-        connection.setConnectTimeout(10000);
-        connection.setReadTimeout(30000);
-        
-        if (hasToken) {
-            connection.setRequestProperty("PRIVATE-TOKEN", gitlabAccessToken);
-        }
-        
-        int responseCode = connection.getResponseCode();
-        if (responseCode == 200) {
-            BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), "UTF-8"));
-            StringBuilder content = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                content.append(line).append("\n");
-            }
-            reader.close();
-            log.info("文件下载成功: {}, 大小: {} 字节", filePath, content.length());
-            return content.toString();
-        } else {
-            String errorMsg = "";
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getErrorStream(), "UTF-8"))) {
-                StringBuilder error = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    error.append(line);
-                }
-                errorMsg = error.toString();
-            } catch (Exception e) {
-                errorMsg = "无法读取错误信息";
-            }
-            log.error("下载文件失败，状态码: {}, 错误信息: {}, 文件路径: {}", responseCode, errorMsg, filePath);
-            if (responseCode == 404 && errorMsg.contains("Project Not Found")) {
-                log.error("提示: 404 Project Not Found 常见原因: 1) 私有/内部项目未配置 gitlab.access-token 或 token 无 read_repository 权限; 2) 自建 GitLab 若仍失败可确认 webhook 中 project.path_with_namespace 是否正确");
-            }
-            return null;
-        }
+        log.warn("文件下载失败，状态: {}, HTTP状态码: {}, 文件路径: {}",
+                response.status(), response.httpStatus(), filePath);
+        return null;
     }
     
     /**
      * 校验 uat 分支的 commit 是否在 sit 分支存在（commit message 包含白名单关键字时跳过）
      * @return 校验失败时返回错误信息，校验通过返回 null
      */
-    private String validateCommitsInSit(Map<String, Object> payload, String gitlabUrl, Long projectId, String pathWithNamespace) {
+    private String validateCommitsInSit(Map<String, Object> payload, Long projectId,
+                                        String pathWithNamespace) {
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> commits = (List<Map<String, Object>>) payload.get("commits");
         if (commits == null || commits.isEmpty()) {
@@ -1276,16 +1236,11 @@ public class WebhookServiceImpl implements WebhookService {
                 ? bypassKeywords.split(",") 
                 : new String[0];
         
-        String projectIdentifier = (pathWithNamespace != null && !pathWithNamespace.isEmpty())
-                ? pathWithNamespace.replace("/", "%2F")
-                : (projectId != null ? String.valueOf(projectId) : null);
-        if (projectIdentifier == null || gitlabUrl == null) {
+        String projectIdentifier = projectIdentifier(projectId, pathWithNamespace);
+        if (projectIdentifier == null) {
             log.warn("项目信息不完整，无法进行 uat 校验");
-            return null;
+            return "UAT 分支校验失败，项目信息不完整";
         }
-        
-        String gitlabDomain = gitlabUrl.substring(0, gitlabUrl.indexOf("/", 8));
-        String token = (gitlabAccessToken != null && !gitlabAccessToken.isEmpty()) ? gitlabAccessToken : null;
         
         List<String> violations = new ArrayList<>();
         
@@ -1310,7 +1265,7 @@ public class WebhookServiceImpl implements WebhookService {
             if (bypassed) continue;
             
             // 调用 GitLab API 检查 commit 是否在 sit 分支
-            boolean existsInSit = checkCommitInBranch(gitlabDomain, projectIdentifier, sha, "sit", token);
+            boolean existsInSit = checkCommitInBranch(projectIdentifier, sha, "sit");
             if (!existsInSit) {
                 String msg = String.format("Commit %s (%s) 不在 sit 分支", 
                         sha.substring(0, 8), 
@@ -1329,51 +1284,60 @@ public class WebhookServiceImpl implements WebhookService {
     
     /**
      * 检查指定 commit 是否在某个分支上
-     * @param gitlabDomain GitLab 域名，如 https://gitlab.spdb.com
      * @param projectIdentifier 项目标识（path 编码或 id）
      * @param commitSha commit SHA
      * @param branchName 分支名（如 sit）
-     * @param token access token
      * @return true=存在，false=不存在
      */
-    private boolean checkCommitInBranch(String gitlabDomain, String projectIdentifier, String commitSha, String branchName, String token) {
-        try {
-            // GitLab API: GET /api/v4/projects/:id/repository/commits/:sha/refs?type=branch
-            // 返回包含该 commit 的所有分支
-            String apiUrl = gitlabDomain + "/api/v4/projects/" + projectIdentifier + "/repository/commits/" + commitSha + "/refs?type=branch";
-            
-            URL url = new URL(apiUrl);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(10000);
-            if (token != null && !token.isEmpty()) {
-                conn.setRequestProperty("PRIVATE-TOKEN", token);
-            }
-            
-            int code = conn.getResponseCode();
-            if (code == 200) {
-                BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
-                StringBuilder resp = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    resp.append(line);
-                }
-                reader.close();
-                
-                // 简单字符串检查：响应中是否包含 "name":"sit" 或 "name":"分支名"
-                String respStr = resp.toString();
-                boolean found = respStr.contains("\"name\":\"" + branchName + "\"");
-                log.debug("Commit {} 在分支 {} 上: {}", commitSha.substring(0, 8), branchName, found);
-                return found;
-            } else {
-                log.warn("检查 commit {} 是否在分支 {} 失败，状态码: {}", commitSha.substring(0, 8), branchName, code);
-                return false;
-            }
-        } catch (Exception e) {
-            log.error("检查 commit {} 是否在分支 {} 异常", commitSha.substring(0, 8), branchName, e);
+    private boolean checkCommitInBranch(String projectIdentifier, String commitSha, String branchName) {
+        if (gitLabApiClient == null) {
+            log.warn("GitLab 客户端未配置，无法校验 commit {}", commitSha.substring(0, 8));
             return false;
         }
+        try {
+            GitLabApiClient.ApiResponse response = gitLabApiClient.get(
+                    "/projects/" + projectIdentifier + "/repository/commits/"
+                            + percentEncode(commitSha) + "/refs",
+                    Map.of("type", "branch"));
+            if (response.status() == GitLabApiClient.Status.SUCCESS) {
+                // 简单字符串检查：响应中是否包含 "name":"sit" 或 "name":"分支名"
+                String responseBody = response.body();
+                boolean found = responseBody != null
+                        && responseBody.contains("\"name\":\"" + branchName + "\"");
+                log.debug("Commit {} 在分支 {} 上: {}", commitSha.substring(0, 8), branchName, found);
+                return found;
+            }
+            log.warn("检查 commit {} 是否在分支 {} 失败，状态: {}, HTTP状态码: {}",
+                    commitSha.substring(0, 8), branchName, response.status(), response.httpStatus());
+            return false;
+        } catch (Exception e) {
+            log.error("检查 commit {} 是否在分支 {} 异常", commitSha.substring(0, 8), branchName);
+            return false;
+        }
+    }
+
+    private static String projectIdentifier(Long projectId, String pathWithNamespace) {
+        if (pathWithNamespace != null && !pathWithNamespace.isBlank()) {
+            return percentEncode(pathWithNamespace);
+        }
+        return projectId == null ? null : String.valueOf(projectId);
+    }
+
+    private static String percentEncode(String value) {
+        StringBuilder encoded = new StringBuilder();
+        for (byte byteValue : value.getBytes(StandardCharsets.UTF_8)) {
+            int unsigned = byteValue & 0xff;
+            if ((unsigned >= 'a' && unsigned <= 'z') || (unsigned >= 'A' && unsigned <= 'Z')
+                    || (unsigned >= '0' && unsigned <= '9') || unsigned == '-' || unsigned == '.'
+                    || unsigned == '_' || unsigned == '~') {
+                encoded.append((char) unsigned);
+            } else {
+                encoded.append('%')
+                        .append(Character.toUpperCase(Character.forDigit(unsigned >>> 4, 16)))
+                        .append(Character.toUpperCase(Character.forDigit(unsigned & 0xf, 16)));
+            }
+        }
+        return encoded.toString();
     }
     
     /**

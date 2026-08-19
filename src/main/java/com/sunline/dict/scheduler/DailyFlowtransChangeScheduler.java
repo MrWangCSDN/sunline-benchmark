@@ -26,11 +26,10 @@ public class DailyFlowtransChangeScheduler {
 
     @Autowired
     public DailyFlowtransChangeScheduler(
-            ObjectProvider<FlowFieldDailyScanService> dailyScanServiceProvider,
+            FlowFieldDailyScanService dailyScanService,
             ObjectProvider<Clock> clockProvider,
             @Value("${flow-field-change.scan.zone:Asia/Shanghai}") String zone) {
-        this(dailyScanServiceProvider.getIfAvailable(),
-                clockProvider.getIfAvailable(Clock::systemDefaultZone),
+        this(dailyScanService, clockProvider.getIfAvailable(Clock::systemDefaultZone),
                 ZoneId.of(zone));
     }
 
@@ -46,9 +45,6 @@ public class DailyFlowtransChangeScheduler {
             cron = "${flow-field-change.scan.cron:0 0 22 * * ?}",
             zone = "${flow-field-change.scan.zone:Asia/Shanghai}")
     public void scanDailyChanges() {
-        if (dailyScanService == null) {
-            return;
-        }
         dailyScanService.scanAll(LocalDate.now(clock.withZone(zone)).atTime(22, 0));
     }
 }

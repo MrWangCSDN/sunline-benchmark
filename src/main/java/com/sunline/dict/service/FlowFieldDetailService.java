@@ -23,4 +23,16 @@ public interface FlowFieldDetailService {
      * 按 flow_id + io_type 查询字段清单
      */
     List<FlowFieldDetail> getByFlowIdAndIoType(String flowId, String ioType);
+
+    /**
+     * 按来源标识（source_info，如 projectName:master:filePath）查询字段清单。
+     * 用于 Webhook 变更 diff 时读取「修改前」的字段集合。
+     */
+    List<FlowFieldDetail> getBySourceInfo(String sourceInfo);
+
+    /**
+     * 按来源标识删除字段清单（文件被删除时清理孤儿数据）。
+     * @return 删除的条数
+     */
+    int deleteBySourceInfo(String sourceInfo);
 }

@@ -3,7 +3,7 @@ package com.sunline.dict;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest
+@SpringBootTest(properties = "flow-field-change.scan.enabled=false")
 class DictManagerApplicationTests {
 
     @Test
