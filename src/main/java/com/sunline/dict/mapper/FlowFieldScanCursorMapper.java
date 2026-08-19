@@ -24,10 +24,13 @@ public interface FlowFieldScanCursorMapper {
             VALUES
                 (#{projectId}, #{branch}, #{projectName}, #{projectPath}, #{lastSuccessEnd}, #{lastRunId})
             ON DUPLICATE KEY UPDATE
-                project_name = VALUES(project_name),
-                project_path = VALUES(project_path),
-                last_success_end = VALUES(last_success_end),
-                last_run_id = VALUES(last_run_id)
+                project_name = IF(VALUES(last_success_end) > last_success_end,
+                                  VALUES(project_name), project_name),
+                project_path = IF(VALUES(last_success_end) > last_success_end,
+                                  VALUES(project_path), project_path),
+                last_run_id = IF(VALUES(last_success_end) > last_success_end,
+                                 VALUES(last_run_id), last_run_id),
+                last_success_end = GREATEST(last_success_end, VALUES(last_success_end))
             """)
     int upsertCursor(FlowFieldScanCursor cursor);
 }

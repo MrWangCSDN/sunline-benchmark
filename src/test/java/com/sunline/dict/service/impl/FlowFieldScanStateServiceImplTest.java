@@ -11,8 +11,16 @@ import com.sunline.dict.service.flowchange.FlowFieldScanStateService.RunCounters
 import com.sunline.dict.service.flowchange.FlowFieldScanStateService.ScanClaim;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.interceptor.TransactionInterceptor;
+import org.springframework.transaction.support.AbstractPlatformTransactionManager;
+import org.springframework.transaction.support.DefaultTransactionStatus;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -39,7 +47,16 @@ class FlowFieldScanStateServiceImplTest {
     void setUp() {
         runMapper = new RunMapperFake();
         cursorMapper = new CursorMapperFake();
-        service = new FlowFieldScanStateServiceImpl(runMapper.mapper(), cursorMapper.mapper());
+        FlowFieldScanStateServiceImpl target = new FlowFieldScanStateServiceImpl(
+                runMapper.mapper(), cursorMapper.mapper());
+        ProxyFactory proxyFactory = new ProxyFactory(target);
+        TransactionInterceptor transactionInterceptor = new TransactionInterceptor();
+        transactionInterceptor.setTransactionManager(
+                new SnapshotTransactionManager(runMapper, cursorMapper));
+        transactionInterceptor.setTransactionAttributeSource(
+                new AnnotationTransactionAttributeSource());
+        proxyFactory.addAdvice(transactionInterceptor);
+        service = (FlowFieldScanStateService) proxyFactory.getProxy();
     }
 
     @Test
@@ -49,6 +66,20 @@ class FlowFieldScanStateServiceImplTest {
         assertEquals(LocalDateTime.of(2026, 8, 19, 0, 0), first.windowStart());
         assertTrue(service.claim(42L, "master", first.windowEnd(), NOW).isEmpty());
         assertEquals("RUNNING", runMapper.saved(first.runId()).getStatus());
+    }
+
+    @Test
+    void failed_first_window_is_recovered_from_its_original_midnight_on_the_next_day() {
+        LocalDateTime firstEnd = LocalDateTime.of(2026, 8, 19, 22, 0);
+        ScanClaim first = service.claim(42L, "master", firstEnd, firstEnd).orElseThrow();
+        service.finish(first.runId(), new ProjectIdentity("payments", "core/payments"),
+                new RunCounters(1, 1, 0, 0, 0), Completion.FAILED,
+                "GitLab request timed out", firstEnd.plusMinutes(1));
+
+        LocalDateTime nextEnd = LocalDateTime.of(2026, 8, 20, 22, 0);
+        ScanClaim retry = service.claim(42L, "master", nextEnd, nextEnd).orElseThrow();
+
+        assertEquals(LocalDateTime.of(2026, 8, 19, 0, 0), retry.windowStart());
     }
 
     @Test
@@ -78,6 +109,7 @@ class FlowFieldScanStateServiceImplTest {
 
         assertEquals("FAILED", runMapper.saved(stale.runId()).getStatus());
         assertEquals(NOW, runMapper.saved(stale.runId()).getFinishedAt());
+        assertEquals(NOW, runMapper.saved(stale.runId()).getUpdateTime());
         assertEquals("RUNNING", runMapper.saved(current.runId()).getStatus());
         assertEquals("RUNNING", runMapper.saved(otherProject.runId()).getStatus());
         assertEquals("RUNNING", runMapper.saved(otherBranch.runId()).getStatus());
@@ -139,6 +171,82 @@ class FlowFieldScanStateServiceImplTest {
         assertFalse(saved.contains("\u0000"));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "password=hunter2",
+            "client_secret: internal-secret",
+            "Bearer bearer-secret",
+            "token=token-secret",
+            "PRIVATE-TOKEN=private-secret",
+            "private_token=query-secret",
+            "access_token=access-secret",
+            "GET https://gitlab.example/api/projects/42",
+            "jdbc:mysql://db.internal:3306/flow",
+            "SELECT * FROM credentials WHERE user_id = 42",
+            "java.lang.IllegalStateException: boom\n\tat com.acme.Scanner.run(Scanner.java:42)"
+    })
+    void finish_replaces_secret_and_structured_error_content_with_a_generic_summary(String unsafe) {
+        ScanClaim claim = service.claim(42L, "master", NOW, NOW).orElseThrow();
+
+        service.finish(claim.runId(), new ProjectIdentity("payments", "core/payments"),
+                new RunCounters(0, 0, 0, 0, 0), Completion.FAILED,
+                unsafe, NOW.plusMinutes(1));
+
+        assertEquals("扫描失败（敏感信息已隐藏）",
+                runMapper.saved(claim.runId()).getErrorMessage());
+    }
+
+    @Test
+    void claim_and_finish_persist_consistent_create_and_update_times() {
+        LocalDateTime startedAt = NOW.minusMinutes(2);
+        ScanClaim claim = service.claim(42L, "master", NOW, startedAt).orElseThrow();
+
+        FlowFieldScanRun running = runMapper.saved(claim.runId());
+        assertEquals(startedAt, running.getCreateTime());
+        assertEquals(startedAt, running.getUpdateTime());
+
+        LocalDateTime finishedAt = NOW.plusMinutes(3);
+        service.finish(claim.runId(), new ProjectIdentity("payments", "core/payments"),
+                new RunCounters(1, 1, 1, 0, 0), Completion.FAILED,
+                "GitLab request timed out", finishedAt);
+
+        assertEquals(finishedAt, runMapper.saved(claim.runId()).getUpdateTime());
+    }
+
+    @Test
+    void stale_run_cannot_finish_successfully_or_advance_the_cursor() {
+        LocalDateTime oldEnd = NOW.minusDays(1);
+        ScanClaim old = service.claim(42L, "master", oldEnd, oldEnd).orElseThrow();
+        service.claim(42L, "master", NOW, NOW).orElseThrow();
+
+        IllegalStateException error = assertThrows(IllegalStateException.class, () -> service.finish(
+                old.runId(), new ProjectIdentity("payments", "core/payments"),
+                new RunCounters(1, 1, 1, 0, 0), Completion.SUCCESS,
+                null, NOW.plusMinutes(1)));
+
+        assertEquals("扫描运行执行权已失效", error.getMessage());
+        assertEquals("FAILED", runMapper.saved(old.runId()).getStatus());
+        assertNull(cursorMapper.select(42L, "master"));
+        assertEquals(0, cursorMapper.upsertCount);
+    }
+
+    @Test
+    void repeated_finish_loses_execution_right_and_does_not_upsert_cursor_again() {
+        ScanClaim claim = service.claim(42L, "master", NOW, NOW).orElseThrow();
+        ProjectIdentity project = new ProjectIdentity("payments", "core/payments");
+        RunCounters counters = new RunCounters(1, 1, 1, 0, 0);
+        service.finish(claim.runId(), project, counters, Completion.SUCCESS,
+                null, NOW.plusMinutes(1));
+
+        IllegalStateException error = assertThrows(IllegalStateException.class, () -> service.finish(
+                claim.runId(), project, counters, Completion.SUCCESS,
+                null, NOW.plusMinutes(2)));
+
+        assertEquals("扫描运行执行权已失效", error.getMessage());
+        assertEquals(1, cursorMapper.upsertCount);
+        assertEquals(NOW, cursorMapper.select(42L, "master").getLastSuccessEnd());
+    }
+
     @Test
     void cursor_failure_aborts_finish_without_leaving_run_and_cursor_disagreeing() throws Exception {
         ScanClaim claim = service.claim(42L, "master", NOW, NOW).orElseThrow();
@@ -178,6 +286,9 @@ class FlowFieldScanStateServiceImplTest {
                 case "insert" -> insert((FlowFieldScanRun) args[0]);
                 case "selectById" -> copy(rows.get(((Number) args[0]).longValue()));
                 case "updateById" -> update((FlowFieldScanRun) args[0]);
+                case "finishRunning" -> finishRunning((FlowFieldScanRun) args[0]);
+                case "selectEarliestUnadvancedWindowStart" -> earliestUnadvancedWindowStart(
+                        (long) args[0], (String) args[1]);
                 case "failStaleRuns" -> failStale((long) args[0], (String) args[1],
                         (LocalDateTime) args[2], (LocalDateTime) args[3]);
                 case "toString" -> "RunMapperFake";
@@ -208,6 +319,26 @@ class FlowFieldScanStateServiceImplTest {
             return 1;
         }
 
+        private int finishRunning(FlowFieldScanRun row) {
+            FlowFieldScanRun existing = rows.get(row.getId());
+            if (existing == null || !"RUNNING".equals(existing.getStatus())) {
+                return 0;
+            }
+            rows.put(row.getId(), copy(row));
+            return 1;
+        }
+
+        private LocalDateTime earliestUnadvancedWindowStart(long projectId, String branch) {
+            return rows.values().stream()
+                    .filter(row -> row.getProjectId() == projectId)
+                    .filter(row -> row.getBranch().equals(branch))
+                    .filter(row -> "FAILED".equals(row.getStatus()))
+                    .filter(row -> !Boolean.TRUE.equals(row.getCursorAdvanced()))
+                    .map(FlowFieldScanRun::getWindowStart)
+                    .min(LocalDateTime::compareTo)
+                    .orElse(null);
+        }
+
         private int failStale(long projectId, String branch, LocalDateTime olderWindowEnd,
                               LocalDateTime finishedAt) {
             int changed = 0;
@@ -220,6 +351,7 @@ class FlowFieldScanStateServiceImplTest {
                     failed.setStatus("FAILED");
                     failed.setErrorMessage("扫描窗口超时，已由后续任务终止");
                     failed.setFinishedAt(finishedAt);
+                    failed.setUpdateTime(finishedAt);
                     entry.setValue(failed);
                     changed++;
                 }
@@ -253,11 +385,27 @@ class FlowFieldScanStateServiceImplTest {
             target.setUpdateTime(source.getUpdateTime());
             return target;
         }
+
+        RunSnapshot snapshot() {
+            Map<Long, FlowFieldScanRun> snapshotRows = new LinkedHashMap<>();
+            rows.forEach((id, row) -> snapshotRows.put(id, copy(row)));
+            return new RunSnapshot(snapshotRows, nextId);
+        }
+
+        void restore(RunSnapshot snapshot) {
+            rows.clear();
+            snapshot.rows().forEach((id, row) -> rows.put(id, copy(row)));
+            nextId = snapshot.nextId();
+        }
+
+        private record RunSnapshot(Map<Long, FlowFieldScanRun> rows, long nextId) {
+        }
     }
 
     private static final class CursorMapperFake implements InvocationHandler {
         private final Map<String, FlowFieldScanCursor> rows = new LinkedHashMap<>();
         private boolean failUpsert;
+        private int upsertCount;
 
         FlowFieldScanCursorMapper mapper() {
             return (FlowFieldScanCursorMapper) Proxy.newProxyInstance(
@@ -285,7 +433,12 @@ class FlowFieldScanStateServiceImplTest {
             if (failUpsert) {
                 throw new IllegalStateException("cursor write failed");
             }
-            rows.put(key(cursor.getProjectId(), cursor.getBranch()), copy(cursor));
+            upsertCount++;
+            String key = key(cursor.getProjectId(), cursor.getBranch());
+            FlowFieldScanCursor existing = rows.get(key);
+            if (existing == null || cursor.getLastSuccessEnd().isAfter(existing.getLastSuccessEnd())) {
+                rows.put(key, copy(cursor));
+            }
             return 1;
         }
 
@@ -306,6 +459,59 @@ class FlowFieldScanStateServiceImplTest {
             target.setLastRunId(source.getLastRunId());
             target.setUpdateTime(source.getUpdateTime());
             return target;
+        }
+
+        CursorSnapshot snapshot() {
+            Map<String, FlowFieldScanCursor> snapshotRows = new LinkedHashMap<>();
+            rows.forEach((key, row) -> snapshotRows.put(key, copy(row)));
+            return new CursorSnapshot(snapshotRows, upsertCount);
+        }
+
+        void restore(CursorSnapshot snapshot) {
+            rows.clear();
+            snapshot.rows().forEach((key, row) -> rows.put(key, copy(row)));
+            upsertCount = snapshot.upsertCount();
+        }
+
+        private record CursorSnapshot(Map<String, FlowFieldScanCursor> rows, int upsertCount) {
+        }
+    }
+
+    private static final class SnapshotTransactionManager extends AbstractPlatformTransactionManager {
+        private final RunMapperFake runMapper;
+        private final CursorMapperFake cursorMapper;
+
+        private SnapshotTransactionManager(RunMapperFake runMapper, CursorMapperFake cursorMapper) {
+            this.runMapper = runMapper;
+            this.cursorMapper = cursorMapper;
+        }
+
+        @Override
+        protected Object doGetTransaction() {
+            return new TransactionSnapshot();
+        }
+
+        @Override
+        protected void doBegin(Object transaction, TransactionDefinition definition) {
+            TransactionSnapshot snapshot = (TransactionSnapshot) transaction;
+            snapshot.runSnapshot = runMapper.snapshot();
+            snapshot.cursorSnapshot = cursorMapper.snapshot();
+        }
+
+        @Override
+        protected void doCommit(DefaultTransactionStatus status) {
+        }
+
+        @Override
+        protected void doRollback(DefaultTransactionStatus status) {
+            TransactionSnapshot snapshot = (TransactionSnapshot) status.getTransaction();
+            runMapper.restore(snapshot.runSnapshot);
+            cursorMapper.restore(snapshot.cursorSnapshot);
+        }
+
+        private static final class TransactionSnapshot {
+            private RunMapperFake.RunSnapshot runSnapshot;
+            private CursorMapperFake.CursorSnapshot cursorSnapshot;
         }
     }
 }

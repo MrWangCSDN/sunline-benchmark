@@ -18,8 +18,16 @@ import java.util.regex.Pattern;
 public class FlowFieldScanStateServiceImpl implements FlowFieldScanStateService {
 
     private static final int MAX_ERROR_LENGTH = 2000;
-    private static final Pattern SENSITIVE_ERROR = Pattern.compile(
-            "(?i)(?:authorization\\s*[:=]|x-gitlab-token|private[-_]?token|access[-_]?token|https?://)");
+    private static final Pattern UNSAFE_ERROR = Pattern.compile(
+            "(?is)(?:"
+                    + "\\b(?:authorization|password|client[-_]?secret|bearer"
+                    + "|(?:[a-z][a-z0-9]*[-_])*token)\\b"
+                    + "|\\b(?:https?|ftp|file)://|\\bjdbc:"
+                    + "|\\b(?:select\\b.+?\\bfrom|insert\\s+into|update\\s+\\S+\\s+set"
+                    + "|delete\\s+from|merge\\s+into|create\\s+table|alter\\s+table|drop\\s+table)\\b"
+                    + "|(?:^|\\R)\\s*at\\s+[\\w.$]+\\("
+                    + "|\\bcaused\\s+by:|\\b[\\w.$]+(?:exception|error):"
+                    + ")");
 
     private final FlowFieldScanRunMapper runMapper;
     private final FlowFieldScanCursorMapper cursorMapper;
@@ -37,9 +45,13 @@ public class FlowFieldScanStateServiceImpl implements FlowFieldScanStateService 
                                      LocalDateTime windowEnd, LocalDateTime startedAt) {
         runMapper.failStaleRuns(projectId, branch, windowEnd, startedAt);
         FlowFieldScanCursor cursor = cursorMapper.selectCursor(projectId, branch);
-        LocalDateTime windowStart = cursor == null
-                ? windowEnd.toLocalDate().atStartOfDay()
-                : cursor.getLastSuccessEnd();
+        LocalDateTime windowStart;
+        if (cursor != null) {
+            windowStart = cursor.getLastSuccessEnd();
+        } else {
+            LocalDateTime failedStart = runMapper.selectEarliestUnadvancedWindowStart(projectId, branch);
+            windowStart = failedStart == null ? windowEnd.toLocalDate().atStartOfDay() : failedStart;
+        }
 
         FlowFieldScanRun run = new FlowFieldScanRun();
         run.setProjectId(projectId);
@@ -54,6 +66,8 @@ public class FlowFieldScanStateServiceImpl implements FlowFieldScanStateService 
         run.setSkippedCount(0);
         run.setCursorAdvanced(false);
         run.setStartedAt(startedAt);
+        run.setCreateTime(startedAt);
+        run.setUpdateTime(startedAt);
         try {
             runMapper.insert(run);
         } catch (DuplicateKeyException duplicate) {
@@ -76,17 +90,6 @@ public class FlowFieldScanStateServiceImpl implements FlowFieldScanStateService 
 
         boolean advancesCursor = completion == Completion.SUCCESS
                 || completion == Completion.COMPLETED_WITH_ERRORS;
-        if (advancesCursor) {
-            FlowFieldScanCursor cursor = new FlowFieldScanCursor();
-            cursor.setProjectId(run.getProjectId());
-            cursor.setBranch(run.getBranch());
-            cursor.setProjectName(project.projectName());
-            cursor.setProjectPath(project.projectPath());
-            cursor.setLastSuccessEnd(run.getWindowEnd());
-            cursor.setLastRunId(runId);
-            cursorMapper.upsertCursor(cursor);
-        }
-
         run.setProjectName(project.projectName());
         run.setProjectPath(project.projectPath());
         run.setStatus(completion.name());
@@ -98,8 +101,20 @@ public class FlowFieldScanStateServiceImpl implements FlowFieldScanStateService 
         run.setCursorAdvanced(advancesCursor);
         run.setErrorMessage(normalizeError(safeError, completion));
         run.setFinishedAt(finishedAt);
-        if (runMapper.updateById(run) != 1) {
-            throw new IllegalStateException("扫描运行记录更新失败");
+        run.setUpdateTime(finishedAt);
+        if (runMapper.finishRunning(run) != 1) {
+            throw new IllegalStateException("扫描运行执行权已失效");
+        }
+
+        if (advancesCursor) {
+            FlowFieldScanCursor cursor = new FlowFieldScanCursor();
+            cursor.setProjectId(run.getProjectId());
+            cursor.setBranch(run.getBranch());
+            cursor.setProjectName(project.projectName());
+            cursor.setProjectPath(project.projectPath());
+            cursor.setLastSuccessEnd(run.getWindowEnd());
+            cursor.setLastRunId(runId);
+            cursorMapper.upsertCursor(cursor);
         }
     }
 
@@ -107,11 +122,13 @@ public class FlowFieldScanStateServiceImpl implements FlowFieldScanStateService 
         if (error == null || error.isBlank()) {
             return completion == Completion.FAILED ? "扫描失败" : null;
         }
-        if (SENSITIVE_ERROR.matcher(error).find()) {
+        if (UNSAFE_ERROR.matcher(error).find()) {
             return "扫描失败（敏感信息已隐藏）";
         }
         String normalized = error.replace('\r', ' ')
-                .replaceAll("[\\p{Cntrl}&&[^\\n\\t]]", "");
+                .replace('\n', ' ')
+                .replace('\t', ' ')
+                .replaceAll("\\p{Cntrl}", "");
         return normalized.length() <= MAX_ERROR_LENGTH
                 ? normalized
                 : normalized.substring(0, MAX_ERROR_LENGTH);
