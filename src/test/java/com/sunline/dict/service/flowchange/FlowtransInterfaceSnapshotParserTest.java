@@ -1,8 +1,10 @@
 package com.sunline.dict.service.flowchange;
 
 import com.sunline.dict.service.flowchange.FlowtransInterfaceSnapshot.FieldIdentity;
+import com.sunline.dict.service.flowchange.FlowtransInterfaceSnapshotParser.DeterministicContentException;
 import org.junit.jupiter.api.Test;
 
+import javax.xml.parsers.ParserConfigurationException;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -151,9 +153,26 @@ class FlowtransInterfaceSnapshotParserTest {
                 </input></interface></flowtran>
                 """;
 
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> parser.parse(xml));
+        DeterministicContentException exception = assertThrows(
+                DeterministicContentException.class, () -> parser.parse(xml));
 
         assertTrue(exception.getMessage().contains("Duplicate field identity"));
+    }
+
+    @Test
+    void missing_interface_and_blank_field_id_are_deterministic_content_failures() {
+        DeterministicContentException missingInterface = assertThrows(
+                DeterministicContentException.class,
+                () -> parser.parse("<flowtran><input/></flowtran>"));
+        DeterministicContentException blankFieldId = assertThrows(
+                DeterministicContentException.class,
+                () -> parser.parse("""
+                        <flowtran><interface id="TC052"><input><field id=" "/></input>
+                        </interface></flowtran>
+                        """));
+
+        assertEquals("Missing interface element", missingInterface.getMessage());
+        assertEquals("Field id must be nonblank", blankFieldId.getMessage());
     }
 
     @Test
@@ -165,14 +184,14 @@ class FlowtransInterfaceSnapshotParserTest {
                 """;
         String malformed = "<flowtran><interface id=\"TC051\"><input><field id=\"broken\"></flowtran>";
 
-        IllegalArgumentException firstDuplicate = assertThrows(
-                IllegalArgumentException.class, () -> parser.parse(duplicate));
-        IllegalArgumentException secondDuplicate = assertThrows(
-                IllegalArgumentException.class, () -> parser.parse(duplicate));
-        IllegalArgumentException firstMalformed = assertThrows(
-                IllegalArgumentException.class, () -> parser.parse(malformed));
-        IllegalArgumentException secondMalformed = assertThrows(
-                IllegalArgumentException.class, () -> parser.parse(malformed));
+        DeterministicContentException firstDuplicate = assertThrows(
+                DeterministicContentException.class, () -> parser.parse(duplicate));
+        DeterministicContentException secondDuplicate = assertThrows(
+                DeterministicContentException.class, () -> parser.parse(duplicate));
+        DeterministicContentException firstMalformed = assertThrows(
+                DeterministicContentException.class, () -> parser.parse(malformed));
+        DeterministicContentException secondMalformed = assertThrows(
+                DeterministicContentException.class, () -> parser.parse(malformed));
 
         assertEquals(firstDuplicate.getMessage(), secondDuplicate.getMessage());
         assertEquals("Unable to parse flowtrans interface snapshot", firstMalformed.getMessage());
@@ -187,6 +206,27 @@ class FlowtransInterfaceSnapshotParserTest {
                 <flowtran><interface id="TC051"><input><field id="&payload;"/></input></interface></flowtran>
                 """;
 
-        assertThrows(IllegalArgumentException.class, () -> parser.parse(xml));
+        assertThrows(DeterministicContentException.class, () -> parser.parse(xml));
+    }
+
+    @Test
+    void parser_configuration_and_runtime_setup_failures_are_not_content_failures() {
+        FlowtransInterfaceSnapshotParser configurationFailure = new FlowtransInterfaceSnapshotParser(
+                () -> {
+                    throw new ParserConfigurationException("secure parser feature is unsupported");
+                });
+        FlowtransInterfaceSnapshotParser runtimeFailure = new FlowtransInterfaceSnapshotParser(
+                () -> {
+                    throw new UnsupportedOperationException("secure parser runtime defect");
+                });
+
+        IllegalStateException configurationError = assertThrows(
+                IllegalStateException.class, () -> configurationFailure.parse("<flowtran/>"));
+        UnsupportedOperationException runtimeError = assertThrows(
+                UnsupportedOperationException.class, () -> runtimeFailure.parse("<flowtran/>"));
+
+        assertFalse(DeterministicContentException.class.isInstance(configurationError));
+        assertFalse(DeterministicContentException.class.isInstance(runtimeError));
+        assertTrue(configurationError.getCause() instanceof ParserConfigurationException);
     }
 }

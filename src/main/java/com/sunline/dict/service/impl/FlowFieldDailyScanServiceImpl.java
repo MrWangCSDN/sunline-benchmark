@@ -16,6 +16,7 @@ import com.sunline.dict.service.flowchange.FlowFieldScanStateService.RunCounters
 import com.sunline.dict.service.flowchange.FlowFieldScanStateService.ScanClaim;
 import com.sunline.dict.service.flowchange.FlowtransInterfaceSnapshot;
 import com.sunline.dict.service.flowchange.FlowtransInterfaceSnapshotParser;
+import com.sunline.dict.service.flowchange.FlowtransInterfaceSnapshotParser.DeterministicContentException;
 import com.sunline.dict.service.flowchange.GitLabCommitHistoryService;
 import com.sunline.dict.service.flowchange.GitLabCommitHistoryService.FlowtransFileWorkItem;
 import com.sunline.dict.service.flowchange.GitLabCommitHistoryService.GitLabAccessException;
@@ -61,13 +62,24 @@ public class FlowFieldDailyScanServiceImpl implements FlowFieldDailyScanService 
                                          GitLabFileVersionService fileVersions,
                                          FlowFieldScanStateService scanState,
                                          FlowFieldChangeLogService historyWriter) {
+        this(projectProvider, commitHistory, fileVersions, scanState, historyWriter,
+                new FlowtransInterfaceSnapshotParser(), new FlowFieldChangeDiffService());
+    }
+
+    FlowFieldDailyScanServiceImpl(ConfiguredGitLabProjectProvider projectProvider,
+                                  GitLabCommitHistoryService commitHistory,
+                                  GitLabFileVersionService fileVersions,
+                                  FlowFieldScanStateService scanState,
+                                  FlowFieldChangeLogService historyWriter,
+                                  FlowtransInterfaceSnapshotParser parser,
+                                  FlowFieldChangeDiffService diffService) {
         this.projectProvider = projectProvider;
         this.commitHistory = commitHistory;
         this.fileVersions = fileVersions;
         this.scanState = scanState;
         this.historyWriter = historyWriter;
-        this.parser = new FlowtransInterfaceSnapshotParser();
-        this.diffService = new FlowFieldChangeDiffService();
+        this.parser = parser;
+        this.diffService = diffService;
     }
 
     @Override
@@ -147,7 +159,7 @@ public class FlowFieldDailyScanServiceImpl implements FlowFieldDailyScanService 
         try {
             before = parse(snapshots.beforeContent());
             after = parse(snapshots.afterContent());
-        } catch (IllegalArgumentException parseFailure) {
+        } catch (DeterministicContentException parseFailure) {
             WriteOutcome outcome = historyWriter.recordFailure(meta, "XML snapshot parse failed");
             if (outcome.disposition() == WriteDisposition.SKIPPED) {
                 counters.skippedCount++;

@@ -8,11 +8,14 @@ import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
 import org.xml.sax.helpers.DefaultHandler;
 
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import java.io.IOException;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -22,33 +25,55 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
 public class FlowtransInterfaceSnapshotParser {
 
-    public FlowtransInterfaceSnapshot parse(String xmlContent) {
-        try {
-            Document document = newDocumentBuilder().parse(new InputSource(new StringReader(xmlContent)));
-            Element interfaceElement = findInterface(document.getDocumentElement());
-            if (interfaceElement == null) {
-                throw new IllegalArgumentException("Missing interface element");
-            }
+    private final DocumentBuilderSupplier documentBuilderSupplier;
 
-            Map<FieldIdentity, FieldSnapshot> fields = new LinkedHashMap<>();
-            walkIoTrees(interfaceElement, fields);
-            return new FlowtransInterfaceSnapshot(
-                    interfaceElement.getAttribute("id"),
-                    interfaceElement.getAttribute("longname"),
-                    fields);
-        } catch (IllegalArgumentException exception) {
-            throw exception;
-        } catch (Exception exception) {
-            throw new IllegalArgumentException("Unable to parse flowtrans interface snapshot", exception);
-        }
+    public FlowtransInterfaceSnapshotParser() {
+        this(FlowtransInterfaceSnapshotParser::newDocumentBuilder);
     }
 
-    private DocumentBuilder newDocumentBuilder() throws Exception {
+    FlowtransInterfaceSnapshotParser(DocumentBuilderSupplier documentBuilderSupplier) {
+        this.documentBuilderSupplier = Objects.requireNonNull(
+                documentBuilderSupplier, "documentBuilderSupplier");
+    }
+
+    public FlowtransInterfaceSnapshot parse(String xmlContent) {
+        DocumentBuilder documentBuilder;
+        try {
+            documentBuilder = documentBuilderSupplier.get();
+        } catch (ParserConfigurationException configurationFailure) {
+            throw new IllegalStateException("Unable to configure secure XML parser", configurationFailure);
+        }
+
+        Document document;
+        try {
+            document = documentBuilder.parse(new InputSource(new StringReader(xmlContent)));
+        } catch (SAXException malformedContent) {
+            throw new DeterministicContentException(
+                    "Unable to parse flowtrans interface snapshot", malformedContent);
+        } catch (IOException readFailure) {
+            throw new IllegalStateException("Unable to read flowtrans interface snapshot", readFailure);
+        }
+
+        Element interfaceElement = findInterface(document.getDocumentElement());
+        if (interfaceElement == null) {
+            throw new DeterministicContentException("Missing interface element");
+        }
+
+        Map<FieldIdentity, FieldSnapshot> fields = new LinkedHashMap<>();
+        walkIoTrees(interfaceElement, fields);
+        return new FlowtransInterfaceSnapshot(
+                interfaceElement.getAttribute("id"),
+                interfaceElement.getAttribute("longname"),
+                fields);
+    }
+
+    private static DocumentBuilder newDocumentBuilder() throws ParserConfigurationException {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
         factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
@@ -110,13 +135,13 @@ public class FlowtransInterfaceSnapshotParser {
                           Map<FieldIdentity, FieldSnapshot> fields) {
         String fieldId = element.getAttribute("id");
         if (fieldId.isBlank()) {
-            throw new IllegalArgumentException("Field id must be nonblank");
+            throw new DeterministicContentException("Field id must be nonblank");
         }
 
         FieldIdentity identity = new FieldIdentity(ioType, fieldPath, fieldId);
         FieldSnapshot snapshot = new FieldSnapshot(identity, attributes(element));
         if (fields.putIfAbsent(identity, snapshot) != null) {
-            throw new IllegalArgumentException("Duplicate field identity: " + identity);
+            throw new DeterministicContentException("Duplicate field identity: " + identity);
         }
     }
 
@@ -160,5 +185,22 @@ public class FlowtransInterfaceSnapshotParser {
             hex.append(String.format("%02x", value));
         }
         return hex.toString();
+    }
+
+    @FunctionalInterface
+    interface DocumentBuilderSupplier {
+        DocumentBuilder get() throws ParserConfigurationException;
+    }
+
+    /** A repeatable failure caused only by the supplied Flowtrans XML content. */
+    public static final class DeterministicContentException extends IllegalArgumentException {
+
+        public DeterministicContentException(String message) {
+            super(message);
+        }
+
+        public DeterministicContentException(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 }

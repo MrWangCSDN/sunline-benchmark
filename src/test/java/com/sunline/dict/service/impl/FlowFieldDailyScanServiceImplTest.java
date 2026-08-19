@@ -12,6 +12,7 @@ import com.sunline.dict.service.FlowFieldChangeLogService.WriteDisposition;
 import com.sunline.dict.service.FlowFieldChangeLogService.WriteOutcome;
 import com.sunline.dict.service.FlowFieldDailyScanService.BatchScanResult;
 import com.sunline.dict.service.flowchange.FlowFieldChangeCaptureMeta;
+import com.sunline.dict.service.flowchange.FlowFieldChangeDiffService;
 import com.sunline.dict.service.flowchange.FlowFieldChangeMeta;
 import com.sunline.dict.service.flowchange.FlowFieldChangeSet;
 import com.sunline.dict.service.flowchange.FlowFieldChangeSet.FileChangeType;
@@ -20,6 +21,7 @@ import com.sunline.dict.service.flowchange.FlowFieldScanStateService.Completion;
 import com.sunline.dict.service.flowchange.FlowFieldScanStateService.ProjectIdentity;
 import com.sunline.dict.service.flowchange.FlowFieldScanStateService.RunCounters;
 import com.sunline.dict.service.flowchange.FlowFieldScanStateService.ScanClaim;
+import com.sunline.dict.service.flowchange.FlowtransInterfaceSnapshotParser;
 import com.sunline.dict.service.flowchange.GitLabApiClient;
 import com.sunline.dict.service.flowchange.GitLabCommitHistoryService;
 import com.sunline.dict.service.flowchange.GitLabCommitHistoryService.FlowtransFileWorkItem;
@@ -40,10 +42,12 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -225,6 +229,134 @@ class FlowFieldDailyScanServiceImplTest {
         assertEquals(1, result.errorProjects());
     }
 
+    @Test
+    void parser_infrastructure_illegal_argument_fails_project_without_failure_history_or_cursor() {
+        GitLabCommitInfo commit = commit(42L, "commit-a", "parent-a",
+                OffsetDateTime.parse("2026-08-19T09:30:00+08:00"));
+        history.commits.put(42L, List.of(commit));
+        history.workItems.put(key(42L, "commit-a"), List.of(
+                new FlowtransFileWorkItem(FileChangeType.ADD, "infra.flowtrans.xml",
+                        null, "infra.flowtrans.xml")));
+        found(42L, "infra.flowtrans.xml", "commit-a", emptyXml("INFRA"));
+        FlowtransInterfaceSnapshotParser infrastructureFailure =
+                new FlowtransInterfaceSnapshotParser() {
+                    @Override
+                    public com.sunline.dict.service.flowchange.FlowtransInterfaceSnapshot parse(
+                            String xmlContent) {
+                        throw new IllegalArgumentException(
+                                "parser infrastructure failed with secret XML body");
+                    }
+                };
+        scanner = new FlowFieldDailyScanServiceImpl(
+                () -> List.copyOf(projectIds), history, files, state, historyWriter,
+                infrastructureFailure, new FlowFieldChangeDiffService());
+
+        BatchScanResult result = scanner.scanAll(WINDOW_END);
+
+        assertEquals(new BatchScanResult(1, 0, 1), result);
+        assertEquals(Completion.FAILED, state.finished(42L).completion());
+        assertFalse(state.finished(42L).cursorAdvanced());
+        assertEquals(new RunCounters(1, 1, 0, 0, 0), state.finished(42L).counters());
+        assertTrue(historyWriter.failureMetas.isEmpty());
+        assertTrue(historyWriter.successMetas.isEmpty());
+        assertFalse(state.finished(42L).safeError().contains("secret"));
+    }
+
+    @Test
+    void commit_list_failure_fails_only_that_project_before_any_commit_or_file_counter() {
+        projectIds.add(7L);
+        history.commitFailures.put(42L, new GitLabAccessException(
+                GitLabApiClient.Status.TRANSIENT_FAILURE, "commit list response body"));
+        history.commits.put(7L, List.of());
+
+        BatchScanResult result = scanner.scanAll(WINDOW_END);
+
+        assertEquals(new BatchScanResult(2, 1, 1), result);
+        assertEquals(Completion.FAILED, state.finished(42L).completion());
+        assertEquals(new RunCounters(0, 0, 0, 0, 0), state.finished(42L).counters());
+        assertFalse(state.finished(42L).cursorAdvanced());
+        assertEquals(Completion.SUCCESS, state.finished(7L).completion());
+        assertTrue(files.requests.isEmpty());
+        assertTrue(historyWriter.successMetas.isEmpty());
+    }
+
+    @Test
+    void diff_failure_after_history_write_replays_window_skips_success_and_advances_on_retry() {
+        GitLabCommitInfo first = commit(42L, "commit-a", "parent-a",
+                OffsetDateTime.parse("2026-08-19T09:00:00+08:00"));
+        GitLabCommitInfo second = commit(42L, "commit-b", "parent-b",
+                OffsetDateTime.parse("2026-08-19T10:00:00+08:00"));
+        history.commits.put(42L, List.of(first, second));
+        history.workItems.put(key(42L, "commit-a"), List.of(modify("a.flowtrans.xml")));
+        history.workItems.put(key(42L, "commit-b"), List.of(modify("b.flowtrans.xml")));
+        history.workItemFailuresRemaining.put(key(42L, "commit-b"), 1);
+        found(42L, "a.flowtrans.xml", "parent-a", xml("A", "old"));
+        found(42L, "a.flowtrans.xml", "commit-a", xml("A", "new"));
+        found(42L, "b.flowtrans.xml", "parent-b", xml("B", "old"));
+        found(42L, "b.flowtrans.xml", "commit-b", xml("B", "new"));
+
+        BatchScanResult firstResult = scanner.scanAll(WINDOW_END);
+        BatchScanResult retryResult = scanner.scanAll(WINDOW_END.plusDays(1));
+
+        assertEquals(new BatchScanResult(1, 0, 1), firstResult);
+        assertEquals(new BatchScanResult(1, 1, 0), retryResult);
+        assertEquals(List.of(Completion.FAILED, Completion.SUCCESS),
+                state.finishedAll(42L).stream().map(FinishedProject::completion).toList());
+        assertEquals(new RunCounters(2, 1, 1, 0, 0), state.finishedAll(42L).get(0).counters());
+        assertEquals(new RunCounters(2, 2, 1, 0, 1), state.finishedAll(42L).get(1).counters());
+        assertFalse(state.finishedAll(42L).get(0).cursorAdvanced());
+        assertTrue(state.finishedAll(42L).get(1).cursorAdvanced());
+        assertEquals(WINDOW_START, history.commitRequests.get(0).exclusiveStart().toLocalDateTime());
+        assertEquals(WINDOW_START, history.commitRequests.get(1).exclusiveStart().toLocalDateTime());
+        assertEquals(List.of("commit-a", "commit-b"), historyWriter.recordedCommitShas());
+        assertEquals(2, files.requests.stream()
+                .filter(request -> request.filePath().equals("a.flowtrans.xml")).count());
+        assertEquals(2, files.requests.stream()
+                .filter(request -> request.filePath().equals("b.flowtrans.xml")).count());
+    }
+
+    @Test
+    void nominal_finish_failure_becomes_failed_project_and_later_project_still_finishes() {
+        projectIds.add(7L);
+        history.commits.put(42L, List.of());
+        history.commits.put(7L, List.of());
+        state.failNominalFinishOnce.add(42L);
+
+        BatchScanResult result = scanner.scanAll(WINDOW_END);
+
+        assertEquals(new BatchScanResult(2, 1, 1), result);
+        assertEquals(Completion.FAILED, state.finished(42L).completion());
+        assertFalse(state.finished(42L).cursorAdvanced());
+        assertEquals(new RunCounters(0, 0, 0, 0, 0), state.finished(42L).counters());
+        assertEquals(Completion.SUCCESS, state.finished(7L).completion());
+        assertTrue(state.finished(7L).cursorAdvanced());
+    }
+
+    @Test
+    void writer_race_skips_after_initial_none_state_without_history_or_failed_counter() {
+        GitLabCommitInfo commit = commit(42L, "commit-a", "parent-a",
+                OffsetDateTime.parse("2026-08-19T09:30:00+08:00"));
+        history.commits.put(42L, List.of(commit));
+        history.workItems.put(key(42L, "commit-a"), List.of(
+                new FlowtransFileWorkItem(FileChangeType.ADD, "race-success.flowtrans.xml",
+                        null, "race-success.flowtrans.xml"),
+                new FlowtransFileWorkItem(FileChangeType.ADD, "race-failure.flowtrans.xml",
+                        null, "race-failure.flowtrans.xml")));
+        found(42L, "race-success.flowtrans.xml", "commit-a", emptyXml("RACE"));
+        found(42L, "race-failure.flowtrans.xml", "commit-a",
+                "<flowtran><interface><input><field id=\"broken\"></flowtran>");
+        historyWriter.raceSuccessPaths.add("race-success.flowtrans.xml");
+        historyWriter.raceFailurePaths.add("race-failure.flowtrans.xml");
+
+        BatchScanResult result = scanner.scanAll(WINDOW_END);
+
+        assertEquals(new BatchScanResult(1, 1, 0), result);
+        assertEquals(new RunCounters(1, 2, 0, 0, 2), state.finished(42L).counters());
+        assertEquals(Completion.SUCCESS, state.finished(42L).completion());
+        assertTrue(historyWriter.successMetas.isEmpty());
+        assertTrue(historyWriter.failureMetas.isEmpty());
+    }
+
     @ParameterizedTest
     @EnumSource(value = Status.class, names = {"NOT_FOUND", "TRANSIENT_FAILURE", "PERMANENT_FAILURE"})
     void every_unavailable_required_gitlab_file_version_fails_project_without_cursor(Status status) {
@@ -364,8 +496,10 @@ class FlowFieldDailyScanServiceImplTest {
     private static final class HistoryFake implements GitLabCommitHistoryService {
         private final Map<Long, GitLabProjectInfo> projects = new HashMap<>();
         private final Map<Long, RuntimeException> projectFailures = new HashMap<>();
+        private final Map<Long, RuntimeException> commitFailures = new HashMap<>();
         private final Map<Long, List<GitLabCommitInfo>> commits = new HashMap<>();
         private final Map<String, List<FlowtransFileWorkItem>> workItems = new HashMap<>();
+        private final Map<String, Integer> workItemFailuresRemaining = new HashMap<>();
         private final List<CommitRequest> commitRequests = new ArrayList<>();
 
         @Override
@@ -383,12 +517,23 @@ class FlowFieldDailyScanServiceImplTest {
                                                OffsetDateTime exclusiveStart,
                                                OffsetDateTime inclusiveEnd) {
             commitRequests.add(new CommitRequest(projectId, branch, exclusiveStart, inclusiveEnd));
+            RuntimeException failure = commitFailures.get(projectId);
+            if (failure != null) {
+                throw failure;
+            }
             return commits.getOrDefault(projectId, List.of());
         }
 
         @Override
         public List<FlowtransFileWorkItem> changedFlowtransFiles(long projectId, String commitSha) {
-            return workItems.getOrDefault(key(projectId, commitSha), List.of());
+            String workKey = key(projectId, commitSha);
+            int failuresRemaining = workItemFailuresRemaining.getOrDefault(workKey, 0);
+            if (failuresRemaining > 0) {
+                workItemFailuresRemaining.put(workKey, failuresRemaining - 1);
+                throw new GitLabAccessException(GitLabApiClient.Status.TRANSIENT_FAILURE,
+                        "commit diff response body");
+            }
+            return workItems.getOrDefault(workKey, List.of());
         }
     }
 
@@ -418,7 +563,8 @@ class FlowFieldDailyScanServiceImplTest {
     private static final class StateFake implements FlowFieldScanStateService {
         private final Map<Long, LocalDateTime> windowStarts = new HashMap<>();
         private final Map<Long, Long> projectsByRun = new HashMap<>();
-        private final Map<Long, FinishedProject> finished = new HashMap<>();
+        private final Map<Long, List<FinishedProject>> finished = new HashMap<>();
+        private final Set<Long> failNominalFinishOnce = new HashSet<>();
 
         @Override
         public Optional<ScanClaim> claim(long projectId, String branch,
@@ -432,12 +578,21 @@ class FlowFieldDailyScanServiceImplTest {
         public void finish(long runId, ProjectIdentity project, RunCounters counters,
                            Completion completion, String safeError, LocalDateTime finishedAt) {
             long projectId = projectsByRun.get(runId);
-            finished.put(projectId, new FinishedProject(project, counters, completion, safeError,
-                    completion != Completion.FAILED));
+            if (completion != Completion.FAILED && failNominalFinishOnce.remove(projectId)) {
+                throw new IllegalStateException("cursor database write failed");
+            }
+            finished.computeIfAbsent(projectId, ignored -> new ArrayList<>())
+                    .add(new FinishedProject(project, counters, completion, safeError,
+                            completion != Completion.FAILED));
         }
 
         private FinishedProject finished(long projectId) {
-            return finished.get(projectId);
+            List<FinishedProject> projects = finishedAll(projectId);
+            return projects.get(projects.size() - 1);
+        }
+
+        private List<FinishedProject> finishedAll(long projectId) {
+            return finished.getOrDefault(projectId, List.of());
         }
     }
 
@@ -448,6 +603,8 @@ class FlowFieldDailyScanServiceImplTest {
         private final List<FlowFieldChangeMeta> failureMetas = new ArrayList<>();
         private final List<String> failureErrors = new ArrayList<>();
         private final List<String> upgradedPaths = new ArrayList<>();
+        private final Set<String> raceSuccessPaths = new HashSet<>();
+        private final Set<String> raceFailurePaths = new HashSet<>();
         private Long failProjectId;
         private long nextId = 1L;
 
@@ -463,6 +620,10 @@ class FlowFieldDailyScanServiceImplTest {
             }
             HistoryState previous = state(meta.dedupKey());
             if (previous == HistoryState.SUCCESS) {
+                return new WriteOutcome(nextId++, WriteDisposition.SKIPPED);
+            }
+            if (raceSuccessPaths.remove(meta.effectiveFilePath())) {
+                states.put(meta.dedupKey(), HistoryState.SUCCESS);
                 return new WriteOutcome(nextId++, WriteDisposition.SKIPPED);
             }
             WriteDisposition disposition = previous == HistoryState.FAILED
@@ -483,6 +644,10 @@ class FlowFieldDailyScanServiceImplTest {
             }
             HistoryState previous = state(meta.dedupKey());
             if (previous == HistoryState.SUCCESS) {
+                return new WriteOutcome(nextId++, WriteDisposition.SKIPPED);
+            }
+            if (raceFailurePaths.remove(meta.effectiveFilePath())) {
+                states.put(meta.dedupKey(), HistoryState.SUCCESS);
                 return new WriteOutcome(nextId++, WriteDisposition.SKIPPED);
             }
             WriteDisposition disposition = previous == HistoryState.FAILED
