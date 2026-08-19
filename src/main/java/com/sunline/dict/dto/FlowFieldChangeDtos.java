@@ -1,7 +1,7 @@
 package com.sunline.dict.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.sunline.dict.entity.FlowFieldChangeLog;
-import com.sunline.dict.service.flowchange.FlowFieldChangeSet.ValueChange;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -21,7 +21,12 @@ public final class FlowFieldChangeDtos {
             Long id, String ioType, String fieldPath, String fieldId,
             String changeType, Map<String, String> oldSnapshot,
             Map<String, String> newSnapshot,
-            Map<String, ValueChange> changedAttributes) {
+            Map<String, ValueChangeView> changedAttributes) {
+    }
+
+    public record ValueChangeView(
+            @JsonProperty("old") String oldValue,
+            @JsonProperty("new") String newValue) {
     }
 
     public record FlowFieldChangeHistoryDetail(

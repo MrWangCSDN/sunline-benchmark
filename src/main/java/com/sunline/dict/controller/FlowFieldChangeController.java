@@ -10,11 +10,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.LocalDateTime;
 import java.util.NoSuchElementException;
@@ -71,5 +73,10 @@ public class FlowFieldChangeController {
                     logId, exception.getClass().getSimpleName());
             return Result.error(500, "查询交易接口变动历史失败");
         }
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public Result<Void> handleRequestBindingFailure(MethodArgumentTypeMismatchException exception) {
+        return Result.error(400, "请求参数格式错误");
     }
 }

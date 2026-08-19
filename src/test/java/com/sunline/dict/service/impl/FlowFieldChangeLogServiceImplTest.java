@@ -2,6 +2,7 @@ package com.sunline.dict.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunline.dict.dto.FlowFieldChangeDtos.FlowFieldChangeHistoryDetail;
 import com.sunline.dict.dto.FlowFieldChangeDtos.FlowFieldChangeQuery;
@@ -21,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 
 import java.time.LocalDateTime;
@@ -111,8 +113,33 @@ class FlowFieldChangeLogServiceImplTest {
 
         assertEquals("false", result.details().get(0).oldSnapshot().get("required"));
         assertEquals("true", result.details().get(0).newSnapshot().get("required"));
-        assertEquals(new ValueChange("false", "true"),
-                result.details().get(0).changedAttributes().get("required"));
+        assertEquals("false", result.details().get(0).changedAttributes().get("required").oldValue());
+        assertEquals("true", result.details().get(0).changedAttributes().get("required").newValue());
+    }
+
+    @Test
+    void detail_wire_json_uses_approved_old_and_new_property_names() throws Exception {
+        FlowFieldChangeLog log = new FlowFieldChangeLog();
+        log.setId(77L);
+        FlowFieldChangeDetail row = new FlowFieldChangeDetail();
+        row.setId(5L);
+        row.setLogId(77L);
+        row.setIoType("input");
+        row.setFieldPath("/");
+        row.setFieldId("amount");
+        row.setChangeType("MODIFY");
+        row.setChangedAttributes("{\"required\":{\"old\":\"false\",\"new\":\"true\"}}");
+        when(logMapper.selectById(77L)).thenReturn(log);
+        when(detailMapper.selectList(any())).thenReturn(List.of(row));
+
+        JsonNode json = new ObjectMapper().readTree(
+                new ObjectMapper().writeValueAsString(service.getDetail(77L)));
+        JsonNode valueChange = json.at("/details/0/changedAttributes/required");
+
+        assertEquals("false", valueChange.get("old").asText());
+        assertEquals("true", valueChange.get("new").asText());
+        assertFalse(valueChange.has("oldValue"));
+        assertFalse(valueChange.has("newValue"));
     }
 
     @Test
@@ -138,6 +165,34 @@ class FlowFieldChangeLogServiceImplTest {
         assertFalse(saved.getErrorMessage().contains("secret-token"));
         assertFalse(saved.getErrorMessage().contains("Authorization"));
         verify(detailMapper, never()).insert(any());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "download failed with embedded Authorization: Bearer auth-secret at adapter",
+            "download failed with embedded PRIVATE-TOKEN=private-secret at adapter",
+            "https://gitlab.example/api/file?private_token=query-secret",
+            "request url=https://gitlab.example/api/file&access-token=access-secret"
+    })
+    void record_failure_never_persists_embedded_credentials_or_raw_urls(String unsafe) {
+        when(logMapper.insert(any())).thenAnswer(invocation -> {
+            FlowFieldChangeLog row = invocation.getArgument(0);
+            row.setId(100L);
+            return 1;
+        });
+
+        String safe = service.recordFailure(meta(), unsafe).getErrorMessage();
+
+        assertEquals("采集失败（敏感信息已隐藏）", safe);
+        assertFalse(safe.toLowerCase().contains("authorization"));
+        assertFalse(safe.toLowerCase().contains("private-token"));
+        assertFalse(safe.toLowerCase().contains("private_token"));
+        assertFalse(safe.toLowerCase().contains("access-token"));
+        assertFalse(safe.toLowerCase().contains("http"));
+        assertFalse(safe.contains("auth-secret"));
+        assertFalse(safe.contains("private-secret"));
+        assertFalse(safe.contains("query-secret"));
+        assertFalse(safe.contains("access-secret"));
     }
 
     @Test

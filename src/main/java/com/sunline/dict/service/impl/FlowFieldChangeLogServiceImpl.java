@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.type.MapType;
 import com.sunline.dict.dto.FlowFieldChangeDtos.DetailView;
 import com.sunline.dict.dto.FlowFieldChangeDtos.FlowFieldChangeHistoryDetail;
 import com.sunline.dict.dto.FlowFieldChangeDtos.FlowFieldChangeQuery;
+import com.sunline.dict.dto.FlowFieldChangeDtos.ValueChangeView;
 import com.sunline.dict.entity.FlowFieldChangeDetail;
 import com.sunline.dict.entity.FlowFieldChangeLog;
 import com.sunline.dict.mapper.FlowFieldChangeDetailMapper;
@@ -22,7 +23,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,8 +37,8 @@ public class FlowFieldChangeLogServiceImpl implements FlowFieldChangeLogService 
     private static final Set<String> FILE_CHANGE_TYPES = Set.of("ADD", "MODIFY", "DELETE", "UNKNOWN");
     private static final Set<String> CAPTURE_STATUSES = Set.of("SUCCESS", "FAILED");
     private static final int MAX_ERROR_LENGTH = 2000;
-    private static final Pattern CREDENTIAL_LINE = Pattern.compile(
-            "(?im)^(?:authorization|private-token|x-gitlab-token)\\s*[:=].*$");
+    private static final Pattern SENSITIVE_ERROR = Pattern.compile(
+            "(?i)(?:authorization\\s*[:=]|x-gitlab-token|private[-_]?token|access[-_]?token|https?://)");
 
     private final FlowFieldChangeLogMapper logMapper;
     private final FlowFieldChangeDetailMapper detailMapper;
@@ -214,16 +214,16 @@ public class FlowFieldChangeLogServiceImpl implements FlowFieldChangeLogService 
         }
     }
 
-    private Map<String, ValueChange> readValueChanges(String json) {
+    private Map<String, ValueChangeView> readValueChanges(String json) {
         if (json == null) {
             return null;
         }
         try {
             JsonNode root = objectMapper.readTree(json);
-            Map<String, ValueChange> result = new LinkedHashMap<>();
+            Map<String, ValueChangeView> result = new LinkedHashMap<>();
             root.fields().forEachRemaining(entry -> {
                 JsonNode value = entry.getValue();
-                result.put(entry.getKey(), new ValueChange(text(value.get("old")), text(value.get("new"))));
+                result.put(entry.getKey(), new ValueChangeView(text(value.get("old")), text(value.get("new"))));
             });
             return result;
         } catch (JsonProcessingException exception) {
@@ -237,7 +237,9 @@ public class FlowFieldChangeLogServiceImpl implements FlowFieldChangeLogService 
 
     private static String safeError(String errorMessage) {
         String safe = errorMessage == null || errorMessage.isBlank() ? "采集失败" : errorMessage;
-        safe = CREDENTIAL_LINE.matcher(safe).replaceAll("[credential redacted]");
+        if (SENSITIVE_ERROR.matcher(safe).find()) {
+            return "采集失败（敏感信息已隐藏）";
+        }
         safe = safe.replace('\r', ' ').replaceAll("[\\p{Cntrl}&&[^\\n\\t]]", "");
         return safe.length() <= MAX_ERROR_LENGTH ? safe : safe.substring(0, MAX_ERROR_LENGTH);
     }

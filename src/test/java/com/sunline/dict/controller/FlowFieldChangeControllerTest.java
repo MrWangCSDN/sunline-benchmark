@@ -5,11 +5,15 @@ import com.sunline.dict.common.Result;
 import com.sunline.dict.dto.FlowFieldChangeDtos.FlowFieldChangeHistoryDetail;
 import com.sunline.dict.dto.FlowFieldChangeDtos.FlowFieldChangeQuery;
 import com.sunline.dict.dto.FlowFieldChangeDtos.DetailView;
+import com.sunline.dict.dto.FlowFieldChangeDtos.ValueChangeView;
 import com.sunline.dict.entity.FlowFieldChangeLog;
 import com.sunline.dict.service.FlowFieldChangeLogService;
-import com.sunline.dict.service.flowchange.FlowFieldChangeSet.ValueChange;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -30,6 +34,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class FlowFieldChangeControllerTest {
 
@@ -79,7 +86,7 @@ class FlowFieldChangeControllerTest {
         DetailView view = new DetailView(
                 1001L, "input", "/", "amount", "MODIFY",
                 Map.of("required", "false"), Map.of("required", "true"),
-                Map.of("required", new ValueChange("false", "true")));
+                Map.of("required", new ValueChangeView("false", "true")));
         FlowFieldChangeHistoryDetail detail = new FlowFieldChangeHistoryDetail(log, List.of(view));
         when(service.getDetail(101L)).thenReturn(detail);
         FlowFieldChangeController controller = new FlowFieldChangeController(service);
@@ -132,5 +139,24 @@ class FlowFieldChangeControllerTest {
         assertEquals(2, requestMethods.size());
         assertTrue(requestMethods.stream().allMatch(method -> method.isAnnotationPresent(GetMapping.class)));
         assertNotNull(FlowFieldChangeController.class.getAnnotation(org.springframework.web.bind.annotation.RestController.class));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/api/flow-field-change/list?current=abc",
+            "/api/flow-field-change/list?startTime=not-an-iso-date",
+            "/api/flow-field-change/detail/not-a-number"
+    })
+    void request_binding_failures_return_result_body_code_400(String path) throws Exception {
+        FlowFieldChangeLogService service = mock(FlowFieldChangeLogService.class);
+        MockMvc mvc = MockMvcBuilders.standaloneSetup(new FlowFieldChangeController(service)).build();
+
+        mvc.perform(get(path))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("请求参数格式错误"));
+
+        verify(service, never()).pageLogs(any());
+        verify(service, never()).getDetail(org.mockito.ArgumentMatchers.anyLong());
     }
 }
