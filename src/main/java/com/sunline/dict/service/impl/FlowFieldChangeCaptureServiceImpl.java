@@ -115,7 +115,8 @@ public class FlowFieldChangeCaptureServiceImpl implements FlowFieldChangeCapture
         }
         FileVersionResult result = fileService.fetch(
                 project.projectId(), project.pathWithNamespace(), filePath, sha);
-        if (result == null || result.status() == Status.FAILED) {
+        if (result == null || result.status() == Status.TRANSIENT_FAILURE
+                || result.status() == Status.PERMANENT_FAILURE) {
             String reason = result == null ? "empty GitLab response" : result.errorMessage();
             throw new IllegalStateException("读取 " + versionName + " 版本失败：" + safeReason(reason));
         }

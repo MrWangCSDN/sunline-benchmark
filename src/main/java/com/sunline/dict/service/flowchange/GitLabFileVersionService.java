@@ -8,7 +8,8 @@ public interface GitLabFileVersionService {
     enum Status {
         FOUND,
         NOT_FOUND,
-        FAILED
+        TRANSIENT_FAILURE,
+        PERMANENT_FAILURE
     }
 
     record FileVersionResult(Status status, String content, String errorMessage) {

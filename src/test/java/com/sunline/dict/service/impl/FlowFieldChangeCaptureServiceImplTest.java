@@ -194,7 +194,7 @@ class FlowFieldChangeCaptureServiceImplTest {
                 commit("c1", "three files", "A", "a@example.com", "2026-08-19T10:00:00Z",
                         List.of(), List.of(networkFile, malformedFile, validFile), List.of()));
         when(fileService.fetch(42L, "group/project", networkFile, "oldSha"))
-                .thenReturn(new FileVersionResult(Status.FAILED, null, "HTTP 503"));
+                .thenReturn(new FileVersionResult(Status.TRANSIENT_FAILURE, null, "HTTP 503"));
         when(fileService.fetch(42L, "group/project", malformedFile, "oldSha")).thenReturn(found(oldXml()));
         when(fileService.fetch(42L, "group/project", malformedFile, "newSha"))
                 .thenReturn(found("<flowtran>"));
@@ -208,6 +208,22 @@ class FlowFieldChangeCaptureServiceImplTest {
         assertEquals(1, result.successCount());
         assertEquals(2, result.failedCount());
         assertEquals(newXml(), result.afterContents().get(validFile));
+    }
+
+    @Test
+    void permanentGitLabFailureRetainsCaptureFailureBehavior() {
+        Map<String, Object> payload = gitLabPush("refs/heads/master", "oldSha", "newSha",
+                commit("c1", "unauthorized", "A", "a@example.com", "2026-08-19T10:00:00Z",
+                        List.of(), List.of(FILE), List.of()));
+        when(fileService.fetch(42L, "group/project", FILE, "oldSha"))
+                .thenReturn(new FileVersionResult(Status.PERMANENT_FAILURE, null, "HTTP 401"));
+
+        FlowFieldChangeCaptureResult result = service.capture(payload, "event-permanent-failure");
+
+        ArgumentCaptor<String> reasonCaptor = ArgumentCaptor.forClass(String.class);
+        verify(logService).recordFailure(any(), reasonCaptor.capture());
+        assertTrue(reasonCaptor.getValue().contains("HTTP 401"));
+        assertEquals(1, result.failedCount());
     }
 
     @Test
