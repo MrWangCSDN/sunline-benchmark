@@ -10,12 +10,14 @@ import com.sunline.dict.service.CallRelationScanService;
 import com.sunline.dict.service.ComponentXmlParseService;
 import com.sunline.dict.service.DictXmlParseService;
 import com.sunline.dict.service.EschemaXmlParseService;
+import com.sunline.dict.service.FlowFieldChangeCaptureService;
 import com.sunline.dict.service.FlowXmlParseService;
 import com.sunline.dict.service.ServiceFileXmlParseService;
 import com.sunline.dict.service.ServiceImplXmlParseService;
 import com.sunline.dict.service.TablesXmlParseService;
 import com.sunline.dict.service.UschemaXmlParseService;
 import com.sunline.dict.service.WebhookService;
+import com.sunline.dict.service.flowchange.FlowFieldChangeCaptureResult;
 import com.sunline.dict.vectorization.ComplexVectorizationService;
 import com.sunline.dict.vectorization.DictVectorizationService;
 import com.sunline.dict.vectorization.EschemaVectorizationService;
@@ -80,6 +82,9 @@ public class WebhookServiceImpl implements WebhookService {
     @Autowired
     private FlowStepMapper flowStepMapper;
     
+    @Autowired(required = false)
+    private FlowFieldChangeCaptureService flowFieldChangeCaptureService;
+
     @Value("${gitlab.access-token:}")
     private String gitlabAccessToken;
     
@@ -427,7 +432,7 @@ public class WebhookServiceImpl implements WebhookService {
     }
     
     @Override
-    public Map<String, Object> handleGitLabPushEvent(Map<String, Object> payload) throws Exception {
+    public Map<String, Object> handleGitLabPushEvent(Map<String, Object> payload, String eventUuid) throws Exception {
         log.info("收到GitLab Push事件");
         
         // 获取ref（分支）与项目信息
@@ -463,6 +468,15 @@ public class WebhookServiceImpl implements WebhookService {
         if (commits == null || commits.isEmpty()) {
             log.info("没有commits信息");
             return createResult(false, "没有commits信息", 0, 0);
+        }
+
+        FlowFieldChangeCaptureResult captureResult = FlowFieldChangeCaptureResult.empty();
+        if (flowFieldChangeCaptureService != null) {
+            try {
+                captureResult = flowFieldChangeCaptureService.capture(payload, eventUuid);
+            } catch (Exception captureException) {
+                log.warn("采集 flowtrans 接口变动历史失败（不影响主流程）：{}", captureException.getMessage());
+            }
         }
         
         // 收集新增/修改 与 删除 的文件（各类型分开存）
@@ -579,7 +593,11 @@ public class WebhookServiceImpl implements WebhookService {
         // 处理 flowtrans.xml 新增/修改
         for (String filePath : flowtransFiles) {
             try {
-                String fileContent = downloadFileFromGitLab(gitlabUrl, projectId, pathWithNamespace, filePath, "master");
+                String fileContent = captureResult.afterContents().get(filePath);
+                if (fileContent == null) {
+                    fileContent = downloadFileFromGitLab(
+                            gitlabUrl, projectId, pathWithNamespace, filePath, "master");
+                }
                 if (fileContent != null) {
                     String sourceInfo = projectName + ":master:" + filePath;
                     Map<String, Object> parseResult = flowXmlParseService.parseAndSave(fileContent, sourceInfo);

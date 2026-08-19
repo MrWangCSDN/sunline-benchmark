@@ -74,7 +74,8 @@ public class WebhookController {
     @PostMapping("/gitlab")
     public Result<Map<String, Object>> handleGitLabWebhook(
             @RequestBody Map<String, Object> payload,
-            @RequestHeader(value = "X-Gitlab-Event", required = false) String event) {
+            @RequestHeader(value = "X-Gitlab-Event", required = false) String event,
+            @RequestHeader(value = "X-Gitlab-Event-UUID", required = false) String eventUuid) {
         
         try {
             if (callRelationScanService.isScanning()) {
@@ -90,7 +91,7 @@ public class WebhookController {
                 return Result.success(Map.of("message", "非push事件，已忽略"));
             }
             
-            Map<String, Object> result = webhookService.handleGitLabPushEvent(payload);
+            Map<String, Object> result = webhookService.handleGitLabPushEvent(payload, eventUuid);
 
             // 异步触发调用关系增量扫描（从 payload 的 commits 中提取变更文件）
             try {
@@ -123,7 +124,8 @@ public class WebhookController {
     public Result<Map<String, Object>> handleGitWebhook(
             @RequestBody Map<String, Object> payload,
             @RequestHeader(value = "X-GitHub-Event", required = false) String githubEvent,
-            @RequestHeader(value = "X-Gitlab-Event", required = false) String gitlabEvent) {
+            @RequestHeader(value = "X-Gitlab-Event", required = false) String gitlabEvent,
+            @RequestHeader(value = "X-Gitlab-Event-UUID", required = false) String eventUuid) {
         
         try {
             log.info("收到Git Webhook");
@@ -134,7 +136,7 @@ public class WebhookController {
                 return handleGitHubWebhook(payload, githubEvent);
             } else if (gitlabEvent != null) {
                 log.info("识别为GitLab事件: {}", gitlabEvent);
-                return handleGitLabWebhook(payload, gitlabEvent);
+                return handleGitLabWebhook(payload, gitlabEvent, eventUuid);
             } else {
                 log.warn("无法识别的Webhook来源");
                 return Result.success(Map.of("message", "无法识别的Webhook来源"));

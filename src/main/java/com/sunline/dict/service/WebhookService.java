@@ -17,7 +17,8 @@ public interface WebhookService {
     /**
      * 处理GitLab Push事件
      * @param payload GitLab webhook payload
+     * @param eventUuid GitLab webhook event UUID
      * @return 处理结果
      */
-    Map<String, Object> handleGitLabPushEvent(Map<String, Object> payload) throws Exception;
+    Map<String, Object> handleGitLabPushEvent(Map<String, Object> payload, String eventUuid) throws Exception;
 }
