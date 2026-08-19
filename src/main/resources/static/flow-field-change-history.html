@@ -8,98 +8,81 @@
     <script src="/js/axios.min.js"></script>
     <style>
         :root {
-            --bg: #f5f7fa;
+            --page: #f7f8fa;
             --surface: #ffffff;
-            --surface-muted: #f8fafc;
-            --border: #dfe4eb;
-            --border-strong: #c7d0dc;
-            --text: #172033;
-            --muted: #657085;
-            --quiet: #8b96a8;
+            --surface-subtle: #f9fafb;
+            --line: #e1e5eb;
+            --line-strong: #cbd2dc;
+            --ink: #172033;
+            --ink-secondary: #536077;
+            --ink-quiet: #7b8799;
             --accent: #2563eb;
             --accent-hover: #1d4ed8;
             --accent-soft: #eff6ff;
-            --add: #137a4b;
-            --add-bg: #e9f8f0;
-            --modify: #9a5b00;
-            --modify-bg: #fff6d8;
-            --delete: #b4232d;
-            --delete-bg: #ffedef;
+            --positive: #18794e;
+            --positive-soft: #eaf8f1;
+            --warning: #946200;
+            --warning-soft: #fff6d8;
+            --danger: #b4232d;
+            --danger-soft: #ffedef;
             --focus: 0 0 0 3px rgba(37, 99, 235, .2);
         }
 
         * { box-sizing: border-box; }
 
-        html, body { margin: 0; min-height: 100%; }
+        html { min-width: 0; min-height: 100%; }
 
-        body {
-            background: var(--bg);
-            color: var(--text);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-                "Microsoft YaHei", sans-serif;
-            font-size: 14px;
-            line-height: 1.5;
-        }
+        body { overflow-x: hidden; margin: 0; min-width: 0; min-height: 100%; background: var(--page); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 14px; line-height: 1.5; }
 
         button, input, select { font: inherit; }
-
-        button, input, select {
-            outline: none;
-        }
-
-        button:focus-visible, input:focus-visible, select:focus-visible {
+        button, input, select { outline: none; }
+        button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible {
             border-color: var(--accent);
             box-shadow: var(--focus);
         }
 
         [v-cloak] { display: none; }
 
-        .workspace {
-            min-height: 100vh;
-            padding: 24px 28px 32px;
-            animation: workspace-in .24s ease-out both;
-        }
+        .workspace { width: 100%; max-width: 100%; min-height: 100vh; padding: 24px 28px 40px; animation: workspace-in .2s ease-out both; }
 
         .workspace-header {
             display: flex;
             align-items: flex-start;
             justify-content: space-between;
             gap: 24px;
-            margin-bottom: 18px;
+            padding-bottom: 20px;
         }
 
         .eyebrow {
-            margin: 0 0 3px;
+            margin: 0 0 4px;
             color: var(--accent);
-            font-size: 12px;
-            font-weight: 700;
-            letter-spacing: .08em;
+            font-size: 11px;
+            font-weight: 750;
+            letter-spacing: .09em;
             text-transform: uppercase;
         }
 
+        h1, h2, h3, p { margin-top: 0; }
+
         h1 {
-            margin: 0;
-            font-size: 23px;
-            font-weight: 700;
-            letter-spacing: -.02em;
+            margin-bottom: 4px;
+            font-size: 24px;
+            font-weight: 730;
+            letter-spacing: -.025em;
         }
 
-        .scope {
-            margin: 5px 0 0;
-            color: var(--muted);
-            font-size: 13px;
-        }
+        .scope { margin-bottom: 0; color: var(--ink-secondary); font-size: 13px; }
 
         .read-only-mark {
             display: inline-flex;
             align-items: center;
             gap: 7px;
             min-height: 30px;
-            padding: 5px 10px;
-            border: 1px solid var(--border);
+            padding: 5px 9px;
+            border: 1px solid var(--line);
             border-radius: 6px;
             background: var(--surface);
-            color: var(--muted);
+            color: var(--ink-secondary);
             font-size: 12px;
             white-space: nowrap;
         }
@@ -108,38 +91,61 @@
             width: 7px;
             height: 7px;
             border-radius: 50%;
-            background: var(--add);
+            background: var(--positive);
             content: "";
         }
 
-        .filter-toolbar {
-            display: grid;
-            grid-template-columns: repeat(4, minmax(145px, 1fr));
-            gap: 12px 14px;
-            padding: 16px 0 17px;
-            border-top: 1px solid var(--border);
-            border-bottom: 1px solid var(--border);
+        .workspace-section {
+            padding: 21px 0 30px;
+            border-top: 1px solid var(--line);
         }
 
+        .workspace-section + .workspace-section { padding-top: 26px; }
+
+        .section-heading {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 20px;
+            margin-bottom: 15px;
+        }
+
+        .section-heading h2 { margin-bottom: 3px; font-size: 17px; letter-spacing: -.01em; }
+        .section-heading p { margin-bottom: 0; color: var(--ink-secondary); font-size: 12px; }
+
+        .result-count { color: var(--ink-secondary); font-size: 12px; white-space: nowrap; }
+        .result-count strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+
+        .filter-grid {
+            display: grid;
+            grid-template-columns: repeat(6, minmax(120px, 1fr));
+            gap: 12px 14px;
+            padding: 15px 0 17px;
+            border-top: 1px solid var(--line);
+            border-bottom: 1px solid var(--line);
+        }
+
+        .filter-grid--scan { grid-template-columns: repeat(5, minmax(140px, 1fr)); }
         .field { min-width: 0; }
+        .field--wide { grid-column: span 2; }
 
         .field label {
             display: block;
             margin-bottom: 5px;
             color: #445067;
             font-size: 12px;
-            font-weight: 600;
+            font-weight: 650;
         }
 
         .control {
             width: 100%;
             height: 36px;
             padding: 0 10px;
-            border: 1px solid var(--border-strong);
+            border: 1px solid var(--line-strong);
             border-radius: 6px;
             background: var(--surface);
-            color: var(--text);
-            transition: border-color .16s ease, box-shadow .16s ease;
+            color: var(--ink);
+            transition: border-color .15s ease, box-shadow .15s ease;
         }
 
         .control::placeholder { color: #9aa4b4; }
@@ -154,351 +160,148 @@
         .button {
             min-height: 36px;
             padding: 7px 14px;
-            border: 1px solid var(--border-strong);
+            border: 1px solid var(--line-strong);
             border-radius: 6px;
             background: var(--surface);
             color: #344056;
             cursor: pointer;
-            font-weight: 600;
-            transition: background .15s ease, border-color .15s ease, color .15s ease,
-                transform .15s ease;
+            font-weight: 650;
+            transition: background .14s ease, border-color .14s ease, color .14s ease, transform .14s ease;
         }
 
-        .button:hover:not(:disabled) {
-            border-color: #9eabbc;
-            background: var(--surface-muted);
-        }
-
+        .button:hover:not(:disabled) { border-color: #9eabbc; background: var(--surface-subtle); }
         .button:active:not(:disabled) { transform: translateY(1px); }
-
-        .button:disabled { cursor: not-allowed; opacity: .48; }
-
-        .button--primary {
-            border-color: var(--accent);
-            background: var(--accent);
-            color: #fff;
-        }
-
-        .button--primary:hover:not(:disabled) {
-            border-color: var(--accent-hover);
-            background: var(--accent-hover);
-        }
-
-        .button--text {
-            min-height: 30px;
-            padding: 4px 8px;
-            border-color: transparent;
-            background: transparent;
-            color: var(--accent);
-        }
-
-        .button--text:hover:not(:disabled) {
-            border-color: #bfdbfe;
-            background: var(--accent-soft);
-        }
+        .button:disabled { cursor: not-allowed; opacity: .46; }
+        .button--primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+        .button--primary:hover:not(:disabled) { border-color: var(--accent-hover); background: var(--accent-hover); }
+        .button--text { min-height: 30px; padding: 4px 7px; border-color: transparent; background: transparent; color: var(--accent); }
+        .button--text:hover:not(:disabled) { border-color: #bfdbfe; background: var(--accent-soft); }
 
         .table-meta {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            min-height: 49px;
-            gap: 14px;
+            min-height: 48px;
+            gap: 16px;
         }
 
-        .result-count { color: var(--muted); }
-
-        .result-count strong { color: var(--text); font-variant-numeric: tabular-nums; }
-
-        .legend {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            color: var(--quiet);
-            font-size: 12px;
-        }
-
+        .legend { display: flex; align-items: center; gap: 12px; color: var(--ink-quiet); font-size: 12px; }
         .legend span { display: inline-flex; align-items: center; gap: 5px; }
-
-        .legend i {
-            display: inline-block;
-            width: 7px;
-            height: 7px;
-            border-radius: 50%;
-        }
-
-        .legend .add { background: var(--add); }
+        .legend i { width: 7px; height: 7px; border-radius: 50%; }
+        .legend .add { background: var(--positive); }
         .legend .modify { background: #d48a05; }
-        .legend .delete { background: var(--delete); }
+        .legend .delete { background: var(--danger); }
 
-        .table-shell {
-            overflow-x: auto;
-            border: 1px solid var(--border);
-            border-radius: 7px;
-            background: var(--surface);
-        }
+        .table-scroll { width: 100%; max-width: 100%; overflow-x: auto; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--surface); overscroll-behavior-inline: contain; }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            min-width: 1040px;
-        }
+        table { width: 100%; border-collapse: collapse; }
+        .history-table { min-width: 1420px; }
+        .scan-table { min-width: 1180px; }
+        .attribute-table { min-width: 510px; }
 
         th {
-            padding: 10px 12px;
-            border-bottom: 1px solid var(--border);
-            background: var(--surface-muted);
-            color: #536077;
-            font-size: 12px;
-            font-weight: 700;
+            padding: 10px 11px;
+            border-bottom: 1px solid var(--line);
+            background: var(--surface-subtle);
+            color: var(--ink-secondary);
+            font-size: 11px;
+            font-weight: 750;
             text-align: left;
             white-space: nowrap;
         }
 
-        td {
-            padding: 11px 12px;
-            border-bottom: 1px solid #edf0f4;
-            vertical-align: top;
-        }
-
-        tbody tr {
-            animation: row-in .2s ease-out both;
-            transition: background .15s ease;
-        }
-
+        td { padding: 11px; border-bottom: 1px solid #edf0f4; vertical-align: top; }
+        tbody tr { animation: row-in .18s ease-out both; transition: background .14s ease; }
         tbody tr:hover { background: #f8fbff; }
         tbody tr:last-child td { border-bottom: 0; }
         tbody tr.is-failed { background: #fffafa; }
 
-        .primary-cell { font-weight: 650; color: #202b40; }
-        .secondary-cell { margin-top: 2px; color: var(--muted); font-size: 12px; }
+        .primary-cell { color: #202b40; font-weight: 650; }
+        .secondary-cell { margin-top: 2px; color: var(--ink-secondary); font-size: 12px; }
+        .quiet-cell { color: var(--ink-quiet); font-size: 11px; }
         .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
-        .ellipsis { max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ellipsis { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .wrap-anywhere { overflow-wrap: anywhere; }
 
-        .badge, .diff-badge {
+        .badge {
             display: inline-flex;
             align-items: center;
             justify-content: center;
             min-height: 23px;
             padding: 2px 8px;
             border-radius: 999px;
-            font-size: 12px;
-            font-weight: 700;
+            background: #eef1f5;
+            color: var(--ink-secondary);
+            font-size: 11px;
+            font-weight: 750;
             white-space: nowrap;
         }
 
-        .diff-badge--add { background: var(--add-bg); color: var(--add); }
-        .diff-badge--modify { background: var(--modify-bg); color: var(--modify); }
-        .diff-badge--delete { background: var(--delete-bg); color: var(--delete); }
-        .badge--success { background: var(--add-bg); color: var(--add); }
-        .badge--failed { background: var(--delete-bg); color: var(--delete); }
-
+        .badge--add, .badge--success { background: var(--positive-soft); color: var(--positive); }
+        .badge--modify, .badge--warning, .badge--running { background: var(--warning-soft); color: var(--warning); }
+        .badge--delete, .badge--failed { background: var(--danger-soft); color: var(--danger); }
         .status-stack { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
-        .count-strip { display: flex; gap: 7px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-        .count-strip .count-add { color: var(--add); }
-        .count-strip .count-modify { color: var(--modify); }
-        .count-strip .count-delete { color: var(--delete); }
+        .attribute-list { display: grid; gap: 3px; min-width: 190px; margin-top: 5px; }
+        .attribute-change { display: grid; grid-template-columns: minmax(54px, auto) 1fr; gap: 7px; font-size: 11px; }
+        .attribute-change dt { color: var(--ink-secondary); font-weight: 650; }
+        .attribute-change dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+        .old-value { color: var(--danger); }
+        .new-value { color: var(--positive); }
 
-        .failure-message {
-            max-width: 245px;
-            color: var(--delete);
-            font-size: 12px;
-            line-height: 1.45;
-            overflow-wrap: anywhere;
-        }
+        .failure-message { max-width: 260px; margin-top: 5px; color: var(--danger); font-size: 12px; overflow-wrap: anywhere; }
+        .counter-line { display: flex; gap: 9px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .counter-line strong { color: var(--ink); }
 
         .state {
             display: flex;
-            min-height: 310px;
+            min-height: 170px;
             align-items: center;
             justify-content: center;
             flex-direction: column;
-            gap: 8px;
-            padding: 48px 20px;
-            border: 1px solid var(--border);
-            border-radius: 7px;
+            gap: 7px;
+            padding: 36px 18px;
+            border-top: 1px solid var(--line);
+            border-bottom: 1px solid var(--line);
             background: var(--surface);
-            color: var(--muted);
+            color: var(--ink-secondary);
             text-align: center;
         }
 
-        .state strong { color: var(--text); font-size: 15px; }
-        .state--error strong { color: var(--delete); }
+        .state strong { color: var(--ink); font-size: 14px; }
+        .state--error strong { color: var(--danger); }
 
-        .spinner {
-            width: 24px;
-            height: 24px;
-            border: 2px solid #dbe5f4;
-            border-top-color: var(--accent);
-            border-radius: 50%;
-            animation: spin .75s linear infinite;
-        }
+        .spinner { width: 22px; height: 22px; border: 2px solid #dbe5f4; border-top-color: var(--accent); border-radius: 50%; animation: spin .72s linear infinite; }
 
-        .pagination {
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            gap: 9px;
-            padding-top: 14px;
-        }
+        .pagination { display: flex; align-items: center; justify-content: flex-end; gap: 9px; padding-top: 13px; }
+        .page-status { min-width: 84px; color: var(--ink-secondary); text-align: center; }
 
-        .page-status { min-width: 82px; color: var(--muted); text-align: center; }
-
-        .drawer-backdrop {
-            position: fixed;
-            inset: 0;
-            z-index: 50;
-            display: flex;
-            justify-content: flex-end;
-            background: rgba(23, 32, 51, .34);
-        }
-
-        .drawer {
-            width: min(720px, 76vw);
-            height: 100%;
-            overflow-y: auto;
-            background: var(--surface);
-            box-shadow: -14px 0 38px rgba(15, 23, 42, .18);
-        }
-
-        .drawer-header {
-            position: sticky;
-            top: 0;
-            z-index: 2;
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 18px;
-            padding: 21px 24px 17px;
-            border-bottom: 1px solid var(--border);
-            background: rgba(255, 255, 255, .96);
-            backdrop-filter: blur(8px);
-        }
-
-        .drawer-header h2 { margin: 0; font-size: 19px; }
-        .drawer-header p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
-
-        .icon-button {
-            width: 34px;
-            height: 34px;
-            border: 1px solid var(--border-strong);
-            border-radius: 6px;
-            background: var(--surface);
-            color: var(--muted);
-            cursor: pointer;
-            font-size: 20px;
-            line-height: 1;
-        }
-
-        .icon-button:hover { background: var(--surface-muted); color: var(--text); }
-
+        .drawer-backdrop { position: fixed; inset: 0; z-index: 50; display: flex; justify-content: flex-end; background: rgba(23, 32, 51, .34); }
+        .drawer { width: min(760px, 78vw); height: 100%; overflow-y: auto; border: 0; background: var(--surface); box-shadow: -14px 0 38px rgba(15, 23, 42, .18); }
+        .drawer-header { position: sticky; top: 0; z-index: 2; display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 20px 24px 16px; border-bottom: 1px solid var(--line); background: rgba(255, 255, 255, .97); backdrop-filter: blur(8px); }
+        .drawer-header h2 { margin-bottom: 3px; font-size: 18px; }
+        .drawer-header p { margin-bottom: 0; color: var(--ink-secondary); font-size: 12px; }
+        .icon-button { width: 34px; height: 34px; flex: 0 0 auto; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface); color: var(--ink-secondary); cursor: pointer; font-size: 20px; line-height: 1; }
+        .icon-button:hover { background: var(--surface-subtle); color: var(--ink); }
         .drawer-body { padding: 20px 24px 34px; }
 
-        .detail-meta {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 0;
-            margin-bottom: 20px;
-            border-top: 1px solid var(--border);
-            border-bottom: 1px solid var(--border);
-        }
-
-        .meta-item { min-width: 0; padding: 12px 12px 12px 0; }
-        .meta-item span { display: block; color: var(--quiet); font-size: 11px; }
-        .meta-item strong { display: block; margin-top: 3px; overflow-wrap: anywhere; font-size: 13px; }
-
-        .io-tabs {
-            display: flex;
-            gap: 18px;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .io-tab {
-            position: relative;
-            padding: 9px 2px 10px;
-            border: 0;
-            background: transparent;
-            color: var(--muted);
-            cursor: pointer;
-            font-weight: 650;
-        }
-
-        .io-tab[aria-selected="true"] { color: var(--accent); }
-        .io-tab[aria-selected="true"]::after {
-            position: absolute;
-            right: 0;
-            bottom: -1px;
-            left: 0;
-            height: 2px;
-            background: var(--accent);
-            content: "";
-        }
-
-        .detail-list { display: grid; gap: 12px; padding-top: 15px; }
-
-        .diff-section {
-            border: 1px solid var(--border);
-            border-left-width: 3px;
-            border-radius: 6px;
-            background: var(--surface);
-        }
-
-        .diff-section--add { border-left-color: var(--add); }
-        .diff-section--modify { border-left-color: #d48a05; }
-        .diff-section--delete { border-left-color: var(--delete); }
-
-        .diff-heading {
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 12px;
-            padding: 12px 14px;
-            border-bottom: 1px solid #edf0f4;
-        }
-
-        .diff-heading h3 { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
-        .field-id { margin: 3px 0 0; color: var(--muted); font-size: 11px; }
-
-        .snapshot { padding: 10px 14px 13px; }
-
-        .snapshot-title {
-            margin: 0 0 7px;
-            color: var(--muted);
-            font-size: 11px;
-            font-weight: 700;
-            letter-spacing: .04em;
-        }
-
-        .snapshot-grid {
-            display: grid;
-            grid-template-columns: minmax(120px, .7fr) minmax(0, 1.8fr);
-            border-top: 1px solid var(--border);
-            border-left: 1px solid var(--border);
-        }
-
-        .snapshot-grid > div {
-            min-width: 0;
-            padding: 7px 9px;
-            border-right: 1px solid var(--border);
-            border-bottom: 1px solid var(--border);
-            overflow-wrap: anywhere;
-        }
-
-        .snapshot-grid .key { background: var(--surface-muted); color: var(--muted); font-size: 12px; }
-
-        .attribute-table { min-width: 560px; }
-        .attribute-table td:first-child { color: var(--muted); font-weight: 600; }
-        .old-value { color: var(--delete); }
-        .new-value { color: var(--add); }
-
-        .detail-empty {
-            padding: 42px 16px;
-            color: var(--muted);
-            text-align: center;
-        }
+        .detail-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 20px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+        .meta-item { min-width: 0; padding: 11px 12px 11px 0; }
+        .meta-item span { display: block; color: var(--ink-quiet); font-size: 11px; }
+        .meta-item strong { display: block; margin-top: 3px; overflow-wrap: anywhere; font-size: 12px; }
+        .detail-list { display: grid; gap: 16px; }
+        .diff-section { padding-top: 13px; border-top: 1px solid var(--line); }
+        .diff-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+        .diff-heading h3 { margin-bottom: 2px; font-size: 13px; overflow-wrap: anywhere; }
+        .field-id { margin-bottom: 0; color: var(--ink-secondary); font-size: 11px; }
+        .snapshot-title { margin-bottom: 6px; color: var(--ink-secondary); font-size: 11px; font-weight: 700; }
+        .snapshot-grid { display: grid; grid-template-columns: minmax(120px, .7fr) minmax(0, 1.8fr); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+        .snapshot-grid > div { min-width: 0; padding: 7px 9px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+        .snapshot-grid .key { background: var(--surface-subtle); color: var(--ink-secondary); font-size: 12px; }
+        .detail-empty { padding: 38px 14px; color: var(--ink-secondary); text-align: center; }
 
         .drawer-enter-active, .drawer-leave-active { transition: background .18s ease; }
-        .drawer-enter-active .drawer, .drawer-leave-active .drawer { transition: transform .22s ease; }
+        .drawer-enter-active .drawer, .drawer-leave-active .drawer { transition: transform .21s ease; }
         .drawer-enter-from, .drawer-leave-to { background: rgba(23, 32, 51, 0); }
         .drawer-enter-from .drawer, .drawer-leave-to .drawer { transform: translateX(100%); }
 
@@ -506,212 +309,343 @@
         @keyframes row-in { from { opacity: 0; transform: translateY(3px); } }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        @media (max-width: 900px) {
-            .workspace { padding: 20px; }
-            .filter-toolbar { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
-            .detail-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        @media (max-width: 1080px) {
+            .filter-grid { grid-template-columns: repeat(3, minmax(140px, 1fr)); }
+            .filter-grid--scan { grid-template-columns: repeat(3, minmax(140px, 1fr)); }
         }
 
-        @media (max-width: 560px) {
-            .workspace { padding: 16px 14px 22px; }
-            .workspace-header { gap: 12px; margin-bottom: 14px; }
+        @media (max-width: 700px) {
+            .workspace { padding: 19px 16px 30px; }
+            .filter-grid, .filter-grid--scan { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .field--wide { grid-column: span 2; }
+            .detail-meta { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .drawer { width: 100vw; }
+        }
+
+        @media (max-width: 390px) {
+            .workspace { padding: 16px 12px 26px; }
+            .workspace-header { gap: 10px; padding-bottom: 16px; }
             h1 { font-size: 20px; }
-            .scope { max-width: 240px; }
-            .read-only-mark { padding: 5px 8px; }
+            .scope { max-width: 270px; }
             .read-only-mark span { display: none; }
-            .filter-toolbar { grid-template-columns: 1fr; padding-top: 14px; }
+            .filter-grid, .filter-grid--scan { grid-template-columns: minmax(0, 1fr); }
+            .field--wide { grid-column: span 1; }
             .filter-actions { justify-content: stretch; }
             .filter-actions .button { flex: 1; }
-            .table-meta { align-items: flex-start; flex-direction: column; padding: 12px 0; }
-            .legend { gap: 8px; }
+            .section-heading, .table-meta { align-items: flex-start; flex-direction: column; gap: 7px; }
+            .table-meta { padding: 10px 0; }
+            .legend { flex-wrap: wrap; gap: 8px; }
             .pagination { justify-content: space-between; }
-            .drawer { width: 100vw; }
-            .drawer-header { padding: 16px 15px 13px; }
-            .drawer-body { padding: 15px 14px 24px; }
-            .detail-meta { grid-template-columns: 1fr 1fr; }
-            .snapshot-grid { grid-template-columns: minmax(90px, .7fr) minmax(0, 1.3fr); }
+            .drawer-header, .drawer-body { padding-right: 16px; padding-left: 16px; }
+            .detail-meta { grid-template-columns: minmax(0, 1fr); }
+            .snapshot-grid { grid-template-columns: minmax(90px, .7fr) minmax(0, 1.4fr); }
         }
 
         @media (prefers-reduced-motion: reduce) {
-            *, *::before, *::after {
-                scroll-behavior: auto !important;
-                animation-duration: .01ms !important;
-                animation-iteration-count: 1 !important;
-                transition-duration: .01ms !important;
-            }
+            *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
         }
     </style>
 </head>
 <body>
-<div id="app" v-cloak @keyup.esc="closeDetail">
-    <main class="workspace">
+<div id="app" v-cloak>
+    <main ref="workspace" class="workspace">
         <header class="workspace-header">
             <div>
                 <p class="eyebrow">FLOWTRANS AUDIT</p>
                 <h1>交易接口变动历史</h1>
-                <p class="scope">按交易、文件与提交信息追溯输入输出字段变动</p>
+                <p class="scope">按字段核对每日接口变化，并查看工程扫描运行状态。</p>
             </div>
-            <div class="read-only-mark" title="此页面仅提供历史查询">
-                <span>只读审计</span>
-            </div>
+            <div class="read-only-mark" aria-label="只读页面"><span>只读</span></div>
         </header>
 
-        <form class="filter-toolbar" @submit.prevent="queryHistory" aria-label="变动历史筛选">
-            <div class="field">
-                <label for="flow-id">交易码</label>
-                <input id="flow-id" class="control" v-model="filters.flowId" placeholder="例如 TC045">
-            </div>
-            <div class="field">
-                <label for="file-path">文件路径</label>
-                <input id="file-path" class="control" v-model="filters.filePath" placeholder="flowtrans/...">
-            </div>
-            <div class="field">
-                <label for="commit-author">提交人</label>
-                <input id="commit-author" class="control" v-model="filters.commitAuthor" placeholder="姓名或 Git 用户">
-            </div>
-            <div class="field">
-                <label for="file-change-type">文件变动</label>
-                <select id="file-change-type" class="control" v-model="filters.fileChangeType">
-                    <option value="">全部类型</option>
-                    <option value="ADD">新增</option>
-                    <option value="MODIFY">修改</option>
-                    <option value="DELETE">删除</option>
-                </select>
-            </div>
-            <div class="field">
-                <label for="capture-status">采集状态</label>
-                <select id="capture-status" class="control" v-model="filters.captureStatus">
-                    <option value="">全部状态</option>
-                    <option value="SUCCESS">采集成功</option>
-                    <option value="FAILED">采集失败</option>
-                </select>
-            </div>
-            <div class="field">
-                <label for="start-time">开始时间</label>
-                <input id="start-time" class="control" type="datetime-local" v-model="filters.startTime">
-            </div>
-            <div class="field">
-                <label for="end-time">结束时间</label>
-                <input id="end-time" class="control" type="datetime-local" v-model="filters.endTime">
-            </div>
-            <div class="filter-actions">
-                <button class="button" type="button" @click="resetFilters" :disabled="loading">重置</button>
-                <button class="button button--primary" type="submit" :disabled="loading">
-                    {{ loading ? '查询中…' : '查询' }}
-                </button>
-            </div>
-        </form>
-
-        <section aria-labelledby="history-result-title">
-            <div class="table-meta">
-                <div id="history-result-title" class="result-count" aria-live="polite">
-                    共 <strong>{{ total }}</strong> 条变动记录
+        <section class="workspace-section" aria-labelledby="history-title">
+            <div class="section-heading">
+                <div>
+                    <h2 id="history-title">字段变动</h2>
+                    <p>一行代表一个字段变化；空字段文件新增或删除保留文件级行。</p>
                 </div>
-                <div class="legend" aria-label="变动颜色图例">
+                <div class="result-count" aria-live="polite">共 <strong>{{ historyTotal }}</strong> 条</div>
+            </div>
+
+            <form class="filter-grid" @submit.prevent="queryHistory">
+                <div class="field">
+                    <label for="history-start-date">开始日期</label>
+                    <input id="history-start-date" v-model="historyFilters.startDate" class="control" type="date">
+                </div>
+                <div class="field">
+                    <label for="history-end-date">结束日期</label>
+                    <input id="history-end-date" v-model="historyFilters.endDate" class="control" type="date">
+                </div>
+                <div class="field">
+                    <label for="history-project-name">工程名称</label>
+                    <input id="history-project-name" v-model="historyFilters.projectName" class="control" type="text" placeholder="模糊查询">
+                </div>
+                <div class="field">
+                    <label for="history-project-id">工程 ID</label>
+                    <input id="history-project-id" v-model="historyFilters.projectId" class="control" type="text" inputmode="numeric" placeholder="精确查询">
+                </div>
+                <div class="field field--wide">
+                    <label for="history-file">文件路径</label>
+                    <input id="history-file" v-model="historyFilters.filePath" class="control" type="text" placeholder="flowtrans.xml 路径">
+                </div>
+                <div class="field">
+                    <label for="history-flow">交易码</label>
+                    <input id="history-flow" v-model="historyFilters.flowId" class="control" type="text" placeholder="精确查询">
+                </div>
+                <div class="field">
+                    <label for="history-io">输入 / 输出</label>
+                    <select id="history-io" v-model="historyFilters.ioType" class="control">
+                        <option value="">全部</option>
+                        <option value="input">input</option>
+                        <option value="output">output</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="history-field">字段 ID</label>
+                    <input id="history-field" v-model="historyFilters.fieldId" class="control" type="text" placeholder="区分大小写">
+                </div>
+                <div class="field">
+                    <label for="history-change">变动类型</label>
+                    <select id="history-change" v-model="historyFilters.changeType" class="control">
+                        <option value="">全部</option>
+                        <option value="ADD">新增</option>
+                        <option value="MODIFY">修改</option>
+                        <option value="DELETE">删除</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="history-author">提交人</label>
+                    <input id="history-author" v-model="historyFilters.commitAuthor" class="control" type="text" placeholder="模糊查询">
+                </div>
+                <div class="field">
+                    <label for="history-capture">采集状态</label>
+                    <select id="history-capture" v-model="historyFilters.captureStatus" class="control">
+                        <option value="">全部</option>
+                        <option value="SUCCESS">成功</option>
+                        <option value="FAILED">失败</option>
+                    </select>
+                </div>
+                <div class="filter-actions">
+                    <button class="button" type="button" :disabled="historyLoading" @click="resetHistoryFilters">重置</button>
+                    <button class="button button--primary" type="submit" :disabled="historyLoading">查询</button>
+                </div>
+            </form>
+
+            <div class="table-meta">
+                <span class="result-count">第 <strong>{{ historyCurrent }}</strong> / {{ historyTotalPages }} 页</span>
+                <div class="legend" aria-label="变动类型图例">
                     <span><i class="add"></i>新增</span>
                     <span><i class="modify"></i>修改</span>
                     <span><i class="delete"></i>删除</span>
                 </div>
             </div>
 
-            <div v-if="loading" class="state" aria-live="polite" aria-busy="true">
+            <div v-if="historyLoading" class="state" aria-live="polite" aria-busy="true">
                 <span class="spinner" aria-hidden="true"></span>
-                <strong>正在加载变动历史</strong>
-                <span>请稍候</span>
+                <strong>正在加载字段变动</strong>
             </div>
-
-            <div v-else-if="error" class="state state--error" role="alert">
-                <strong>加载失败</strong>
-                <span>{{ error }}</span>
+            <div v-else-if="historyError" class="state state--error" role="alert">
+                <strong>字段变动加载失败</strong>
+                <span>{{ historyError }}</span>
                 <button class="button" type="button" @click="loadHistory">重试</button>
             </div>
-
-            <div v-else-if="records.length === 0" class="state" aria-live="polite">
-                <strong>暂无匹配的变动记录</strong>
-                <span>请调整筛选条件后重试</span>
+            <div v-else-if="historyRecords.length === 0" class="state" aria-live="polite">
+                <strong>暂无匹配的字段变动</strong>
+                <span>可调整日期或筛选条件后重试。</span>
             </div>
-
-            <div v-else class="table-shell">
-                <table>
+            <div v-else class="table-scroll" tabindex="0" aria-label="字段变动表格，可横向滚动">
+                <table class="history-table">
                     <thead>
                     <tr>
                         <th>提交时间</th>
-                        <th>交易</th>
-                        <th>变动 / 状态</th>
-                        <th>文件 / 项目</th>
-                        <th>提交人 / 提交</th>
-                        <th>字段统计</th>
+                        <th>工程</th>
+                        <th>文件 / 交易</th>
+                        <th>I/O</th>
+                        <th>字段路径 / ID</th>
+                        <th>变动 / 属性</th>
+                        <th>提交信息</th>
                         <th>操作</th>
                     </tr>
                     </thead>
                     <tbody>
-                    <tr v-for="(record, index) in records" :key="record.id"
+                    <tr v-for="(record, index) in historyRecords" :key="(record.detailId || 'file') + '-' + record.logId"
                         :class="{ 'is-failed': record.captureStatus === 'FAILED' }"
-                        :style="{ animationDelay: Math.min(index, 8) * 20 + 'ms' }">
+                        :style="{ animationDelay: Math.min(index, 8) * 18 + 'ms' }">
                         <td>
-                            <div class="primary-cell">{{ formatDateTime(record.commitTime || record.createTime) }}</div>
-                            <div class="secondary-cell mono">{{ shortSha(record.commitSha) }}</div>
+                            <div class="primary-cell">{{ formatDateTime(record.commitTime) }}</div>
+                            <div class="secondary-cell">归属 {{ record.changeDate || '—' }}</div>
                         </td>
                         <td>
-                            <div class="primary-cell mono">{{ record.flowId || '—' }}</div>
-                            <div class="secondary-cell ellipsis" :title="record.flowLongname">{{ record.flowLongname || '未记录名称' }}</div>
+                            <div class="primary-cell">{{ record.projectName || '未知工程' }}</div>
+                            <div class="secondary-cell mono">ID {{ record.projectId || '—' }}</div>
+                            <div class="quiet-cell ellipsis" :title="record.projectPath">{{ record.projectPath || '—' }}</div>
+                        </td>
+                        <td>
+                            <div class="primary-cell mono ellipsis" :title="record.filePath">{{ record.filePath || '—' }}</div>
+                            <div class="secondary-cell"><span class="mono">{{ record.flowId || '—' }}</span> · {{ record.flowLongname || '未记录名称' }}</div>
+                        </td>
+                        <td><span class="badge">{{ record.ioType || '—' }}</span></td>
+                        <td>
+                            <div class="primary-cell mono wrap-anywhere">{{ record.fieldPath || '—' }}</div>
+                            <div class="secondary-cell mono">{{ record.fieldId || '—' }}</div>
                         </td>
                         <td>
                             <div class="status-stack">
-                                <span class="diff-badge" :class="changeBadgeClass(record.fileChangeType)">
-                                    {{ changeTypeText(record.fileChangeType) }}
-                                </span>
+                                <span class="badge" :class="changeBadgeClass(record.changeType)">{{ changeTypeText(record.changeType) }}</span>
                                 <span class="badge" :class="record.captureStatus === 'FAILED' ? 'badge--failed' : 'badge--success'">
                                     {{ record.captureStatus === 'FAILED' ? '采集失败' : '采集成功' }}
                                 </span>
                             </div>
+                            <dl v-if="attributeEntries(record.changedAttributes).length" class="attribute-list">
+                                <div v-for="attribute in attributeEntries(record.changedAttributes)" :key="attribute[0]" class="attribute-change">
+                                    <dt>{{ attribute[0] }}</dt>
+                                    <dd><span class="old-value">{{ displayValue(attribute[1].old) }}</span> → <span class="new-value">{{ displayValue(attribute[1].new) }}</span></dd>
+                                </div>
+                            </dl>
                             <div v-if="record.captureStatus === 'FAILED'" class="failure-message">
-                                {{ record.errorMessage || '采集失败，未记录详情' }}
+                                {{ record.errorMessage || '采集失败，未生成字段详情' }}
                             </div>
-                        </td>
-                        <td>
-                            <div class="primary-cell mono ellipsis" :title="record.filePath">{{ record.filePath || '—' }}</div>
-                            <div class="secondary-cell">{{ record.projectName || '未知项目' }} · {{ record.branch || '未知分支' }}</div>
                         </td>
                         <td>
                             <div class="primary-cell">{{ record.commitAuthor || '—' }}</div>
+                            <div class="secondary-cell">{{ record.commitEmail || '—' }}</div>
                             <div class="secondary-cell ellipsis" :title="record.commitMessage">{{ record.commitMessage || '无提交说明' }}</div>
+                            <div class="quiet-cell mono" :title="record.commitSha">{{ shortSha(record.commitSha) }}</div>
                         </td>
                         <td>
-                            <div class="count-strip" title="新增 / 修改 / 删除">
-                                <span class="count-add">+{{ record.addCount || 0 }}</span>
-                                <span class="count-modify">~{{ record.modifyCount || 0 }}</span>
-                                <span class="count-delete">−{{ record.removeCount || 0 }}</span>
-                            </div>
-                            <div class="secondary-cell">IN {{ record.inputChangeCount || 0 }} · OUT {{ record.outputChangeCount || 0 }}</div>
-                        </td>
-                        <td>
-                            <button v-if="record.captureStatus !== 'FAILED'" class="button button--text"
-                                    type="button" @click="openDetail(record, $event)">查看详情</button>
-                            <span v-else class="secondary-cell">无变动详情</span>
+                            <button v-if="record.captureStatus !== 'FAILED'" class="button button--text" type="button"
+                                    @click="openDetail(record, $event)">查看详情</button>
+                            <span v-else class="quiet-cell">无详情</span>
                         </td>
                     </tr>
                     </tbody>
                 </table>
             </div>
 
-            <nav v-if="!loading && !error && total > 0" class="pagination" aria-label="历史记录分页">
-                <button class="button" type="button" :disabled="current <= 1" @click="changePage(current - 1)">上一页</button>
-                <span class="page-status">{{ current }} / {{ totalPages }}</span>
-                <button class="button" type="button" :disabled="current >= totalPages" @click="changePage(current + 1)">下一页</button>
+            <nav v-if="!historyLoading && !historyError && historyTotal > 0" class="pagination" aria-label="字段变动分页">
+                <button class="button" type="button" :disabled="historyCurrent <= 1" @click="changeHistoryPage(historyCurrent - 1)">上一页</button>
+                <span class="page-status">{{ historyCurrent }} / {{ historyTotalPages }}</span>
+                <button class="button" type="button" :disabled="historyCurrent >= historyTotalPages" @click="changeHistoryPage(historyCurrent + 1)">下一页</button>
+            </nav>
+        </section>
+
+        <section class="workspace-section" aria-labelledby="scan-title">
+            <div class="section-heading">
+                <div>
+                    <h2 id="scan-title">扫描状态</h2>
+                    <p>按工程和窗口查看每日扫描进度、计数与安全错误摘要。</p>
+                </div>
+                <div class="result-count" aria-live="polite">共 <strong>{{ scanTotal }}</strong> 次运行</div>
+            </div>
+
+            <form class="filter-grid filter-grid--scan" @submit.prevent="queryScanRuns">
+                <div class="field">
+                    <label for="scan-start-date">窗口开始日期</label>
+                    <input id="scan-start-date" v-model="scanFilters.startDate" class="control" type="date">
+                </div>
+                <div class="field">
+                    <label for="scan-end-date">窗口结束日期</label>
+                    <input id="scan-end-date" v-model="scanFilters.endDate" class="control" type="date">
+                </div>
+                <div class="field">
+                    <label for="scan-project-id">工程 ID</label>
+                    <input id="scan-project-id" v-model="scanFilters.projectId" class="control" type="text" inputmode="numeric" placeholder="精确查询">
+                </div>
+                <div class="field">
+                    <label for="scan-status">运行状态</label>
+                    <select id="scan-status" v-model="scanFilters.status" class="control">
+                        <option value="">全部</option>
+                        <option value="RUNNING">运行中</option>
+                        <option value="SUCCESS">成功</option>
+                        <option value="COMPLETED_WITH_ERRORS">完成但有错误</option>
+                        <option value="FAILED">失败</option>
+                    </select>
+                </div>
+                <div class="filter-actions">
+                    <button class="button" type="button" :disabled="scanLoading" @click="resetScanFilters">重置</button>
+                    <button class="button button--primary" type="submit" :disabled="scanLoading">查询</button>
+                </div>
+            </form>
+
+            <div class="table-meta">
+                <span class="result-count">第 <strong>{{ scanCurrent }}</strong> / {{ scanTotalPages }} 页</span>
+                <span class="quiet-cell">计数依次为 commit、变动文件、历史、失败文件、跳过。</span>
+            </div>
+
+            <div v-if="scanLoading" class="state" aria-live="polite" aria-busy="true">
+                <span class="spinner" aria-hidden="true"></span>
+                <strong>正在加载扫描状态</strong>
+            </div>
+            <div v-else-if="scanError" class="state state--error" role="alert">
+                <strong>扫描状态加载失败</strong>
+                <span>{{ scanError }}</span>
+                <button class="button" type="button" @click="loadScanRuns">重试</button>
+            </div>
+            <div v-else-if="scanRuns.length === 0" class="state" aria-live="polite">
+                <strong>暂无匹配的扫描记录</strong>
+                <span>可调整窗口日期、工程或状态后重试。</span>
+            </div>
+            <div v-else class="table-scroll" tabindex="0" aria-label="扫描状态表格，可横向滚动">
+                <table class="scan-table">
+                    <thead>
+                    <tr>
+                        <th>工程</th>
+                        <th>扫描窗口</th>
+                        <th>状态</th>
+                        <th>计数</th>
+                        <th>游标 / 耗时</th>
+                        <th>错误摘要</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr v-for="(run, index) in scanRuns" :key="run.id" :class="{ 'is-failed': run.status === 'FAILED' }"
+                        :style="{ animationDelay: Math.min(index, 8) * 18 + 'ms' }">
+                        <td>
+                            <div class="primary-cell">{{ run.projectName || '未知工程' }}</div>
+                            <div class="secondary-cell mono">ID {{ run.projectId || '—' }} · {{ run.branch || '—' }}</div>
+                            <div class="quiet-cell ellipsis" :title="run.projectPath">{{ run.projectPath || '—' }}</div>
+                        </td>
+                        <td>
+                            <div class="primary-cell">{{ formatDateTime(run.windowStart) }}</div>
+                            <div class="secondary-cell">至 {{ formatDateTime(run.windowEnd) }}</div>
+                        </td>
+                        <td><span class="badge" :class="scanStatusClass(run.status)">{{ scanStatusText(run.status) }}</span></td>
+                        <td>
+                            <div class="counter-line">
+                                <span>commit <strong>{{ countValue(run.commitCount) }}</strong></span>
+                                <span>文件 <strong>{{ countValue(run.changedFileCount) }}</strong></span>
+                                <span>历史 <strong>{{ countValue(run.historyCount) }}</strong></span>
+                            </div>
+                            <div class="secondary-cell">失败 {{ countValue(run.failedFileCount) }} · 跳过 {{ countValue(run.skippedCount) }}</div>
+                        </td>
+                        <td>
+                            <div class="primary-cell">{{ run.cursorAdvanced ? '已推进' : '未推进' }}</div>
+                            <div class="secondary-cell">{{ formatDateTime(run.startedAt) }}</div>
+                            <div class="quiet-cell">至 {{ formatDateTime(run.finishedAt) }}</div>
+                        </td>
+                        <td><div class="failure-message">{{ run.errorMessage || '—' }}</div></td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <nav v-if="!scanLoading && !scanError && scanTotal > 0" class="pagination" aria-label="扫描状态分页">
+                <button class="button" type="button" :disabled="scanCurrent <= 1" @click="changeScanPage(scanCurrent - 1)">上一页</button>
+                <span class="page-status">{{ scanCurrent }} / {{ scanTotalPages }}</span>
+                <button class="button" type="button" :disabled="scanCurrent >= scanTotalPages" @click="changeScanPage(scanCurrent + 1)">下一页</button>
             </nav>
         </section>
     </main>
 
     <transition name="drawer">
         <div v-if="detailOpen" class="drawer-backdrop" @click.self="closeDetail">
-            <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="detail-title">
+            <aside ref="detailDrawer" class="drawer" role="dialog" aria-modal="true" aria-labelledby="detail-title" tabindex="-1">
                 <header class="drawer-header">
                     <div>
                         <h2 id="detail-title">字段变动详情</h2>
-                        <p>{{ selectedRecord ? (selectedRecord.flowId || '未知交易') + ' · ' + (selectedRecord.filePath || '未知文件') : '正在读取' }}</p>
+                        <p>{{ selectedRecord ? (selectedRecord.flowId || '文件级变动') + ' · ' + (selectedRecord.filePath || '未知文件') : '正在读取' }}</p>
                     </div>
-                    <button ref="detailClose" class="icon-button" type="button" @click="closeDetail" aria-label="关闭详情">×</button>
+                    <button ref="detailClose" class="icon-button" type="button" aria-label="关闭详情" @click="closeDetail">×</button>
                 </header>
 
                 <div class="drawer-body">
@@ -719,67 +653,50 @@
                         <span class="spinner" aria-hidden="true"></span>
                         <strong>正在加载详情</strong>
                     </div>
-
                     <div v-else-if="detailError" class="state state--error" role="alert">
                         <strong>详情加载失败</strong>
                         <span>{{ detailError }}</span>
-                        <button class="button" type="button" @click="loadDetail(selectedRecord.id)">重试</button>
+                        <button class="button" type="button" @click="loadDetail(selectedRecord.logId)">重试</button>
                     </div>
-
                     <template v-else-if="detail">
                         <div class="detail-meta">
+                            <div class="meta-item"><span>工程</span><strong>{{ detail.log.projectName || '—' }} / {{ detail.log.projectId || '—' }}</strong></div>
                             <div class="meta-item"><span>交易码</span><strong class="mono">{{ detail.log.flowId || '—' }}</strong></div>
-                            <div class="meta-item"><span>提交人</span><strong>{{ detail.log.commitAuthor || '—' }}</strong></div>
                             <div class="meta-item"><span>提交时间</span><strong>{{ formatDateTime(detail.log.commitTime) }}</strong></div>
-                            <div class="meta-item"><span>项目 / 分支</span><strong>{{ detail.log.projectName || '—' }} / {{ detail.log.branch || '—' }}</strong></div>
+                            <div class="meta-item"><span>提交人</span><strong>{{ detail.log.commitAuthor || '—' }} · {{ detail.log.commitEmail || '—' }}</strong></div>
                             <div class="meta-item"><span>提交 SHA</span><strong class="mono">{{ detail.log.commitSha || '—' }}</strong></div>
                             <div class="meta-item"><span>提交说明</span><strong>{{ detail.log.commitMessage || '无提交说明' }}</strong></div>
                         </div>
 
-                        <div class="io-tabs" role="tablist" aria-label="输入输出变动">
-                            <button class="io-tab" type="button" role="tab" :aria-selected="activeIo === 'input'"
-                                    @click="activeIo = 'input'">输入 input · {{ detailCount('input') }}</button>
-                            <button class="io-tab" type="button" role="tab" :aria-selected="activeIo === 'output'"
-                                    @click="activeIo = 'output'">输出 output · {{ detailCount('output') }}</button>
+                        <div v-if="!Array.isArray(detail.details) || detail.details.length === 0" class="detail-empty" aria-live="polite">
+                            这是空字段文件的文件级变动，没有字段详情。
                         </div>
-
-                        <div v-if="filteredDetails.length === 0" class="detail-empty" aria-live="polite">
-                            该分组没有字段变动
-                        </div>
-
-                        <div v-else class="detail-list" role="tabpanel">
-                            <article v-for="detail in detail.details.filter(detail => detail.ioType === activeIo)"
-                                     :key="detail.id || detail.fieldPath"
-                                     class="diff-section" :class="detailSectionClass(detail.changeType)">
+                        <div v-else class="detail-list">
+                            <article v-for="detail in detail.details" :key="detail.id || detail.ioType + detail.fieldPath + detail.fieldId" class="diff-section">
                                 <header class="diff-heading">
                                     <div>
-                                        <h3 class="mono">{{ detail.fieldPath || '未知字段路径' }}</h3>
+                                        <h3 class="mono">{{ detail.ioType || '—' }} · {{ detail.fieldPath || '—' }}</h3>
                                         <p class="field-id">FIELD ID: {{ detail.fieldId || '—' }}</p>
                                     </div>
-                                    <span class="diff-badge" :class="changeBadgeClass(detail.changeType)">
-                                        {{ changeTypeText(detail.changeType) }}
-                                    </span>
+                                    <span class="badge" :class="changeBadgeClass(detail.changeType)">{{ changeTypeText(detail.changeType) }}</span>
                                 </header>
-
-                                <div v-if="detail.changeType === 'ADD'" class="snapshot">
-                                    <p class="snapshot-title">新增字段 · 完整新快照</p>
+                                <div v-if="detail.changeType === 'ADD'">
+                                    <p class="snapshot-title">完整新快照</p>
                                     <div class="snapshot-grid">
                                         <template v-for="entry in snapshotEntries(detail.newSnapshot)" :key="entry[0]">
                                             <div class="key">{{ entry[0] }}</div><div>{{ displayValue(entry[1]) }}</div>
                                         </template>
                                     </div>
                                 </div>
-
-                                <div v-else-if="detail.changeType === 'DELETE'" class="snapshot">
-                                    <p class="snapshot-title">删除字段 · 完整旧快照</p>
+                                <div v-else-if="detail.changeType === 'DELETE'">
+                                    <p class="snapshot-title">完整旧快照</p>
                                     <div class="snapshot-grid">
                                         <template v-for="entry in snapshotEntries(detail.oldSnapshot)" :key="entry[0]">
                                             <div class="key">{{ entry[0] }}</div><div>{{ displayValue(entry[1]) }}</div>
                                         </template>
                                     </div>
                                 </div>
-
-                                <div v-else-if="detail.changeType === 'MODIFY'" class="snapshot table-shell">
+                                <div v-else class="table-scroll" tabindex="0" aria-label="属性变化表格，可横向滚动">
                                     <table class="attribute-table">
                                         <thead><tr><th>属性</th><th>原值</th><th>新值</th></tr></thead>
                                         <tbody>
@@ -802,167 +719,275 @@
 
 <script>
     const { createApp } = Vue;
+    const dateTimeFormatter = new Intl.DateTimeFormat('zh-CN', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+    });
+    const focusableSelector = [
+        'a[href]', 'button:not([disabled])', 'input:not([disabled])',
+        'select:not([disabled])', 'textarea:not([disabled])', '[tabindex]:not([tabindex="-1"])'
+    ].join(',');
 
     createApp({
         data() {
+            const today = this.todayDate();
             return {
-                filters: this.emptyFilters(),
-                current: 1,
                 size: 20,
-                total: 0,
-                records: [],
-                loading: false,
-                error: '',
+                historyFilters: this.emptyHistoryFilters(today),
+                historyCurrent: 1,
+                historyTotal: 0,
+                historyRecords: [],
+                historyLoading: false,
+                historyError: '',
+                historyRequestGeneration: 0,
+                scanFilters: this.emptyScanFilters(today),
+                scanCurrent: 1,
+                scanTotal: 0,
+                scanRuns: [],
+                scanLoading: false,
+                scanError: '',
+                scanRequestGeneration: 0,
                 detailOpen: false,
                 detailLoading: false,
                 detailError: '',
                 detail: null,
                 selectedRecord: null,
-                activeIo: 'input',
+                detailRequestGeneration: 0,
                 previousFocus: null
             };
         },
         computed: {
-            totalPages() {
-                return Math.max(1, Math.ceil(this.total / this.size));
+            historyTotalPages() {
+                return Math.max(1, Math.ceil(this.historyTotal / this.size));
             },
-            filteredDetails() {
-                if (!this.detail || !Array.isArray(this.detail.details)) return [];
-                const activeIo = this.activeIo;
-                return this.detail.details.filter(detail => detail.ioType === activeIo);
+            scanTotalPages() {
+                return Math.max(1, Math.ceil(this.scanTotal / this.size));
             }
         },
         mounted() {
             window.addEventListener('keydown', this.onGlobalKeydown);
             this.loadHistory();
+            this.loadScanRuns();
         },
         beforeUnmount() {
+            this.historyRequestGeneration += 1;
+            this.scanRequestGeneration += 1;
+            this.detailRequestGeneration += 1;
+            this.setBackgroundInert(false);
             window.removeEventListener('keydown', this.onGlobalKeydown);
         },
         methods: {
-            emptyFilters() {
+            todayDate() {
+                const now = new Date();
+                const pad = value => String(value).padStart(2, '0');
+                return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+            },
+            emptyHistoryFilters(today = this.todayDate()) {
                 return {
-                    flowId: '', filePath: '', commitAuthor: '',
-                    fileChangeType: '', captureStatus: '', startTime: '', endTime: ''
+                    startDate: today, endDate: today, projectName: '', projectId: '', filePath: '',
+                    flowId: '', ioType: '', fieldId: '', changeType: '', commitAuthor: '', captureStatus: ''
                 };
             },
-            buildParams() {
-                const params = { current: this.current, size: this.size };
-                Object.entries(this.filters).forEach(([key, value]) => {
-                    if (typeof value === 'string' && value.trim() !== '') {
-                        params[key] = value.trim();
-                    }
+            emptyScanFilters(today = this.todayDate()) {
+                return { startDate: today, endDate: today, projectId: '', status: '' };
+            },
+            cleanParams(source, base) {
+                const params = { ...base };
+                Object.entries(source).forEach(([key, value]) => {
+                    if (typeof value === 'string' && value.trim() !== '') params[key] = value.trim();
                 });
                 return params;
             },
+            buildHistoryParams() {
+                return this.cleanParams(this.historyFilters, { current: this.historyCurrent, size: this.size });
+            },
+            buildScanParams() {
+                return this.cleanParams(this.scanFilters, { current: this.scanCurrent, size: this.size });
+            },
+            responsePage(response, fallback) {
+                if (!response.data || response.data.code !== 200) {
+                    throw new Error(response.data && response.data.message || fallback);
+                }
+                return response.data.data || {};
+            },
+            errorText(exception, fallback) {
+                return exception.response && exception.response.data && exception.response.data.message
+                    || exception.message || fallback;
+            },
             async loadHistory() {
-                this.loading = true;
-                this.error = '';
+                const generation = ++this.historyRequestGeneration;
+                this.historyLoading = true;
+                this.historyError = '';
                 try {
-                    const response = await axios.get('/api/flow-field-change/list', {
-                        params: this.buildParams()
-                    });
-                    if (!response.data || response.data.code !== 200) {
-                        throw new Error(response.data && response.data.message || '查询变动历史失败');
-                    }
-                    const page = response.data.data || {};
-                    this.records = Array.isArray(page.records) ? page.records : [];
-                    this.total = Number(page.total) || 0;
-                    const lastPage = Math.max(1, Math.ceil(this.total / this.size));
-                    if (this.current > lastPage) {
-                        this.current = lastPage;
-                        await this.loadHistory();
-                    }
+                    const response = await axios.get('/api/flow-field-change/list', { params: this.buildHistoryParams() });
+                    if (generation !== this.historyRequestGeneration) return;
+                    const page = this.responsePage(response, '查询字段变动失败');
+                    this.historyRecords = Array.isArray(page.records) ? page.records : [];
+                    this.historyTotal = Number(page.total) || 0;
                 } catch (exception) {
-                    this.records = [];
-                    this.total = 0;
-                    this.error = exception.response && exception.response.data && exception.response.data.message
-                        || exception.message || '网络异常，请稍后重试';
+                    if (generation !== this.historyRequestGeneration) return;
+                    this.historyRecords = [];
+                    this.historyTotal = 0;
+                    this.historyError = this.errorText(exception, '网络异常，请稍后重试');
                 } finally {
-                    this.loading = false;
+                    if (generation === this.historyRequestGeneration) this.historyLoading = false;
+                }
+            },
+            async loadScanRuns() {
+                const generation = ++this.scanRequestGeneration;
+                this.scanLoading = true;
+                this.scanError = '';
+                try {
+                    const response = await axios.get('/api/flow-field-change/scan-runs', { params: this.buildScanParams() });
+                    if (generation !== this.scanRequestGeneration) return;
+                    const page = this.responsePage(response, '查询扫描状态失败');
+                    this.scanRuns = Array.isArray(page.records) ? page.records : [];
+                    this.scanTotal = Number(page.total) || 0;
+                } catch (exception) {
+                    if (generation !== this.scanRequestGeneration) return;
+                    this.scanRuns = [];
+                    this.scanTotal = 0;
+                    this.scanError = this.errorText(exception, '网络异常，请稍后重试');
+                } finally {
+                    if (generation === this.scanRequestGeneration) this.scanLoading = false;
                 }
             },
             queryHistory() {
-                this.current = 1;
+                this.historyCurrent = 1;
                 this.loadHistory();
             },
-            resetFilters() {
-                this.filters = this.emptyFilters();
-                this.current = 1;
+            queryScanRuns() {
+                this.scanCurrent = 1;
+                this.loadScanRuns();
+            },
+            resetHistoryFilters() {
+                this.historyFilters = this.emptyHistoryFilters();
+                this.historyCurrent = 1;
                 this.loadHistory();
             },
-            changePage(page) {
-                const nextPage = Math.min(Math.max(1, page), this.totalPages);
-                if (nextPage === this.current) return;
-                this.current = nextPage;
+            resetScanFilters() {
+                this.scanFilters = this.emptyScanFilters();
+                this.scanCurrent = 1;
+                this.loadScanRuns();
+            },
+            changeHistoryPage(page) {
+                const next = Math.min(Math.max(1, page), this.historyTotalPages);
+                if (next === this.historyCurrent) return;
+                this.historyCurrent = next;
                 this.loadHistory();
+            },
+            changeScanPage(page) {
+                const next = Math.min(Math.max(1, page), this.scanTotalPages);
+                if (next === this.scanCurrent) return;
+                this.scanCurrent = next;
+                this.loadScanRuns();
             },
             async openDetail(record, event) {
                 if (!record || record.captureStatus === 'FAILED') return;
                 this.previousFocus = event && event.currentTarget || document.activeElement;
                 this.selectedRecord = record;
                 this.detailOpen = true;
-                this.activeIo = 'input';
                 this.detail = null;
                 this.detailError = '';
+                this.setBackgroundInert(true);
                 this.$nextTick(() => this.$refs.detailClose && this.$refs.detailClose.focus());
-                await this.loadDetail(record.id);
+                await this.loadDetail(record.logId);
             },
-            async loadDetail(id) {
+            async loadDetail(logId) {
+                const generation = ++this.detailRequestGeneration;
                 this.detailLoading = true;
                 this.detailError = '';
                 try {
-                    const response = await axios.get('/api/flow-field-change/detail/' + encodeURIComponent(id));
+                    const response = await axios.get('/api/flow-field-change/detail/' + encodeURIComponent(logId));
+                    if (generation !== this.detailRequestGeneration || !this.detailOpen) return;
                     if (!response.data || response.data.code !== 200) {
-                        throw new Error(response.data && response.data.message || '查询变动详情失败');
+                        throw new Error(response.data && response.data.message || '查询字段变动详情失败');
                     }
                     this.detail = response.data.data;
                 } catch (exception) {
+                    if (generation !== this.detailRequestGeneration || !this.detailOpen) return;
                     this.detail = null;
-                    this.detailError = exception.response && exception.response.data && exception.response.data.message
-                        || exception.message || '网络异常，请稍后重试';
+                    this.detailError = this.errorText(exception, '网络异常，请稍后重试');
                 } finally {
-                    this.detailLoading = false;
+                    if (generation === this.detailRequestGeneration) this.detailLoading = false;
                 }
             },
             closeDetail() {
                 if (!this.detailOpen) return;
+                this.detailRequestGeneration += 1;
                 this.detailOpen = false;
-                this.detail = null;
+                this.detailLoading = false;
                 this.detailError = '';
-                const focusTarget = this.previousFocus;
+                this.detail = null;
+                this.selectedRecord = null;
+                this.setBackgroundInert(false);
+                const target = this.previousFocus;
                 this.previousFocus = null;
-                this.$nextTick(() => focusTarget && focusTarget.focus && focusTarget.focus());
+                this.$nextTick(() => target && target.focus && target.focus());
+            },
+            setBackgroundInert(value) {
+                const workspace = this.$refs.workspace;
+                if (!workspace) return;
+                workspace.inert = value;
+                if (value) workspace.setAttribute('aria-hidden', 'true');
+                else workspace.removeAttribute('aria-hidden');
+            },
+            trapFocus(event) {
+                const drawer = this.$refs.detailDrawer;
+                if (!drawer) return;
+                const focusable = Array.from(drawer.querySelectorAll(focusableSelector));
+                if (focusable.length === 0) {
+                    event.preventDefault();
+                    drawer.focus();
+                    return;
+                }
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                if (event.shiftKey && document.activeElement === first) {
+                    event.preventDefault();
+                    last.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault();
+                    first.focus();
+                }
             },
             onGlobalKeydown(event) {
+                if (!this.detailOpen) return;
                 if (event.key === 'Escape') this.closeDetail();
-            },
-            detailCount(ioType) {
-                if (!this.detail || !Array.isArray(this.detail.details)) return 0;
-                return this.detail.details.filter(item => item.ioType === ioType).length;
+                else if (event.key === 'Tab') this.trapFocus(event);
             },
             changeTypeText(type) {
-                return { ADD: '新增', MODIFY: '修改', DELETE: '删除' }[type] || type || '未知';
+                return { ADD: '新增', MODIFY: '修改', DELETE: '删除' }[type] || type || '—';
             },
             changeBadgeClass(type) {
-                return {
-                    ADD: 'diff-badge--add',
-                    MODIFY: 'diff-badge--modify',
-                    DELETE: 'diff-badge--delete'
-                }[type] || '';
+                return { ADD: 'badge--add', MODIFY: 'badge--modify', DELETE: 'badge--delete' }[type] || '';
             },
-            detailSectionClass(type) {
+            scanStatusText(status) {
                 return {
-                    ADD: 'diff-section--add',
-                    MODIFY: 'diff-section--modify',
-                    DELETE: 'diff-section--delete'
-                }[type] || '';
+                    RUNNING: '运行中', SUCCESS: '成功',
+                    COMPLETED_WITH_ERRORS: '完成但有错误', FAILED: '失败'
+                }[status] || status || '未知';
+            },
+            scanStatusClass(status) {
+                return {
+                    RUNNING: 'badge--running', SUCCESS: 'badge--success',
+                    COMPLETED_WITH_ERRORS: 'badge--warning', FAILED: 'badge--failed'
+                }[status] || '';
             },
             snapshotEntries(snapshot) {
-                return Object.entries(snapshot || {});
+                if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return [];
+                return Object.entries(snapshot).sort(([left], [right]) => left.localeCompare(right));
             },
             attributeEntries(changedAttributes) {
-                return Object.entries(changedAttributes || {});
+                if (!changedAttributes || typeof changedAttributes !== 'object' || Array.isArray(changedAttributes)) return [];
+                return Object.entries(changedAttributes)
+                    .sort(([left], [right]) => left.localeCompare(right))
+                    .map(([name, change]) => {
+                        if (change && typeof change === 'object' && !Array.isArray(change)) {
+                            return [name, { old: change.old, new: change.new }];
+                        }
+                        return [name, { old: change, new: null }];
+                    });
             },
             displayValue(value) {
                 if (value === null || value === undefined) return '∅';
@@ -973,12 +998,14 @@
                 if (!value) return '—';
                 const date = new Date(value);
                 if (Number.isNaN(date.getTime())) return String(value).replace('T', ' ');
-                const pad = number => String(number).padStart(2, '0');
-                return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} `
-                    + `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+                return dateTimeFormatter.format(date).replaceAll('/', '-');
             },
             shortSha(value) {
-                return value ? String(value).slice(0, 8) : '—';
+                return value ? String(value).slice(0, 10) : '—';
+            },
+            countValue(value) {
+                const count = Number(value);
+                return Number.isFinite(count) ? count : 0;
             }
         }
     }).mount('#app');
