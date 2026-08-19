@@ -1,6 +1,7 @@
 package com.sunline.dict.service.impl;
 
 import com.sunline.dict.service.flowchange.GitLabApiClient;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -35,6 +36,7 @@ public class GitLabApiClientImpl implements GitLabApiClient {
     private final HttpClient httpClient;
     private final RetrySleeper retrySleeper;
 
+    @Autowired
     public GitLabApiClientImpl(@Value("${git.gitlab.url}") String gitLabUrl,
                                @Value("${gitlab.access-token:}") String accessToken) {
         this(gitLabUrl, accessToken, HttpClient.newBuilder()
