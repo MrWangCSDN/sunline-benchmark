@@ -6,7 +6,6 @@ import com.sunline.dict.dto.FlowFieldChangeDtos.FieldChangeRowView;
 import com.sunline.dict.dto.FlowFieldChangeDtos.FlowFieldChangeHistoryDetail;
 import com.sunline.dict.dto.FlowFieldChangeDtos.ScanRunQuery;
 import com.sunline.dict.dto.FlowFieldChangeDtos.ScanRunView;
-import com.sunline.dict.service.flowchange.FlowFieldChangeCaptureMeta;
 import com.sunline.dict.service.flowchange.FlowFieldChangeMeta;
 import com.sunline.dict.service.flowchange.FlowFieldChangeSet;
 
@@ -23,18 +22,6 @@ public interface FlowFieldChangeLogService {
     FlowFieldChangeHistoryDetail getDetail(long logId);
 
     Page<ScanRunView> pageScanRuns(ScanRunQuery query);
-
-    /** Temporary Task 4 bridge; removed with Webhook capture in Task 6. */
-    @Deprecated(forRemoval = true)
-    boolean existsByDedupKey(String dedupKey);
-
-    /** Temporary Task 4 bridge; daily scanning never calls this overload. */
-    @Deprecated(forRemoval = true)
-    WriteOutcome recordSuccess(FlowFieldChangeCaptureMeta meta, FlowFieldChangeSet changeSet);
-
-    /** Temporary Task 4 bridge; daily scanning never calls this overload. */
-    @Deprecated(forRemoval = true)
-    WriteOutcome recordFailure(FlowFieldChangeCaptureMeta meta, String safeError);
 
     enum HistoryState {
         NONE,

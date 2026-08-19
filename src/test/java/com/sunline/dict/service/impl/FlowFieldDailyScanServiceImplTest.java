@@ -11,7 +11,6 @@ import com.sunline.dict.service.FlowFieldChangeLogService.HistoryState;
 import com.sunline.dict.service.FlowFieldChangeLogService.WriteDisposition;
 import com.sunline.dict.service.FlowFieldChangeLogService.WriteOutcome;
 import com.sunline.dict.service.FlowFieldDailyScanService.BatchScanResult;
-import com.sunline.dict.service.flowchange.FlowFieldChangeCaptureMeta;
 import com.sunline.dict.service.flowchange.FlowFieldChangeDiffService;
 import com.sunline.dict.service.flowchange.FlowFieldChangeMeta;
 import com.sunline.dict.service.flowchange.FlowFieldChangeSet;
@@ -685,23 +684,5 @@ class FlowFieldDailyScanServiceImplTest {
             throw new UnsupportedOperationException();
         }
 
-        @Override
-        @SuppressWarnings("removal")
-        public boolean existsByDedupKey(String dedupKey) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        @SuppressWarnings("removal")
-        public WriteOutcome recordSuccess(FlowFieldChangeCaptureMeta meta,
-                                          FlowFieldChangeSet changeSet) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        @SuppressWarnings("removal")
-        public WriteOutcome recordFailure(FlowFieldChangeCaptureMeta meta, String safeError) {
-            throw new UnsupportedOperationException();
-        }
     }
 }

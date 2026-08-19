@@ -91,7 +91,7 @@ public class WebhookController {
                 return Result.success(Map.of("message", "非push事件，已忽略"));
             }
             
-            Map<String, Object> result = webhookService.handleGitLabPushEvent(payload, eventUuid);
+            Map<String, Object> result = webhookService.handleGitLabPushEvent(payload);
 
             // 异步触发调用关系增量扫描（从 payload 的 commits 中提取变更文件）
             try {

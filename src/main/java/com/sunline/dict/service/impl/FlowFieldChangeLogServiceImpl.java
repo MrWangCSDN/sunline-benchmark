@@ -19,7 +19,6 @@ import com.sunline.dict.mapper.FlowFieldChangeDetailMapper;
 import com.sunline.dict.mapper.FlowFieldChangeLogMapper;
 import com.sunline.dict.mapper.FlowFieldChangeQueryMapper;
 import com.sunline.dict.service.FlowFieldChangeLogService;
-import com.sunline.dict.service.flowchange.FlowFieldChangeCaptureMeta;
 import com.sunline.dict.service.flowchange.FlowFieldChangeMeta;
 import com.sunline.dict.service.flowchange.FlowFieldChangeSet;
 import com.sunline.dict.service.flowchange.FlowFieldChangeSet.FieldChange;
@@ -155,66 +154,6 @@ public class FlowFieldChangeLogServiceImpl implements FlowFieldChangeLogService 
         return queryMapper.selectScanRuns(new Page<>(query.current(), query.size()), query);
     }
 
-    @Override
-    @Deprecated(forRemoval = true)
-    public boolean existsByDedupKey(String dedupKey) {
-        return state(dedupKey) != HistoryState.NONE;
-    }
-
-    @Override
-    @Deprecated(forRemoval = true)
-    @Transactional(rollbackFor = Exception.class)
-    public WriteOutcome recordSuccess(FlowFieldChangeCaptureMeta meta, FlowFieldChangeSet changeSet) {
-        if (meta == null || changeSet == null) {
-            throw new IllegalArgumentException("采集元信息和变更集不能为空");
-        }
-        rejectEmptyModify(changeSet);
-        return recordLegacy(meta, changeSet, null);
-    }
-
-    @Override
-    @Deprecated(forRemoval = true)
-    @Transactional(rollbackFor = Exception.class)
-    public WriteOutcome recordFailure(FlowFieldChangeCaptureMeta meta, String safeError) {
-        if (meta == null) {
-            throw new IllegalArgumentException("采集元信息不能为空");
-        }
-        return recordLegacy(meta, null, safeError);
-    }
-
-    private WriteOutcome recordLegacy(FlowFieldChangeCaptureMeta meta,
-                                      FlowFieldChangeSet changeSet,
-                                      String safeError) {
-        FlowFieldChangeLog existing = logMapper.selectByDedupKey(meta.dedupKey());
-        if (isSuccess(existing)) {
-            return skipped(existing);
-        }
-        FlowFieldChangeLog row = legacyHeader(meta);
-        if (changeSet == null) {
-            applyFailure(row, safeError);
-        } else {
-            applySuccess(row, changeSet);
-        }
-        WriteDisposition disposition = saveHeader(existing, row);
-        if (changeSet != null) {
-            insertDetails(row.getId(), changeSet.details());
-        }
-        return new WriteOutcome(row.getId(), disposition);
-    }
-
-    private WriteDisposition saveHeader(FlowFieldChangeLog existing, FlowFieldChangeLog row) {
-        if (existing == null) {
-            insertHeader(row);
-            return WriteDisposition.INSERTED;
-        }
-        row.setId(existing.getId());
-        detailMapper.deleteByLogId(existing.getId());
-        if (logMapper.updateDaily(row) != 1) {
-            throw new IllegalStateException("更新变动历史失败");
-        }
-        return WriteDisposition.UPGRADED;
-    }
-
     private LockedHistory ensureLocked(FlowFieldChangeMeta meta) {
         String marker = "写入占位-" + UUID.randomUUID();
         FlowFieldChangeLog placeholder = dailyHeader(meta);
@@ -236,13 +175,6 @@ public class FlowFieldChangeLogServiceImpl implements FlowFieldChangeLogService 
             throw new IllegalStateException("更新变动历史失败");
         }
         return locked.inserted() ? WriteDisposition.INSERTED : WriteDisposition.UPGRADED;
-    }
-
-    private void insertHeader(FlowFieldChangeLog row) {
-        logMapper.insert(row);
-        if (row.getId() == null) {
-            throw new IllegalStateException("未生成变动历史主键");
-        }
     }
 
     private void insertDetails(long logId, List<FieldChange> changes) {
@@ -271,24 +203,6 @@ public class FlowFieldChangeLogServiceImpl implements FlowFieldChangeLogService 
         row.setBranch(meta.branch());
         row.setFilePath(meta.effectiveFilePath());
         row.setParentSha(meta.parentSha());
-        row.setCommitSha(meta.commitSha());
-        row.setCommitMessage(meta.commitMessage());
-        row.setCommitAuthor(meta.commitAuthor());
-        row.setCommitEmail(meta.commitEmail());
-        row.setCommitTime(meta.commitTime());
-        return row;
-    }
-
-    private FlowFieldChangeLog legacyHeader(FlowFieldChangeCaptureMeta meta) {
-        FlowFieldChangeLog row = new FlowFieldChangeLog();
-        row.setDedupKey(meta.dedupKey());
-        row.setWebhookUuid(meta.webhookUuid());
-        row.setProjectId(meta.projectId());
-        row.setProjectName(meta.projectName());
-        row.setBranch(meta.branch());
-        row.setFilePath(meta.filePath());
-        row.setBeforeSha(meta.beforeSha());
-        row.setAfterSha(meta.afterSha());
         row.setCommitSha(meta.commitSha());
         row.setCommitMessage(meta.commitMessage());
         row.setCommitAuthor(meta.commitAuthor());

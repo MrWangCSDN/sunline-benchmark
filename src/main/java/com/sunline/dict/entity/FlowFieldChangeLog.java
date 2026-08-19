@@ -3,7 +3,6 @@ package com.sunline.dict.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.io.Serializable;
 import java.time.LocalDate;
@@ -18,9 +17,6 @@ public class FlowFieldChangeLog implements Serializable {
     private String dedupKey;
     private Long scanRunId;
     private LocalDate changeDate;
-    // Deprecated Webhook compatibility fields are removed with capture in Task 6.
-    @JsonIgnore
-    private String webhookUuid;
     private Long projectId;
     private String projectName;
     private String projectPath;
@@ -31,10 +27,6 @@ public class FlowFieldChangeLog implements Serializable {
     private String fileChangeType;
     private String captureStatus;
     private String errorMessage;
-    @JsonIgnore
-    private String beforeSha;
-    @JsonIgnore
-    private String afterSha;
     private String parentSha;
     private String commitSha;
     private String commitMessage;
@@ -57,8 +49,6 @@ public class FlowFieldChangeLog implements Serializable {
     public void setScanRunId(Long scanRunId) { this.scanRunId = scanRunId; }
     public LocalDate getChangeDate() { return changeDate; }
     public void setChangeDate(LocalDate changeDate) { this.changeDate = changeDate; }
-    public String getWebhookUuid() { return webhookUuid; }
-    public void setWebhookUuid(String webhookUuid) { this.webhookUuid = webhookUuid; }
     public Long getProjectId() { return projectId; }
     public void setProjectId(Long projectId) { this.projectId = projectId; }
     public String getProjectName() { return projectName; }
@@ -79,10 +69,6 @@ public class FlowFieldChangeLog implements Serializable {
     public void setCaptureStatus(String captureStatus) { this.captureStatus = captureStatus; }
     public String getErrorMessage() { return errorMessage; }
     public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
-    public String getBeforeSha() { return beforeSha; }
-    public void setBeforeSha(String beforeSha) { this.beforeSha = beforeSha; }
-    public String getAfterSha() { return afterSha; }
-    public void setAfterSha(String afterSha) { this.afterSha = afterSha; }
     public String getParentSha() { return parentSha; }
     public void setParentSha(String parentSha) { this.parentSha = parentSha; }
     public String getCommitSha() { return commitSha; }

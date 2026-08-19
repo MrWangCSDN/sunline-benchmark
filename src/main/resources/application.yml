@@ -76,6 +76,13 @@ gitlab:
   validate-uat-from-sit: true  # 是否启用 uat 分支校验（默认 false）
   bypass-keywords: 用于贯标优先,紧急修复优先  # 白名单关键字（逗号分隔），commit message 包含任一关键字时跳过校验
 
+flow-field-change:
+  scan:
+    enabled: true
+    cron: "0 0 22 * * ?"
+    zone: "Asia/Shanghai"
+    page-size: 100
+
 # 数据库导出配置
 database:
   export:
