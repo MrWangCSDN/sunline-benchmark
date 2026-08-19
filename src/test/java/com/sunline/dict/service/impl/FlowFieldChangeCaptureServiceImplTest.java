@@ -98,8 +98,8 @@ class FlowFieldChangeCaptureServiceImplTest {
         FlowFieldChangeCaptureResult result = service.capture(payload, "event-feature");
 
         verify(fileService, never()).fetch(anyLong(), anyString(), anyString(), anyString());
-        verify(logService, never()).recordSuccess(any(), any());
-        verify(logService, never()).recordFailure(any(), anyString());
+        verify(logService, never()).recordSuccess(any(FlowFieldChangeCaptureMeta.class), any());
+        verify(logService, never()).recordFailure(any(FlowFieldChangeCaptureMeta.class), anyString());
         assertTrue(result.afterContents().isEmpty());
         assertEquals(0, result.successCount());
     }
@@ -113,7 +113,7 @@ class FlowFieldChangeCaptureServiceImplTest {
         FlowFieldChangeCaptureResult result = service.capture(payload, "event-java");
 
         verify(fileService, never()).fetch(anyLong(), anyString(), anyString(), anyString());
-        verify(logService, never()).recordSuccess(any(), any());
+        verify(logService, never()).recordSuccess(any(FlowFieldChangeCaptureMeta.class), any());
         assertEquals(0, result.successCount());
         assertEquals(0, result.failedCount());
         assertEquals(0, result.skippedCount());
@@ -129,7 +129,7 @@ class FlowFieldChangeCaptureServiceImplTest {
         FlowFieldChangeCaptureResult result = service.capture(payload, null);
 
         ArgumentCaptor<FlowFieldChangeSet> captor = ArgumentCaptor.forClass(FlowFieldChangeSet.class);
-        verify(logService).recordSuccess(any(), captor.capture());
+        verify(logService).recordSuccess(any(FlowFieldChangeCaptureMeta.class), captor.capture());
         verify(fileService, times(1)).fetch(42L, "group/project", FILE, "newSha");
         assertEquals(FlowFieldChangeSet.FileChangeType.ADD, captor.getValue().fileChangeType());
         assertEquals(1, result.successCount());
@@ -145,7 +145,7 @@ class FlowFieldChangeCaptureServiceImplTest {
         service.capture(payload, "event-delete");
 
         ArgumentCaptor<FlowFieldChangeSet> captor = ArgumentCaptor.forClass(FlowFieldChangeSet.class);
-        verify(logService).recordSuccess(any(), captor.capture());
+        verify(logService).recordSuccess(any(FlowFieldChangeCaptureMeta.class), captor.capture());
         verify(fileService, times(1)).fetch(42L, "group/project", FILE, "oldSha");
         assertEquals(FlowFieldChangeSet.FileChangeType.DELETE, captor.getValue().fileChangeType());
     }
@@ -162,8 +162,8 @@ class FlowFieldChangeCaptureServiceImplTest {
 
         FlowFieldChangeCaptureResult result = service.capture(payload, "event-no-diff");
 
-        verify(logService, never()).recordSuccess(any(), any());
-        verify(logService, never()).recordFailure(any(), anyString());
+        verify(logService, never()).recordSuccess(any(FlowFieldChangeCaptureMeta.class), any());
+        verify(logService, never()).recordFailure(any(FlowFieldChangeCaptureMeta.class), anyString());
         assertEquals(Map.of(FILE, sameInterfaceWithOtherBody), result.afterContents());
         assertEquals(1, result.skippedCount());
     }
@@ -180,8 +180,8 @@ class FlowFieldChangeCaptureServiceImplTest {
         FlowFieldChangeCaptureResult result = service.capture(payload, " ");
 
         verify(fileService, never()).fetch(anyLong(), anyString(), anyString(), anyString());
-        verify(logService, never()).recordSuccess(any(), any());
-        verify(logService, never()).recordFailure(any(), anyString());
+        verify(logService, never()).recordSuccess(any(FlowFieldChangeCaptureMeta.class), any());
+        verify(logService, never()).recordFailure(any(FlowFieldChangeCaptureMeta.class), anyString());
         assertEquals(1, result.skippedCount());
     }
 
@@ -203,8 +203,8 @@ class FlowFieldChangeCaptureServiceImplTest {
 
         FlowFieldChangeCaptureResult result = service.capture(payload, "event-failures");
 
-        verify(logService, times(2)).recordFailure(any(), anyString());
-        verify(logService, times(1)).recordSuccess(any(), any());
+        verify(logService, times(2)).recordFailure(any(FlowFieldChangeCaptureMeta.class), anyString());
+        verify(logService, times(1)).recordSuccess(any(FlowFieldChangeCaptureMeta.class), any());
         assertEquals(1, result.successCount());
         assertEquals(2, result.failedCount());
         assertEquals(newXml(), result.afterContents().get(validFile));
@@ -221,7 +221,7 @@ class FlowFieldChangeCaptureServiceImplTest {
         FlowFieldChangeCaptureResult result = service.capture(payload, "event-permanent-failure");
 
         ArgumentCaptor<String> reasonCaptor = ArgumentCaptor.forClass(String.class);
-        verify(logService).recordFailure(any(), reasonCaptor.capture());
+        verify(logService).recordFailure(any(FlowFieldChangeCaptureMeta.class), reasonCaptor.capture());
         assertTrue(reasonCaptor.getValue().contains("HTTP 401"));
         assertEquals(1, result.failedCount());
     }
@@ -236,8 +236,8 @@ class FlowFieldChangeCaptureServiceImplTest {
 
         FlowFieldChangeCaptureResult result = service.capture(payload, "event-gone");
 
-        verify(logService, never()).recordSuccess(any(), any());
-        verify(logService, never()).recordFailure(any(), anyString());
+        verify(logService, never()).recordSuccess(any(FlowFieldChangeCaptureMeta.class), any());
+        verify(logService, never()).recordFailure(any(FlowFieldChangeCaptureMeta.class), anyString());
         assertEquals(1, result.skippedCount());
     }
 

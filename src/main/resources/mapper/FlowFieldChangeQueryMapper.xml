@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.sunline.dict.mapper.FlowFieldChangeQueryMapper">
+
+    <select id="selectFieldChanges"
+            resultType="com.sunline.dict.dto.FlowFieldChangeDtos$FieldChangeRowData">
+        SELECT l.id AS log_id,
+               d.id AS detail_id,
+               l.change_date,
+               l.project_id,
+               l.project_name,
+               l.project_path,
+               l.file_path,
+               l.flow_id,
+               l.flow_longname,
+               l.file_change_type,
+               l.capture_status,
+               l.error_message,
+               d.io_type,
+               d.field_path,
+               d.field_id,
+               d.change_type AS detail_change_type,
+               d.changed_attributes,
+               l.commit_sha,
+               l.commit_message,
+               l.commit_author,
+               l.commit_email,
+               l.commit_time
+          FROM flow_field_change_log l
+          LEFT JOIN flow_field_change_detail d ON d.log_id = l.id
+         WHERE l.scan_run_id IS NOT NULL
+        <if test="query.projectId != null">
+           AND l.project_id = #{query.projectId}
+        </if>
+        <if test="query.projectName != null and query.projectName != ''">
+           AND l.project_name LIKE CONCAT('%', #{query.projectName}, '%')
+        </if>
+        <if test="query.filePath != null and query.filePath != ''">
+           AND l.file_path LIKE CONCAT('%', #{query.filePath}, '%')
+        </if>
+        <if test="query.flowId != null and query.flowId != ''">
+           AND l.flow_id = #{query.flowId}
+        </if>
+        <if test="query.ioType != null and query.ioType != ''">
+           AND d.io_type = #{query.ioType}
+        </if>
+        <if test="query.fieldId != null and query.fieldId != ''">
+           AND BINARY d.field_id LIKE CONCAT('%', #{query.fieldId}, '%')
+        </if>
+        <if test="query.changeType != null and query.changeType != ''">
+           AND COALESCE(d.change_type, l.file_change_type) = #{query.changeType}
+        </if>
+        <if test="query.commitAuthor != null and query.commitAuthor != ''">
+           AND l.commit_author LIKE CONCAT('%', #{query.commitAuthor}, '%')
+        </if>
+        <if test="query.captureStatus != null and query.captureStatus != ''">
+           AND l.capture_status = #{query.captureStatus}
+        </if>
+        <if test="query.startDate != null">
+           AND l.change_date &gt;= #{query.startDate}
+        </if>
+        <if test="query.endDate != null">
+           AND l.change_date &lt;= #{query.endDate}
+        </if>
+         ORDER BY l.commit_time DESC, l.id DESC, d.id ASC
+    </select>
+
+    <select id="selectScanRuns"
+            resultType="com.sunline.dict.dto.FlowFieldChangeDtos$ScanRunView">
+        SELECT r.id,
+               r.project_id,
+               r.project_name,
+               r.project_path,
+               r.branch,
+               r.window_start,
+               r.window_end,
+               r.status,
+               r.commit_count,
+               r.changed_file_count,
+               r.history_count,
+               r.failed_file_count,
+               r.skipped_count,
+               r.cursor_advanced,
+               r.error_message,
+               r.started_at,
+               r.finished_at
+          FROM flow_field_scan_run r
+         WHERE 1 = 1
+        <if test="query.projectId != null">
+           AND r.project_id = #{query.projectId}
+        </if>
+        <if test="query.status != null and query.status != ''">
+           AND r.status = #{query.status}
+        </if>
+        <if test="query.startDate != null">
+           AND DATE(r.window_end) &gt;= #{query.startDate}
+        </if>
+        <if test="query.endDate != null">
+           AND DATE(r.window_end) &lt;= #{query.endDate}
+        </if>
+         ORDER BY r.window_end DESC, r.id DESC
+    </select>
+</mapper>

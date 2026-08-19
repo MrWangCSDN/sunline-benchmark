@@ -3,8 +3,10 @@ package com.sunline.dict.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.io.Serializable;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @TableName("flow_field_change_log")
@@ -14,9 +16,14 @@ public class FlowFieldChangeLog implements Serializable {
     @TableId(type = IdType.AUTO)
     private Long id;
     private String dedupKey;
+    private Long scanRunId;
+    private LocalDate changeDate;
+    // Deprecated Webhook compatibility fields are removed with capture in Task 6.
+    @JsonIgnore
     private String webhookUuid;
     private Long projectId;
     private String projectName;
+    private String projectPath;
     private String branch;
     private String filePath;
     private String flowId;
@@ -24,8 +31,11 @@ public class FlowFieldChangeLog implements Serializable {
     private String fileChangeType;
     private String captureStatus;
     private String errorMessage;
+    @JsonIgnore
     private String beforeSha;
+    @JsonIgnore
     private String afterSha;
+    private String parentSha;
     private String commitSha;
     private String commitMessage;
     private String commitAuthor;
@@ -37,17 +47,24 @@ public class FlowFieldChangeLog implements Serializable {
     private Integer inputChangeCount;
     private Integer outputChangeCount;
     private LocalDateTime createTime;
+    private LocalDateTime updateTime;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public String getDedupKey() { return dedupKey; }
     public void setDedupKey(String dedupKey) { this.dedupKey = dedupKey; }
+    public Long getScanRunId() { return scanRunId; }
+    public void setScanRunId(Long scanRunId) { this.scanRunId = scanRunId; }
+    public LocalDate getChangeDate() { return changeDate; }
+    public void setChangeDate(LocalDate changeDate) { this.changeDate = changeDate; }
     public String getWebhookUuid() { return webhookUuid; }
     public void setWebhookUuid(String webhookUuid) { this.webhookUuid = webhookUuid; }
     public Long getProjectId() { return projectId; }
     public void setProjectId(Long projectId) { this.projectId = projectId; }
     public String getProjectName() { return projectName; }
     public void setProjectName(String projectName) { this.projectName = projectName; }
+    public String getProjectPath() { return projectPath; }
+    public void setProjectPath(String projectPath) { this.projectPath = projectPath; }
     public String getBranch() { return branch; }
     public void setBranch(String branch) { this.branch = branch; }
     public String getFilePath() { return filePath; }
@@ -66,6 +83,8 @@ public class FlowFieldChangeLog implements Serializable {
     public void setBeforeSha(String beforeSha) { this.beforeSha = beforeSha; }
     public String getAfterSha() { return afterSha; }
     public void setAfterSha(String afterSha) { this.afterSha = afterSha; }
+    public String getParentSha() { return parentSha; }
+    public void setParentSha(String parentSha) { this.parentSha = parentSha; }
     public String getCommitSha() { return commitSha; }
     public void setCommitSha(String commitSha) { this.commitSha = commitSha; }
     public String getCommitMessage() { return commitMessage; }
@@ -88,4 +107,6 @@ public class FlowFieldChangeLog implements Serializable {
     public void setOutputChangeCount(Integer outputChangeCount) { this.outputChangeCount = outputChangeCount; }
     public LocalDateTime getCreateTime() { return createTime; }
     public void setCreateTime(LocalDateTime createTime) { this.createTime = createTime; }
+    public LocalDateTime getUpdateTime() { return updateTime; }
+    public void setUpdateTime(LocalDateTime updateTime) { this.updateTime = updateTime; }
 }
