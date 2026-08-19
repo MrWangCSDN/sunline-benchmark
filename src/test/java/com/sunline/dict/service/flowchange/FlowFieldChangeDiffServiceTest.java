@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class FlowFieldChangeDiffServiceTest {
 
     private final FlowFieldChangeDiffService service = new FlowFieldChangeDiffService();
+    private final FlowtransInterfaceSnapshotParser parser = new FlowtransInterfaceSnapshotParser();
 
     @Test
     void one_field_with_two_changed_attributes_counts_as_one_modify() {
@@ -138,6 +139,63 @@ class FlowFieldChangeDiffServiceTest {
     }
 
     @Test
+    void literal_xml_attribute_name_and_value_case_changes_are_significant() {
+        FlowtransInterfaceSnapshot before = parser.parse("""
+                <flowtran><interface id="TC045"><input>
+                  <field id="amount" type="decimal" required="true" custom="old"/>
+                </input></interface></flowtran>
+                """);
+        FlowtransInterfaceSnapshot after = parser.parse("""
+                <flowtran><interface id="TC045"><input>
+                  <field id="amount" Type="Decimal" required="TRUE" extra="new"/>
+                </input></interface></flowtran>
+                """);
+
+        SortedMap<String, ValueChange> changedAttributes = service.diff(before, after).orElseThrow()
+                .details().get(0).changedAttributes();
+
+        assertEquals(Map.of(
+                "Type", new ValueChange(null, "Decimal"),
+                "custom", new ValueChange("old", null),
+                "extra", new ValueChange(null, "new"),
+                "required", new ValueChange("true", "TRUE"),
+                "type", new ValueChange("decimal", null)), changedAttributes);
+    }
+
+    @Test
+    void literal_xml_identity_id_path_and_io_movement_is_delete_and_add() {
+        assertLiteralXmlDeleteAdd(
+                "<input><field id=\"old-id\"/></input>",
+                "<input><field id=\"new-id\"/></input>");
+        assertLiteralXmlDeleteAdd(
+                "<input><fields id=\"old-path\"><field id=\"same\"/></fields></input>",
+                "<input><fields id=\"new-path\"><field id=\"same\"/></fields></input>");
+        assertLiteralXmlDeleteAdd(
+                "<input><field id=\"same\"/></input>",
+                "<output><field id=\"same\"/></output>");
+    }
+
+    @Test
+    void literal_xml_sibling_reorder_longname_and_comments_are_not_interface_changes() {
+        FlowtransInterfaceSnapshot before = parser.parse("""
+                <flowtran><interface id="TC045" longname="Old name">
+                  <!-- old comment -->
+                  <input><field id="one" type="T1"/><field id="two" type="T2"/></input>
+                  <output><field id="result" type="T3"/></output>
+                </interface></flowtran>
+                """);
+        FlowtransInterfaceSnapshot after = parser.parse("""
+                <flowtran><interface id="TC045" longname="New name">
+                  <!-- entirely different comment -->
+                  <output><field type="T3" id="result"/></output>
+                  <input><field type="T2" id="two"/><field type="T1" id="one"/></input>
+                </interface></flowtran>
+                """);
+
+        assertTrue(service.diff(before, after).isEmpty());
+    }
+
+    @Test
     void details_are_sorted_by_identity() {
         FlowtransInterfaceSnapshot before = snapshot("TC045");
         FlowtransInterfaceSnapshot after = snapshot("TC045",
@@ -201,6 +259,19 @@ class FlowFieldChangeDiffServiceTest {
             snapshots.put(field.identity(), field);
         }
         return new FlowtransInterfaceSnapshot(flowId, flowId + " name", snapshots);
+    }
+
+    private void assertLiteralXmlDeleteAdd(String beforeIo, String afterIo) {
+        FlowtransInterfaceSnapshot before = parser.parse(
+                "<flowtran><interface id=\"TC045\">" + beforeIo + "</interface></flowtran>");
+        FlowtransInterfaceSnapshot after = parser.parse(
+                "<flowtran><interface id=\"TC045\">" + afterIo + "</interface></flowtran>");
+
+        FlowFieldChangeSet change = service.diff(before, after).orElseThrow();
+
+        assertEquals(1, change.addCount());
+        assertEquals(1, change.removeCount());
+        assertEquals(0, change.modifyCount());
     }
 
     private FieldSnapshot field(String ioType, String path, String id, SortedMap<String, String> attributes) {

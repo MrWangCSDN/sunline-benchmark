@@ -40,6 +40,28 @@ class FlowtransInterfaceSnapshotParserTest {
     }
 
     @Test
+    void ignores_fields_outside_the_interface_input_and_output_trees() {
+        String xml = """
+                <flowtran>
+                  <field id="before-interface"/>
+                  <interface id="TC045">
+                    <metadata><field id="metadata-field"/></metadata>
+                    <input><field id="request-field"/></input>
+                    <output><field id="response-field"/></output>
+                    <field id="after-output"/>
+                  </interface>
+                  <input><field id="outside-interface"/></input>
+                </flowtran>
+                """;
+
+        FlowtransInterfaceSnapshot snapshot = parser.parse(xml);
+
+        assertEquals(2, snapshot.fields().size());
+        assertTrue(snapshot.fields().containsKey(new FieldIdentity("input", "/", "request-field")));
+        assertTrue(snapshot.fields().containsKey(new FieldIdentity("output", "/", "response-field")));
+    }
+
+    @Test
     void captures_field_nested_beneath_a_field_with_its_container_path() {
         String xml = """
                 <flowtran><interface id="TC045"><input>
@@ -132,6 +154,30 @@ class FlowtransInterfaceSnapshotParserTest {
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> parser.parse(xml));
 
         assertTrue(exception.getMessage().contains("Duplicate field identity"));
+    }
+
+    @Test
+    void duplicate_identity_and_malformed_xml_have_deterministic_safe_failures() {
+        String duplicate = """
+                <flowtran><interface id="TC050"><input>
+                  <field id="same"/><field id="same"/>
+                </input></interface></flowtran>
+                """;
+        String malformed = "<flowtran><interface id=\"TC051\"><input><field id=\"broken\"></flowtran>";
+
+        IllegalArgumentException firstDuplicate = assertThrows(
+                IllegalArgumentException.class, () -> parser.parse(duplicate));
+        IllegalArgumentException secondDuplicate = assertThrows(
+                IllegalArgumentException.class, () -> parser.parse(duplicate));
+        IllegalArgumentException firstMalformed = assertThrows(
+                IllegalArgumentException.class, () -> parser.parse(malformed));
+        IllegalArgumentException secondMalformed = assertThrows(
+                IllegalArgumentException.class, () -> parser.parse(malformed));
+
+        assertEquals(firstDuplicate.getMessage(), secondDuplicate.getMessage());
+        assertEquals("Unable to parse flowtrans interface snapshot", firstMalformed.getMessage());
+        assertEquals(firstMalformed.getMessage(), secondMalformed.getMessage());
+        assertFalse(firstMalformed.getMessage().contains("broken"));
     }
 
     @Test
