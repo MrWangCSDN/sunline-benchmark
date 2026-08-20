@@ -1,5 +1,9 @@
 package com.sunline.dict.service.impl;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.sunline.dict.dto.FlowFieldChangeDtos.FieldChangeQuery;
 import com.sunline.dict.dto.FlowFieldChangeDtos.FieldChangeRowView;
@@ -34,6 +38,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.slf4j.LoggerFactory;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -332,6 +337,38 @@ class FlowFieldDailyScanServiceImplTest {
     }
 
     @Test
+    void claim_persistence_failure_emits_one_fixed_safe_log_without_throwable() {
+        state.claimFailure = new IllegalStateException(
+                "SELECT token=claim-secret FROM runs https://attacker.invalid/db\n"
+                        + "\tat example.Scan.claim(Scan.java:42)");
+
+        List<ILoggingEvent> events = captureLogs(() -> {
+            BatchScanResult result = scanner.scanAll(WINDOW_END);
+            assertEquals(new BatchScanResult(1, 0, 1), result);
+        });
+
+        assertSafeFixedEvent(events,
+                "Daily flowtrans scan claim persistence failed; projectId=42");
+    }
+
+    @Test
+    void failed_state_second_persistence_failure_emits_one_fixed_safe_log_without_throwable() {
+        history.commits.put(42L, List.of());
+        state.failNominalFinishOnce.add(42L);
+        state.failedFinishFailure = new IllegalStateException(
+                "UPDATE token=finish-secret URL=https://attacker.invalid/run\n"
+                        + "\tat example.Scan.finish(Scan.java:84)");
+
+        List<ILoggingEvent> events = captureLogs(() -> {
+            BatchScanResult result = scanner.scanAll(WINDOW_END);
+            assertEquals(new BatchScanResult(1, 0, 1), result);
+        });
+
+        assertSafeFixedEvent(events,
+                "Daily flowtrans scan failed-state persistence failed; projectId=42, runId=42");
+    }
+
+    @Test
     void writer_race_skips_after_initial_none_state_without_history_or_failed_counter() {
         GitLabCommitInfo commit = commit(42L, "commit-a", "parent-a",
                 OffsetDateTime.parse("2026-08-19T09:30:00+08:00"));
@@ -488,6 +525,31 @@ class FlowFieldDailyScanServiceImplTest {
                 + "</interface></flowtran>";
     }
 
+    private void assertSafeFixedEvent(List<ILoggingEvent> events, String expectedMessage) {
+        assertEquals(1, events.size());
+        ILoggingEvent event = events.get(0);
+        assertEquals(Level.ERROR, event.getLevel());
+        assertEquals(expectedMessage, event.getFormattedMessage());
+        assertNull(event.getThrowableProxy());
+        for (String sensitive : List.of("SELECT", "UPDATE", "token=", "https://", "at example")) {
+            assertFalse(event.getFormattedMessage().contains(sensitive));
+        }
+    }
+
+    private List<ILoggingEvent> captureLogs(Runnable action) {
+        Logger logger = (Logger) LoggerFactory.getLogger(FlowFieldDailyScanServiceImpl.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            action.run();
+            return List.copyOf(appender.list);
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
     private record CommitRequest(long projectId, String branch,
                                  OffsetDateTime exclusiveStart, OffsetDateTime inclusiveEnd) {
     }
@@ -564,10 +626,15 @@ class FlowFieldDailyScanServiceImplTest {
         private final Map<Long, Long> projectsByRun = new HashMap<>();
         private final Map<Long, List<FinishedProject>> finished = new HashMap<>();
         private final Set<Long> failNominalFinishOnce = new HashSet<>();
+        private RuntimeException claimFailure;
+        private RuntimeException failedFinishFailure;
 
         @Override
         public Optional<ScanClaim> claim(long projectId, String branch,
                                          LocalDateTime windowEnd, LocalDateTime startedAt) {
+            if (claimFailure != null) {
+                throw claimFailure;
+            }
             projectsByRun.put(projectId, projectId);
             return Optional.of(new ScanClaim(projectId, projectId, branch,
                     windowStarts.getOrDefault(projectId, WINDOW_START), windowEnd));
@@ -579,6 +646,9 @@ class FlowFieldDailyScanServiceImplTest {
             long projectId = projectsByRun.get(runId);
             if (completion != Completion.FAILED && failNominalFinishOnce.remove(projectId)) {
                 throw new IllegalStateException("cursor database write failed");
+            }
+            if (completion == Completion.FAILED && failedFinishFailure != null) {
+                throw failedFinishFailure;
             }
             finished.computeIfAbsent(projectId, ignored -> new ArrayList<>())
                     .add(new FinishedProject(project, counters, completion, safeError,

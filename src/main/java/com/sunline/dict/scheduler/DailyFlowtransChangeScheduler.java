@@ -1,6 +1,9 @@
 package com.sunline.dict.scheduler;
 
 import com.sunline.dict.service.FlowFieldDailyScanService;
+import com.sunline.dict.service.FlowFieldDailyScanService.BatchScanResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,6 +22,8 @@ import java.time.ZoneId;
         havingValue = "true",
         matchIfMissing = true)
 public class DailyFlowtransChangeScheduler {
+
+    private static final Logger log = LoggerFactory.getLogger(DailyFlowtransChangeScheduler.class);
 
     private final FlowFieldDailyScanService dailyScanService;
     private final Clock clock;
@@ -45,6 +50,16 @@ public class DailyFlowtransChangeScheduler {
             cron = "${flow-field-change.scan.cron:0 0 22 * * ?}",
             zone = "${flow-field-change.scan.zone:Asia/Shanghai}")
     public void scanDailyChanges() {
-        dailyScanService.scanAll(LocalDate.now(clock.withZone(zone)).atTime(22, 0));
+        BatchScanResult result = dailyScanService.scanAll(
+                LocalDate.now(clock.withZone(zone)).atTime(22, 0));
+        if (result.attemptedProjects() == 0 || result.errorProjects() > 0) {
+            log.warn("Daily flowtrans scan completed; attemptedProjects={}, "
+                            + "successfulProjects={}, errorProjects={}",
+                    result.attemptedProjects(), result.successfulProjects(), result.errorProjects());
+        } else {
+            log.info("Daily flowtrans scan completed; attemptedProjects={}, "
+                            + "successfulProjects={}, errorProjects={}",
+                    result.attemptedProjects(), result.successfulProjects(), result.errorProjects());
+        }
     }
 }

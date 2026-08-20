@@ -27,6 +27,8 @@ import com.sunline.dict.service.flowchange.GitLabFileVersionService.FileVersionR
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
@@ -42,6 +44,7 @@ import java.util.Optional;
 @ConditionalOnProperty(name = "git.gitlab.url")
 public class FlowFieldDailyScanServiceImpl implements FlowFieldDailyScanService {
 
+    private static final Logger log = LoggerFactory.getLogger(FlowFieldDailyScanServiceImpl.class);
     private static final String BRANCH = "master";
     private static final ZoneId SHANGHAI = ZoneId.of("Asia/Shanghai");
     private static final Comparator<GitLabCommitInfo> COMMIT_ORDER = Comparator
@@ -138,7 +141,11 @@ public class FlowFieldDailyScanServiceImpl implements FlowFieldDailyScanService 
             return completion == Completion.SUCCESS ? ProjectOutcome.SUCCESS : ProjectOutcome.ERROR;
         } catch (RuntimeException exception) {
             if (claim != null) {
-                finishFailed(claim, projectIdentity, counters, safeProjectError(exception));
+                finishFailed(projectId, claim, projectIdentity, counters,
+                        safeProjectError(exception));
+            } else {
+                log.error("Daily flowtrans scan claim persistence failed; projectId={}",
+                        safePositiveId(projectId));
             }
             return ProjectOutcome.ERROR;
         }
@@ -227,14 +234,20 @@ public class FlowFieldDailyScanServiceImpl implements FlowFieldDailyScanService 
                 commit.authorName(), commit.authorEmail(), committedAt.toLocalDateTime());
     }
 
-    private void finishFailed(ScanClaim claim, ProjectIdentity project,
+    private void finishFailed(long projectId, ScanClaim claim, ProjectIdentity project,
                               MutableCounters counters, String safeError) {
         try {
             scanState.finish(claim.runId(), project, counters.snapshot(), Completion.FAILED,
                     safeError, nowShanghai());
         } catch (RuntimeException ignored) {
-            // A state persistence failure cannot be repaired inside this project scan.
+            log.error("Daily flowtrans scan failed-state persistence failed; "
+                            + "projectId={}, runId={}",
+                    safePositiveId(projectId), safePositiveId(claim.runId()));
         }
+    }
+
+    private static String safePositiveId(long id) {
+        return id > 0 ? Long.toString(id) : "invalid";
     }
 
     private String safeProjectError(RuntimeException exception) {

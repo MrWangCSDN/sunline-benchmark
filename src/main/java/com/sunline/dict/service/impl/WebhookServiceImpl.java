@@ -535,8 +535,8 @@ public class WebhookServiceImpl implements WebhookService {
             // 清理 flow_field_detail（避免孤儿数据影响后续 diff）
             try {
                 flowFieldDetailService.deleteBySourceInfo(sourceInfo);
-            } catch (Exception cleanEx) {
-                log.warn("清理 flow_field_detail 失败（不影响主流程）：{}", cleanEx.getMessage());
+            } catch (Exception ignored) {
+                log.warn("清理 flow_field_detail 失败（不影响主流程）");
             }
             // 同步删除 Qdrant 向量数据
             vectorDeleteFlowtran(sourceInfo);

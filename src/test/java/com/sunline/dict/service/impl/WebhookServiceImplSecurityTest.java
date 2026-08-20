@@ -5,6 +5,8 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import com.sunline.dict.mapper.FlowtranMapper;
+import com.sunline.dict.service.FlowFieldDetailService;
 import com.sunline.dict.service.FlowXmlParseService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -175,6 +178,45 @@ class WebhookServiceImplSecurityTest {
         assertTrue((Boolean) result.get("success"));
     }
 
+    @Test
+    void flow_field_detail_cleanup_failure_logs_fixed_message_without_exception_details()
+            throws Exception {
+        String sensitiveFailure = "DELETE FROM flow_field_detail token=cleanup-secret "
+                + "https://attacker.invalid/db\n\tat example.Cleanup.run(Cleanup.java:19)";
+        WebhookServiceImpl service = service(null);
+        FlowFieldDetailService fieldDetails = mock(FlowFieldDetailService.class);
+        doThrow(new IllegalStateException(sensitiveFailure))
+                .when(fieldDetails).deleteBySourceInfo("project:master:" + FILE);
+        ReflectionTestUtils.setField(service, "flowFieldDetailService", fieldDetails);
+        ReflectionTestUtils.setField(service, "flowtranMapper", mock(FlowtranMapper.class));
+        Logger logger = (Logger) LoggerFactory.getLogger(WebhookServiceImpl.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+
+        try {
+            service.handleGitLabPushEvent(
+                    push("refs/heads/master", trustedBaseUrl() + "/group/project", removedCommit()));
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+
+        List<ILoggingEvent> cleanupEvents = appender.list.stream()
+                .filter(event -> event.getFormattedMessage().startsWith("清理 flow_field_detail 失败"))
+                .toList();
+        assertEquals(1, cleanupEvents.size());
+        assertEquals("清理 flow_field_detail 失败（不影响主流程）",
+                cleanupEvents.get(0).getFormattedMessage());
+        assertEquals(null, cleanupEvents.get(0).getThrowableProxy());
+        String logs = appender.list.stream()
+                .map(ILoggingEvent::getFormattedMessage)
+                .reduce("", (left, right) -> left + "\n" + right);
+        for (String sensitive : List.of("DELETE FROM", "cleanup-secret", "https://", "at example")) {
+            assertFalse(logs.contains(sensitive), "logs exposed: " + sensitive);
+        }
+    }
+
     private WebhookServiceImpl service(FlowXmlParseService parser) {
         WebhookServiceImpl service = new WebhookServiceImpl();
         if (parser != null) {
@@ -209,6 +251,15 @@ class WebhookServiceImplSecurityTest {
                 "modified", List.of(FILE),
                 "added", List.of(),
                 "removed", List.of());
+    }
+
+    private Map<String, Object> removedCommit() {
+        return Map.of(
+                "id", SHA,
+                "message", "remove flowtrans",
+                "modified", List.of(),
+                "added", List.of(),
+                "removed", List.of(FILE));
     }
 
     private String trustedBaseUrl() {

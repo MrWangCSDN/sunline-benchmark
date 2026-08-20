@@ -264,7 +264,7 @@ class FlowFieldChangeFrontendContractTest {
             throws Exception {
         ProcessBuilder processBuilder = new ProcessBuilder(
                 browserExecutable(), "--headless=new", "--disable-gpu", "--no-sandbox",
-                "--disable-dev-shm-usage", "--disable-background-networking",
+                "--disable-dev-shm-usage", "--disable-background-networking", "--hide-scrollbars",
                 "--no-first-run", "--no-default-browser-check", "--allow-file-access-from-files",
                 "--remote-debugging-port=0", "--user-data-dir=" + browserProfile, "about:blank");
         processBuilder.redirectErrorStream(true);
