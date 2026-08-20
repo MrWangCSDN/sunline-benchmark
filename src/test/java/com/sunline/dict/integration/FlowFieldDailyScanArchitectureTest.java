@@ -11,23 +11,38 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
 import org.springframework.core.env.Environment;
+import org.springframework.http.server.PathContainer;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.servlet.mvc.method.RequestMappingInfo;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
+import org.springframework.web.util.pattern.PathPattern;
+import org.springframework.web.util.pattern.PathPatternParser;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.Method;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
+import java.lang.reflect.TypeVariable;
+import java.lang.reflect.WildcardType;
+import java.nio.charset.StandardCharsets;
 import java.util.EnumSet;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(properties = {
@@ -38,6 +53,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class FlowFieldDailyScanArchitectureTest {
 
     private static final String API_BASE = "/api/flow-field-change";
+    private static final Set<String> PROTECTED_API_PATHS = Set.of(
+            API_BASE,
+            API_BASE + "/list",
+            API_BASE + "/detail/1",
+            API_BASE + "/scan-runs");
+    private static final byte[] CAPTURE_TYPE_TOKEN =
+            "FlowFieldChangeCapture".getBytes(StandardCharsets.UTF_8);
     private static final Set<RequestMethod> WRITE_METHODS =
             EnumSet.of(RequestMethod.POST, RequestMethod.PUT,
                     RequestMethod.PATCH, RequestMethod.DELETE);
@@ -83,6 +105,54 @@ class FlowFieldDailyScanArchitectureTest {
     }
 
     @Test
+    void capture_dependency_guard_detects_generic_inherited_and_bytecode_only_references()
+            throws NoSuchFieldException, NoSuchMethodException {
+        Type genericDependency = GenericCaptureDependency.class
+                .getDeclaredField("dependencies").getGenericType();
+        Type inheritedDependency = InheritedCaptureDependency.class.getGenericSuperclass();
+        Type bytecodeOnlyReturn = BytecodeCaptureDependency.class
+                .getDeclaredMethod("captureTypeOnlyInMethodBody").getGenericReturnType();
+
+        assertAll(
+                () -> {
+                    assertTrue(containsCaptureType(genericDependency, new HashSet<>()));
+                    assertThrows(AssertionError.class,
+                            () -> assertNoCaptureDependency(GenericCaptureDependency.class));
+                },
+                () -> {
+                    assertTrue(containsCaptureType(inheritedDependency, new HashSet<>()));
+                    assertThrows(AssertionError.class,
+                            () -> assertNoCaptureDependency(InheritedCaptureDependency.class));
+                },
+                () -> {
+                    assertFalse(containsCaptureType(bytecodeOnlyReturn, new HashSet<>()));
+                    assertThrows(AssertionError.class,
+                            () -> assertNoCaptureDependency(BytecodeCaptureDependency.class));
+                });
+    }
+
+    @Test
+    void removed_capture_types_are_not_loadable() {
+        assertAll(
+                () -> assertThrows(ClassNotFoundException.class,
+                        () -> Class.forName("com.sunline.dict.service.FlowFieldChangeCaptureService")),
+                () -> assertThrows(ClassNotFoundException.class,
+                        () -> Class.forName("com.sunline.dict.service.impl.FlowFieldChangeCaptureServiceImpl")),
+                () -> assertThrows(ClassNotFoundException.class,
+                        () -> Class.forName("com.sunline.dict.service.flowchange.FlowFieldChangeCaptureMeta")),
+                () -> assertThrows(ClassNotFoundException.class,
+                        () -> Class.forName("com.sunline.dict.service.flowchange.FlowFieldChangeCaptureResult")));
+    }
+
+    @Test
+    void read_only_route_guard_recognizes_template_routes_that_can_reach_the_api() {
+        assertAll(
+                () -> assertTrue(canReachFlowFieldChangeApi("/api/{resource}")),
+                () -> assertTrue(canReachFlowFieldChangeApi("/api/{resource}/{action}")),
+                () -> assertTrue(canReachFlowFieldChangeApi("/api/{resource}/{action}/{id}")));
+    }
+
+    @Test
     void flow_field_change_api_exposes_only_the_three_read_endpoints() {
         Set<String> getPaths = new TreeSet<>();
 
@@ -107,34 +177,148 @@ class FlowFieldDailyScanArchitectureTest {
     private Map<RequestMappingInfo, ?> flowFieldChangeMappings() {
         return handlerMapping.getHandlerMethods().entrySet().stream()
                 .filter(entry -> entry.getKey().getPatternValues().stream()
-                        .anyMatch(path -> path.startsWith(API_BASE)))
+                        .anyMatch(FlowFieldDailyScanArchitectureTest::canReachFlowFieldChangeApi))
                 .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
+    private static boolean canReachFlowFieldChangeApi(String path) {
+        PathPattern pattern = PathPatternParser.defaultInstance.parse(path);
+        return PROTECTED_API_PATHS.stream()
+                .map(PathContainer::parsePath)
+                .anyMatch(pattern::matches);
+    }
+
     private static void assertNoCaptureDependency(Class<?> componentType) {
-        for (Field field : componentType.getDeclaredFields()) {
-            assertFalse(isCaptureType(field.getType()),
-                    () -> componentType.getSimpleName() + " depends on " + field.getType().getName());
-        }
-        for (Constructor<?> constructor : componentType.getDeclaredConstructors()) {
-            for (Class<?> parameterType : constructor.getParameterTypes()) {
-                assertFalse(isCaptureType(parameterType),
-                        () -> componentType.getSimpleName() + " depends on " + parameterType.getName());
+        for (Class<?> current = componentType;
+                current != null && current != Object.class;
+                current = current.getSuperclass()) {
+            assertNoCaptureType(componentType, current.getGenericSuperclass());
+            for (Type interfaceType : current.getGenericInterfaces()) {
+                assertNoCaptureType(componentType, interfaceType);
             }
-        }
-        for (Method method : componentType.getDeclaredMethods()) {
-            assertFalse(isCaptureType(method.getReturnType()),
-                    () -> componentType.getSimpleName() + " depends on "
-                            + method.getReturnType().getName());
-            for (Class<?> parameterType : method.getParameterTypes()) {
-                assertFalse(isCaptureType(parameterType),
-                        () -> componentType.getSimpleName() + " depends on "
-                                + parameterType.getName());
+            for (Field field : current.getDeclaredFields()) {
+                assertNoCaptureType(componentType, field.getGenericType());
             }
+            for (Constructor<?> constructor : current.getDeclaredConstructors()) {
+                for (Type parameterType : constructor.getGenericParameterTypes()) {
+                    assertNoCaptureType(componentType, parameterType);
+                }
+                for (Type exceptionType : constructor.getGenericExceptionTypes()) {
+                    assertNoCaptureType(componentType, exceptionType);
+                }
+                for (TypeVariable<?> typeVariable : constructor.getTypeParameters()) {
+                    assertNoCaptureType(componentType, typeVariable);
+                }
+            }
+            for (Method method : current.getDeclaredMethods()) {
+                assertNoCaptureType(componentType, method.getGenericReturnType());
+                for (Type parameterType : method.getGenericParameterTypes()) {
+                    assertNoCaptureType(componentType, parameterType);
+                }
+                for (Type exceptionType : method.getGenericExceptionTypes()) {
+                    assertNoCaptureType(componentType, exceptionType);
+                }
+                for (TypeVariable<Method> typeVariable : method.getTypeParameters()) {
+                    assertNoCaptureType(componentType, typeVariable);
+                }
+            }
+            assertNoCaptureBytecodeReference(componentType, current);
         }
     }
 
-    private static boolean isCaptureType(Class<?> type) {
-        return type.getName().contains("FlowFieldChangeCapture");
+    private static void assertNoCaptureType(Class<?> componentType, Type type) {
+        assertFalse(containsCaptureType(type, new HashSet<>()),
+                () -> componentType.getSimpleName() + " depends on " + type.getTypeName());
+    }
+
+    private static boolean containsCaptureType(Type type, Set<Type> visited) {
+        if (type == null || !visited.add(type)) {
+            return false;
+        }
+        if (type instanceof Class<?> classType) {
+            return classType.getName().contains("FlowFieldChangeCapture")
+                    || classType.isArray()
+                    && containsCaptureType(classType.getComponentType(), visited);
+        }
+        if (type instanceof ParameterizedType parameterizedType) {
+            if (containsCaptureType(parameterizedType.getRawType(), visited)
+                    || containsCaptureType(parameterizedType.getOwnerType(), visited)) {
+                return true;
+            }
+            for (Type argument : parameterizedType.getActualTypeArguments()) {
+                if (containsCaptureType(argument, visited)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (type instanceof GenericArrayType arrayType) {
+            return containsCaptureType(arrayType.getGenericComponentType(), visited);
+        }
+        if (type instanceof TypeVariable<?> typeVariable) {
+            for (Type bound : typeVariable.getBounds()) {
+                if (containsCaptureType(bound, visited)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if (type instanceof WildcardType wildcardType) {
+            for (Type bound : wildcardType.getUpperBounds()) {
+                if (containsCaptureType(bound, visited)) {
+                    return true;
+                }
+            }
+            for (Type bound : wildcardType.getLowerBounds()) {
+                if (containsCaptureType(bound, visited)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static void assertNoCaptureBytecodeReference(
+            Class<?> componentType, Class<?> declaringType) {
+        String resourceName = declaringType.getName().replace('.', '/') + ".class";
+        ClassLoader classLoader = declaringType.getClassLoader();
+        try (InputStream input = classLoader.getResourceAsStream(resourceName)) {
+            assertNotNull(input, () -> "missing compiled class resource " + resourceName);
+            byte[] bytecode = input.readAllBytes();
+            assertFalse(containsBytes(bytecode, CAPTURE_TYPE_TOKEN),
+                    () -> componentType.getSimpleName()
+                            + " bytecode references a removed capture type in " + resourceName);
+        } catch (IOException exception) {
+            throw new AssertionError("failed to inspect compiled class " + resourceName, exception);
+        }
+    }
+
+    private static boolean containsBytes(byte[] haystack, byte[] needle) {
+        for (int start = 0; start <= haystack.length - needle.length; start++) {
+            int offset = 0;
+            while (offset < needle.length && haystack[start + offset] == needle[offset]) {
+                offset++;
+            }
+            if (offset == needle.length) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static class FlowFieldChangeCaptureMarker {
+    }
+
+    private static class GenericCaptureDependency {
+        private List<FlowFieldChangeCaptureMarker> dependencies;
+    }
+
+    private static class InheritedCaptureDependency extends FlowFieldChangeCaptureMarker {
+    }
+
+    private static class BytecodeCaptureDependency {
+        Object captureTypeOnlyInMethodBody() {
+            return FlowFieldChangeCaptureMarker.class;
+        }
     }
 }
