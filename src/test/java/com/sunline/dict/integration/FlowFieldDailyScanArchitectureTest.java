@@ -53,11 +53,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class FlowFieldDailyScanArchitectureTest {
 
     private static final String API_BASE = "/api/flow-field-change";
-    private static final Set<String> PROTECTED_API_PATHS = Set.of(
-            API_BASE,
-            API_BASE + "/list",
-            API_BASE + "/detail/1",
-            API_BASE + "/scan-runs");
+    private static final List<String> API_NAMESPACE_PREFIX =
+            List.of("api", "flow-field-change");
     private static final byte[] CAPTURE_TYPE_TOKEN =
             "FlowFieldChangeCapture".getBytes(StandardCharsets.UTF_8);
     private static final Set<RequestMethod> WRITE_METHODS =
@@ -149,7 +146,11 @@ class FlowFieldDailyScanArchitectureTest {
         assertAll(
                 () -> assertTrue(canReachFlowFieldChangeApi("/api/{resource}")),
                 () -> assertTrue(canReachFlowFieldChangeApi("/api/{resource}/{action}")),
-                () -> assertTrue(canReachFlowFieldChangeApi("/api/{resource}/{action}/{id}")));
+                () -> assertTrue(canReachFlowFieldChangeApi("/api/{resource}/{action}/{id}")),
+                () -> assertTrue(canReachFlowFieldChangeApi("/api/{resource}/admin")),
+                () -> assertTrue(canReachFlowFieldChangeApi("/{root}/flow-field-change/admin")),
+                () -> assertTrue(canReachFlowFieldChangeApi("/api/**")),
+                () -> assertFalse(canReachFlowFieldChangeApi("/api/other/**")));
     }
 
     @Test
@@ -182,10 +183,60 @@ class FlowFieldDailyScanArchitectureTest {
     }
 
     private static boolean canReachFlowFieldChangeApi(String path) {
-        PathPattern pattern = PathPatternParser.defaultInstance.parse(path);
-        return PROTECTED_API_PATHS.stream()
-                .map(PathContainer::parsePath)
-                .anyMatch(pattern::matches);
+        PathPatternParser.defaultInstance.parse(path);
+        List<String> patternSegments = List.of(path.substring(1).split("/", -1));
+        Set<Integer> states = catchAllClosure(Set.of(0), patternSegments);
+
+        for (String namespaceSegment : API_NAMESPACE_PREFIX) {
+            Set<Integer> nextStates = new HashSet<>();
+            for (int state : states) {
+                if (state >= patternSegments.size()) {
+                    continue;
+                }
+                String patternSegment = patternSegments.get(state);
+                if (isCatchAll(patternSegment)) {
+                    nextStates.add(state);
+                } else if (segmentMatches(patternSegment, namespaceSegment)) {
+                    nextStates.add(state + 1);
+                }
+            }
+            states = catchAllClosure(nextStates, patternSegments);
+            if (states.isEmpty()) {
+                return false;
+            }
+        }
+
+        // Once the fixed namespace prefix is consumable, the namespace's arbitrary
+        // suffix can conservatively satisfy every remaining valid PathPattern segment.
+        return true;
+    }
+
+    private static Set<Integer> catchAllClosure(
+            Set<Integer> initialStates, List<String> patternSegments) {
+        Set<Integer> closure = new HashSet<>(initialStates);
+        boolean changed;
+        do {
+            changed = false;
+            for (int state : Set.copyOf(closure)) {
+                if (state < patternSegments.size()
+                        && isCatchAll(patternSegments.get(state))
+                        && closure.add(state + 1)) {
+                    changed = true;
+                }
+            }
+        } while (changed);
+        return closure;
+    }
+
+    private static boolean isCatchAll(String patternSegment) {
+        return "**".equals(patternSegment)
+                || patternSegment.startsWith("{*") && patternSegment.endsWith("}");
+    }
+
+    private static boolean segmentMatches(String patternSegment, String pathSegment) {
+        PathPattern segmentPattern =
+                PathPatternParser.defaultInstance.parse("/" + patternSegment);
+        return segmentPattern.matches(PathContainer.parsePath("/" + pathSegment));
     }
 
     private static void assertNoCaptureDependency(Class<?> componentType) {
