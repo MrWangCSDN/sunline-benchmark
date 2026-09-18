@@ -9,6 +9,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -29,6 +30,15 @@ public class GitLabMergeRequestServiceImpl implements GitLabMergeRequestService 
     }
 
     @Override
+    public MergeRequestRef get(long projectId, long iid) {
+        JsonNode item = parse(apiClient.get("/projects/" + projectId + "/merge_requests/" + iid, Map.of()), "MR_QUERY_FAILED");
+        if (!item.isObject()) throw failure("MR_QUERY_FAILED");
+        return new MergeRequestRef(projectId, longValue(item, "iid", "MR_QUERY_FAILED"),
+                text(item, "source_branch", "MR_QUERY_FAILED"), text(item, "target_branch", "MR_QUERY_FAILED"),
+                text(item, "state", "MR_QUERY_FAILED"));
+    }
+
+    @Override
     public List<MergeRequestRef> listOpen(long projectId, String sourceBranch, String targetBranch) {
         List<MergeRequestRef> results = new ArrayList<>();
         forEachPage("/projects/" + projectId + "/merge_requests", "MR_QUERY_FAILED",
@@ -41,12 +51,10 @@ public class GitLabMergeRequestServiceImpl implements GitLabMergeRequestService 
 
     @Override
     public List<MergeRequestChange> changes(long projectId, long iid) {
-        JsonNode root = parse(apiClient.get("/projects/" + projectId + "/merge_requests/" + iid + "/changes", Map.of()), "MR_CHANGES_FAILED");
-        JsonNode values = root.path("changes");
-        if (!values.isArray()) throw failure("MR_CHANGES_FAILED");
         List<MergeRequestChange> changes = new ArrayList<>();
-        for (JsonNode item : values) changes.add(new MergeRequestChange(nullableText(item, "old_path"), nullableText(item, "new_path"),
-                bool(item, "new_file", "MR_CHANGES_FAILED"), bool(item, "deleted_file", "MR_CHANGES_FAILED"), bool(item, "renamed_file", "MR_CHANGES_FAILED")));
+        forEachPage("/projects/" + projectId + "/merge_requests/" + iid + "/diffs", "MR_CHANGES_FAILED", Map.of(),
+                item -> changes.add(new MergeRequestChange(nullableText(item, "old_path"), nullableText(item, "new_path"),
+                        bool(item, "new_file", "MR_CHANGES_FAILED"), bool(item, "deleted_file", "MR_CHANGES_FAILED"), bool(item, "renamed_file", "MR_CHANGES_FAILED"))));
         return List.copyOf(changes);
     }
 
@@ -65,12 +73,16 @@ public class GitLabMergeRequestServiceImpl implements GitLabMergeRequestService 
 
     @Override
     public void close(long projectId, long iid) {
-        requireSuccess(apiClient.putForm("/projects/" + projectId + "/merge_requests/" + iid, Map.of("state_event", "close")), "MR_CLOSE_FAILED");
+        JsonNode result = parse(apiClient.putForm("/projects/" + projectId + "/merge_requests/" + iid,
+                Map.of("state_event", "close")), "MR_CLOSE_FAILED");
+        if (!result.isObject() || !"closed".equals(nullableText(result, "state"))) throw failure("MR_CLOSE_FAILED");
     }
 
     private void forEachPage(String path, String code, Map<String, String> query, java.util.function.Consumer<JsonNode> consumer) {
         String page = "1";
+        java.util.Set<String> seenPages = new HashSet<>();
         while (page != null) {
+            if (!page.matches("[1-9][0-9]*") || !seenPages.add(page)) throw failure(code);
             Map<String, String> pageQuery = new java.util.LinkedHashMap<>(query);
             pageQuery.put("page", page);
             pageQuery.put("per_page", String.valueOf(pageSize));
@@ -79,6 +91,7 @@ public class GitLabMergeRequestServiceImpl implements GitLabMergeRequestService 
             if (!values.isArray()) throw failure(code);
             for (JsonNode item : values) consumer.accept(item);
             page = nextPage(response);
+            if (page != null && (!page.matches("[1-9][0-9]*") || seenPages.contains(page))) throw failure(code);
         }
     }
 

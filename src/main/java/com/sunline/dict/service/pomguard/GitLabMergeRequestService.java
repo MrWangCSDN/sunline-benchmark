@@ -4,6 +4,7 @@ import java.util.List;
 
 /** Trusted GitLab operations required to inspect and close merge requests. */
 public interface GitLabMergeRequestService {
+    MergeRequestRef get(long projectId, long iid);
     List<MergeRequestRef> listOpen(long projectId, String sourceBranch, String targetBranch);
     List<MergeRequestChange> changes(long projectId, long iid);
     List<MergeRequestCommit> commits(long projectId, long iid);

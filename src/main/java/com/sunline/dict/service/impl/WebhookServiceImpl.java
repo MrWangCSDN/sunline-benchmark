@@ -449,7 +449,7 @@ public class WebhookServiceImpl implements WebhookService {
             log.info("检测到 uat 分支 push，开始校验 commit 是否在 sit 分支存在");
             String validationError = validateCommitsInSit(payload, projectId, pathWithNamespace);
             if (validationError != null) {
-                log.error("UAT 分支校验失败: {}", validationError);
+                log.error("UAT 分支校验失败: projectId={}, code={}", projectId, validationError);
                 return createResult(false, validationError, 0, 0);
             }
             log.info("UAT 分支校验通过");
@@ -1238,11 +1238,11 @@ public class WebhookServiceImpl implements WebhookService {
         
         String projectIdentifier = projectIdentifier(projectId, pathWithNamespace);
         if (projectIdentifier == null) {
-            log.warn("项目信息不完整，无法进行 uat 校验");
-            return "UAT 分支校验失败，项目信息不完整";
+            log.warn("UAT SIT 校验失败: projectId={}, code=UAT_SIT_VALIDATION_FAILED", projectId);
+            return "UAT_SIT_VALIDATION_FAILED";
         }
         
-        List<String> violations = new ArrayList<>();
+        int violationCount = 0;
         
         for (Map<String, Object> commit : commits) {
             String sha = (String) commit.get("id");
@@ -1267,16 +1267,16 @@ public class WebhookServiceImpl implements WebhookService {
             // 调用 GitLab API 检查 commit 是否在 sit 分支
             boolean existsInSit = checkCommitInBranch(projectIdentifier, sha, "sit");
             if (!existsInSit) {
-                String msg = String.format("Commit %s (%s) 不在 sit 分支", 
-                        sha.substring(0, 8), 
-                        message != null ? message.split("\n")[0] : "");
-                violations.add(msg);
-                log.warn(msg);
+                violationCount++;
+                log.warn("UAT SIT 校验失败: projectId={}, sha={}, code=UAT_SIT_VALIDATION_FAILED",
+                        projectId, sha.substring(0, Math.min(8, sha.length())));
             }
         }
         
-        if (!violations.isEmpty()) {
-            return "UAT 分支校验失败，以下 commit 需先提交到 sit 分支: " + String.join("; ", violations);
+        if (violationCount > 0) {
+            log.warn("UAT SIT 校验失败汇总: projectId={}, violationCount={}, code=UAT_SIT_VALIDATION_FAILED",
+                    projectId, violationCount);
+            return "UAT_SIT_VALIDATION_FAILED";
         }
         
         return null;

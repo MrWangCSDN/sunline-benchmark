@@ -34,9 +34,9 @@ class GitLabMergeRequestServiceImplTest {
     @Test
     void parsesChangesCommitsAndMutationForms() {
         FixtureClient client = new FixtureClient(
-                ok("{\"changes\":[{\"old_path\":\"old/pom.xml\",\"new_path\":\"new/pom.xml\",\"new_file\":false,\"deleted_file\":false,\"renamed_file\":true}]}"),
+                ok("[{\"old_path\":\"old/pom.xml\",\"new_path\":\"new/pom.xml\",\"new_file\":false,\"deleted_file\":false,\"renamed_file\":true}]"),
                 ok("[{\"id\":\"a1\",\"message\":\"first\"}]", Map.of("x-next-page", List.of("2"))),
-                ok("[{\"id\":\"b2\",\"message\":\"second\"}]"), ok("{}"), ok("{}"));
+                ok("[{\"id\":\"b2\",\"message\":\"second\"}]"), ok("{}"), ok("{\"state\":\"closed\"}"));
 
         assertEquals(List.of(new MergeRequestChange("old/pom.xml", "new/pom.xml", false, false, true)), service(client).changes(42, 7));
         assertEquals(List.of(new MergeRequestCommit("a1", "first"), new MergeRequestCommit("b2", "second")), service(client).commits(42, 7));
@@ -66,6 +66,40 @@ class GitLabMergeRequestServiceImplTest {
         assertEquals("MR_CHANGES_FAILED", malformed.getMessage());
     }
 
+    @Test
+    void enumeratesMergeRequestDiffFilesAcrossPagesSoPomInLaterPageIsNotMissed() {
+        FixtureClient client = new FixtureClient(
+                ok("[{\"old_path\":\"README.md\",\"new_path\":\"README.md\",\"new_file\":false,\"deleted_file\":false,\"renamed_file\":false}]", Map.of("x-next-page", List.of("2"))),
+                ok("[{\"old_path\":\"module/pom.xml\",\"new_path\":\"module/pom.xml\",\"new_file\":false,\"deleted_file\":false,\"renamed_file\":false}]"));
+
+        List<MergeRequestChange> changes = service(client).changes(42, 7);
+
+        assertEquals(2, changes.size());
+        assertEquals("module/pom.xml", changes.get(1).newPath());
+        assertEquals(List.of("/projects/42/merge_requests/7/diffs", "/projects/42/merge_requests/7/diffs"), client.getPaths);
+        assertEquals("2", client.queries.get(1).get("page"));
+    }
+
+    @Test
+    void closeRequiresGitLabToConfirmClosedState() {
+        FixtureClient client = new FixtureClient(ok("{\"state\":\"opened\"}"));
+
+        GitLabMergeRequestAccessException exception = assertThrows(GitLabMergeRequestAccessException.class,
+                () -> service(client).close(42, 7));
+
+        assertEquals("MR_CLOSE_FAILED", exception.errorCode());
+    }
+
+    @Test
+    void rejectsRepeatedDiffPageAsAnIncompleteEnumeration() {
+        FixtureClient client = new FixtureClient(ok("[]", Map.of("x-next-page", List.of("1"))));
+
+        GitLabMergeRequestAccessException exception = assertThrows(GitLabMergeRequestAccessException.class,
+                () -> service(client).changes(42, 7));
+
+        assertEquals("MR_CHANGES_FAILED", exception.errorCode());
+    }
+
     private static GitLabMergeRequestServiceImpl service(FixtureClient client) {
         return new GitLabMergeRequestServiceImpl(client, new ObjectMapper(), 2);
     }
@@ -78,13 +112,14 @@ class GitLabMergeRequestServiceImplTest {
     private static final class FixtureClient implements GitLabApiClient {
         private final List<ApiResponse> responses;
         private int index;
+        private final List<String> getPaths = new ArrayList<>();
         private final List<Map<String, String>> queries = new ArrayList<>();
         private final List<String> postPaths = new ArrayList<>();
         private final List<Map<String, String>> postForms = new ArrayList<>();
         private final List<String> putPaths = new ArrayList<>();
         private final List<Map<String, String>> putForms = new ArrayList<>();
         private FixtureClient(ApiResponse... responses) { this.responses = List.of(responses); }
-        @Override public ApiResponse get(String path, Map<String, String> query) { queries.add(Map.copyOf(query)); return responses.get(index++); }
+        @Override public ApiResponse get(String path, Map<String, String> query) { getPaths.add(path); queries.add(Map.copyOf(query)); return responses.get(index++); }
         @Override public ApiResponse postForm(String path, Map<String, String> form) { postPaths.add(path); postForms.add(Map.copyOf(form)); return responses.get(index++); }
         @Override public ApiResponse putForm(String path, Map<String, String> form) { putPaths.add(path); putForms.add(Map.copyOf(form)); return responses.get(index++); }
     }

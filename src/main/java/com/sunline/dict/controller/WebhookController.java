@@ -130,7 +130,10 @@ public class WebhookController {
                 return handleGitHubWebhook(payload, githubEvent);
             } else if (gitlabEvent != null) {
                 log.info("识别为GitLab事件: {}", gitlabEvent);
-                return handleGitLabPushLegacy(payload);
+                if ("Push Hook".equals(gitlabEvent) || "push".equals(gitlabEvent)) {
+                    return handleGitLabPushLegacy(payload);
+                }
+                return Result.success(Map.of("message", "非push事件，已忽略"));
             } else {
                 log.warn("无法识别的Webhook来源");
                 return Result.success(Map.of("message", "无法识别的Webhook来源"));

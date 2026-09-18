@@ -75,9 +75,12 @@ public class PomMergeGuardServiceImpl implements PomMergeGuardService {
             List<String> paths = pushPomPaths(payload);
             if (paths.isEmpty()) return result.ignored(null).map();
             Optional<String> bypass = policy.firstBypassCommitSha(pushCommits(payload));
-            if (bypass.isPresent()) result.add(decision("BYPASSED", projectId, null, paths, bypass.get(), false, false, null));
+            if (bypass.isPresent()) {
+                log.info("POM guard direct master push bypassed: projectId={}, sha={}, pomPathCount={}", projectId, shortSha(bypass.get()), paths.size());
+                result.add(decision("BYPASSED", projectId, null, paths, bypass.get(), false, false, null));
+            }
             else {
-                log.warn("POM guard direct master push detected: projectId={}, pomPathCount={}", projectId, paths.size());
+                log.warn("POM guard direct master push detected: projectId={}, sha={}, pomPathCount={}", projectId, firstPushShortSha(payload), paths.size());
                 result.add(decision("WARNED_DIRECT_PUSH", projectId, null, paths, null, false, false, null));
             }
             return result.map();
@@ -95,6 +98,10 @@ public class PomMergeGuardServiceImpl implements PomMergeGuardService {
 
     private Map<String, Object> inspect(long projectId, long iid) {
         try {
+            GitLabMergeRequestService.MergeRequestRef current = mergeRequests.get(projectId, iid);
+            if (!"opened".equals(current.state()) || !targetBranch.equals(current.targetBranch())) {
+                return decision("IGNORED", projectId, iid, List.of(), null, false, false, null);
+            }
             List<String> paths = policy.pomPaths(mergeRequests.changes(projectId, iid));
             if (paths.isEmpty()) return decision("NO_POM_CHANGE", projectId, iid, paths, null, false, false, null);
             Optional<String> bypass = policy.firstBypassCommitSha(mergeRequests.commits(projectId, iid));
@@ -102,17 +109,18 @@ public class PomMergeGuardServiceImpl implements PomMergeGuardService {
             boolean noted = false;
             String noteError = null;
             try { mergeRequests.createNote(projectId, iid, note(paths)); noted = true; }
-            catch (GitLabMergeRequestService.GitLabMergeRequestAccessException exception) { noteError = exception.errorCode(); }
+            catch (GitLabMergeRequestService.GitLabMergeRequestAccessException exception) { noteError = exception.errorCode(); log.warn("POM guard action failure: projectId={}, iid={}, code={}", projectId, iid, noteError); }
             try { mergeRequests.close(projectId, iid); return decision("CLOSED", projectId, iid, paths, null, noted, true, noteError); }
-            catch (GitLabMergeRequestService.GitLabMergeRequestAccessException exception) { return decision("ERROR", projectId, iid, paths, null, noted, false, exception.errorCode()); }
+            catch (GitLabMergeRequestService.GitLabMergeRequestAccessException exception) { log.warn("POM guard action failure: projectId={}, iid={}, code={}", projectId, iid, exception.errorCode()); return decision("ERROR", projectId, iid, paths, null, noted, false, exception.errorCode()); }
         } catch (GitLabMergeRequestService.GitLabMergeRequestAccessException exception) {
+            log.warn("POM guard query failure: projectId={}, iid={}, code={}", projectId, iid, exception.errorCode());
             return decision("ERROR", projectId, iid, List.of(), null, false, false, exception.errorCode());
         }
     }
 
     private String note(List<String> paths) {
         StringBuilder note = new StringBuilder(NOTE_PREFIX).append("\n\n命中的文件：");
-        paths.stream().limit(maxCommentPaths).forEach(path -> note.append("\n- ").append(path));
+        paths.stream().limit(maxCommentPaths).forEach(path -> note.append("\n- ").append(safePath(path)));
         if (paths.size() > maxCommentPaths) note.append("\n另有 ").append(paths.size() - maxCommentPaths).append(" 个文件");
         return note.toString();
     }
@@ -128,6 +136,20 @@ public class PomMergeGuardServiceImpl implements PomMergeGuardService {
         for (Object item : list(payload, "commits")) if (item instanceof Map<?, ?> raw) { Map<String, Object> commit = cast(raw); String sha = text(commit, "id"); String message = text(commit, "message"); if (sha != null && message != null) commits.add(new GitLabMergeRequestService.MergeRequestCommit(sha, message)); }
         return commits;
     }
+    private static String safePath(String path) {
+        StringBuilder value = new StringBuilder();
+        for (int index = 0; index < path.length(); index++) {
+            char character = path.charAt(index);
+            if (character == '\n') value.append("\\n");
+            else if (character == '\r') value.append("\\r");
+            else if (character == '\t') value.append("\\t");
+            else if (Character.isISOControl(character) || character == '\u2028' || character == '\u2029') value.append(String.format("\\u%04x", (int) character));
+            else value.append(character);
+        }
+        return value.toString();
+    }
+    private static String shortSha(String sha) { return sha == null ? "none" : sha.substring(0, Math.min(8, sha.length())); }
+    private String firstPushShortSha(Map<String, Object> payload) { for (Object item : list(payload, "commits")) if (item instanceof Map<?, ?> raw) { String sha = text(cast(raw), "id"); if (sha != null) return shortSha(sha); } return "none"; }
     private boolean allowed(long projectId) { return projectId > 0 && allowedProjects.contains(projectId); }
     private static boolean isBranchDeletion(Map<String, Object> payload) { String after = text(payload, "after"); return after != null && after.matches("0{40}"); }
     private static long projectId(Map<String, Object> payload) { Long id = longValue(map(payload, "project"), "id"); return id == null ? -1 : id; }

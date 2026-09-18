@@ -76,6 +76,19 @@ class GitLabPomWebhookControllerTest {
         verify(fixture.guard, never()).handleMergeRequestHook(any());
     }
 
+    @Test
+    void genericGitRouteIgnoresNonPushGitLabEventsWithoutLegacyProcessingOrGuard() throws Exception {
+        Fixture fixture = fixture("configured-secret");
+
+        fixture.mockMvc.perform(post("/api/webhook/git").header("X-Gitlab-Event", "Tag Push Hook")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"ref\":\"refs/tags/v1\",\"commits\":[{}]}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.message").value("非push事件，已忽略"));
+
+        verifyNoInteractions(fixture.webhookService, fixture.relationService);
+        verify(fixture.guard, never()).handlePushHook(any());
+        verify(fixture.guard, never()).handleMergeRequestHook(any());
+    }
+
     private static Fixture fixture(String secret) {
         WebhookController controller = new WebhookController();
         PomMergeGuardService guard = mock(PomMergeGuardService.class);

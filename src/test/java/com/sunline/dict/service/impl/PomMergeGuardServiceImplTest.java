@@ -90,6 +90,30 @@ class PomMergeGuardServiceImplTest {
         assertEquals(1, guard(direct).handlePushHook(Map.of("after", "0000000000000000000000000000000000000000", "ref", "refs/heads/feature/a", "project", Map.of("id", 42))).get("ignored"));
     }
 
+    @Test
+    void currentClosedOrRetargetedMrIsSkippedBeforeAnyReadOfChangesOrWrite() {
+        FixtureMrService mr = pomFixture();
+        mr.current = new MergeRequestRef(42, 7, "feature/a", "develop", "closed");
+
+        Map<String, Object> result = guard(mr).handleMergeRequestHook(mrPayload(42, 7, "update", "opened", "master"));
+
+        assertEquals(1, result.get("ignored"));
+        assertEquals(0, mr.changeCalls);
+        assertEquals(0, mr.notes.size());
+        assertEquals(0, mr.closeCalls);
+    }
+
+    @Test
+    void escapesPathSoItCannotCreateGitLabQuickActionLine() {
+        FixtureMrService mr = pomFixture();
+        mr.changes = List.of(new MergeRequestChange("evil\n/target_branch develop\n/pom.xml", "evil\n/target_branch develop\n/pom.xml", false, false, false));
+
+        guard(mr).handleMergeRequestHook(mrPayload(42, 7, "open", "opened", "master"));
+
+        assertEquals(false, mr.notes.get(0).contains("\n/target_branch develop\n"));
+        assertEquals(false, mr.notes.get(0).contains("\r"));
+    }
+
     @SuppressWarnings("unchecked") private static Map<String, Object> decision(Map<String, Object> result) { return (Map<String, Object>) ((List<?>) result.get("decisions")).get(0); }
     private static PomMergeGuardServiceImpl guard(FixtureMrService service) { return new PomMergeGuardServiceImpl(service, new PomChangePolicy("merge pom file go"), () -> List.of(42L), true, "master", 20); }
     private static FixtureMrService pomFixture() { FixtureMrService service = new FixtureMrService(); service.changes = List.of(new MergeRequestChange("module/pom.xml", "module/pom.xml", false, false, false)); service.commits = List.of(new MergeRequestCommit("a1", "ordinary")); return service; }
@@ -98,9 +122,11 @@ class PomMergeGuardServiceImplTest {
 
     private static final class FixtureMrService implements GitLabMergeRequestService {
         List<MergeRequestRef> open = List.of(); List<MergeRequestChange> changes = List.of(); List<MergeRequestCommit> commits = List.of();
-        List<String> notes = new ArrayList<>(); List<Long> changedIids = new ArrayList<>(); int calls; int commitCalls; int closeCalls; boolean failNote; boolean failClose;
+        MergeRequestRef current = new MergeRequestRef(42, 7, "feature/a", "master", "opened");
+        List<String> notes = new ArrayList<>(); List<Long> changedIids = new ArrayList<>(); int calls; int changeCalls; int commitCalls; int closeCalls; boolean failNote; boolean failClose;
+        @Override public MergeRequestRef get(long projectId, long iid) { calls++; return current; }
         @Override public List<MergeRequestRef> listOpen(long projectId, String sourceBranch, String targetBranch) { calls++; return open; }
-        @Override public List<MergeRequestChange> changes(long projectId, long iid) { calls++; changedIids.add(iid); return changes; }
+        @Override public List<MergeRequestChange> changes(long projectId, long iid) { calls++; changeCalls++; changedIids.add(iid); return changes; }
         @Override public List<MergeRequestCommit> commits(long projectId, long iid) { calls++; commitCalls++; return commits; }
         @Override public void createNote(long projectId, long iid, String body) { calls++; if (failNote) throw new GitLabMergeRequestAccessException("MR_NOTE_FAILED"); notes.add(body); }
         @Override public void close(long projectId, long iid) { calls++; closeCalls++; if (failClose) throw new GitLabMergeRequestAccessException("MR_CLOSE_FAILED"); }

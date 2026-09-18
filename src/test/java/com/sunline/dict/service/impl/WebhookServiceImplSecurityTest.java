@@ -217,6 +217,35 @@ class WebhookServiceImplSecurityTest {
         }
     }
 
+    @Test
+    void uatValidationFailureKeepsCommitMessageOutOfLogsAndResponse() throws Exception {
+        String syntheticMessage = "REVIEW_SYNTHETIC_COMMIT_MESSAGE";
+        trustedHandler.set(exchange -> respond(exchange, 200, "[]"));
+        WebhookServiceImpl service = service(null);
+        ReflectionTestUtils.setField(service, "validateUatFromSit", true);
+        ReflectionTestUtils.setField(service, "bypassKeywords", "");
+        Logger logger = (Logger) LoggerFactory.getLogger(WebhookServiceImpl.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+
+        Map<String, Object> result;
+        try {
+            Map<String, Object> commit = new java.util.HashMap<>(modifiedCommit());
+            commit.put("message", syntheticMessage);
+            result = service.handleGitLabPushEvent(push("refs/heads/uat", trustedBaseUrl() + "/group/project", commit));
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+
+        String logs = appender.list.stream().map(ILoggingEvent::getFormattedMessage).reduce("", (left, right) -> left + "\n" + right);
+        assertEquals(false, (Boolean) result.get("success"));
+        assertEquals("UAT_SIT_VALIDATION_FAILED", result.get("message"));
+        assertFalse(logs.contains(syntheticMessage));
+        assertFalse(result.toString().contains(syntheticMessage));
+    }
+
     private WebhookServiceImpl service(FlowXmlParseService parser) {
         WebhookServiceImpl service = new WebhookServiceImpl();
         if (parser != null) {
