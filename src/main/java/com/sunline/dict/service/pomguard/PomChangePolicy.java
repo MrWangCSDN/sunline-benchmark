@@ -1,5 +1,7 @@
 package com.sunline.dict.service.pomguard;
 
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -9,11 +11,12 @@ import static com.sunline.dict.service.pomguard.GitLabMergeRequestService.MergeR
 import static com.sunline.dict.service.pomguard.GitLabMergeRequestService.MergeRequestCommit;
 
 /** Pure, case-sensitive POM and commit-message policy. */
+@Component
 public class PomChangePolicy {
 
     private final String bypassPhrase;
 
-    public PomChangePolicy(String bypassPhrase) {
+    public PomChangePolicy(@Value("${gitlab.pom-guard.bypass-phrase:merge pom file go}") String bypassPhrase) {
         this.bypassPhrase = bypassPhrase;
     }
 

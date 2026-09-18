@@ -69,6 +69,13 @@ git:
 # Webhook 调 GitLab API 用的 token（必须用 access-token 这个 key，不能用 accessToken）
 # 不配置则 Webhook 会尝试用 database.export.token，建议与下方 database.export.token 保持一致
 gitlab:
+  webhook-secret: ${GITLAB_WEBHOOK_SECRET:}
+  pom-guard:
+    enabled: true
+    target-branch: master
+    bypass-phrase: merge pom file go
+    max-comment-paths: 20
+    page-size: 100
   access-token: WScw9XyM8hM1sYKLAz8o  # 与 database.export.token 一致，用于 Webhook 下载文件
   download-mode: api   # api=仅 API；clone=仅 git clone（API 一直 404 时可改为 clone）
   # UAT 分支提交校验：要求 commit 先在 sit 分支存在

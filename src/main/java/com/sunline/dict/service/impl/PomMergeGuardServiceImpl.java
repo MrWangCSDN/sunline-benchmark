@@ -7,6 +7,7 @@ import com.sunline.dict.service.pomguard.PomMergeGuardService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -21,6 +22,7 @@ import java.util.TreeSet;
 
 /** Coordinates authoritative MR inspection and conservative GitLab write actions. */
 @Service
+@ConditionalOnBean(GitLabMergeRequestService.class)
 public class PomMergeGuardServiceImpl implements PomMergeGuardService {
     private static final Logger log = LoggerFactory.getLogger(PomMergeGuardServiceImpl.class);
     private static final String NOTE_PREFIX = "禁止提交 pom 文件。本合并请求包含 pom.xml，已自动关闭。\n如确需提交，请在 commit message 中加入：merge pom file go";

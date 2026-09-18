@@ -13,6 +13,8 @@ import com.sunline.dict.service.WebhookService;
 import com.sunline.dict.service.impl.FlowXmlParseServiceImpl;
 import com.sunline.dict.service.impl.GitLabApiClientImpl;
 import com.sunline.dict.service.impl.WebhookServiceImpl;
+import com.sunline.dict.service.pomguard.GitLabWebhookAuthenticator;
+import com.sunline.dict.service.pomguard.PomMergeGuardService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,6 +23,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.http.ResponseEntity;
 import org.w3c.dom.Element;
 
 import java.io.IOException;
@@ -94,21 +97,25 @@ class WebhookControllerCurrentStateTest {
             throws Exception {
         WebhookService service = mock(WebhookService.class);
         CallRelationScanService relationScanService = mock(CallRelationScanService.class);
+        PomMergeGuardService guardService = mock(PomMergeGuardService.class);
         WebhookController controller = new WebhookController();
         ReflectionTestUtils.setField(controller, "webhookService", service);
         ReflectionTestUtils.setField(controller, "callRelationScanService", relationScanService);
+        ReflectionTestUtils.setField(controller, "pomMergeGuardService", guardService);
+        ReflectionTestUtils.setField(controller, "gitLabWebhookAuthenticator", new GitLabWebhookAuthenticator("secret"));
         Map<String, Object> payload = Map.of("commits", List.of());
         when(service.handleGitLabPushEvent(payload)).thenReturn(Map.of("success", true));
+        when(guardService.handlePushHook(payload)).thenReturn(Map.of("eventType", "push"));
 
-        Result<Map<String, Object>> direct =
-                controller.handleGitLabWebhook(payload, "Push Hook", "legacy-event-uuid");
+        ResponseEntity<Result<Map<String, Object>>> direct =
+                controller.handleGitLabWebhook(payload, "Push Hook", "secret", "legacy-event-uuid");
         Result<Map<String, Object>> generic =
                 controller.handleGitWebhook(payload, null, "Push Hook", "legacy-event-uuid");
 
         verify(service, times(2)).handleGitLabPushEvent(payload);
-        assertEquals(200, direct.getCode());
+        assertEquals(200, direct.getBody().getCode());
         assertEquals(200, generic.getCode());
-        assertNoWebhookHistorySemantics(direct.getData());
+        assertNoWebhookHistorySemantics(direct.getBody().getData());
         assertNoWebhookHistorySemantics(generic.getData());
     }
 
