@@ -8,6 +8,14 @@ public interface GitLabApiClient {
 
     ApiResponse get(String apiPath, Map<String, String> query);
 
+    default ApiResponse postForm(String apiPath, Map<String, String> form) {
+        throw new UnsupportedOperationException("GitLab form mutations are not supported by this client");
+    }
+
+    default ApiResponse putForm(String apiPath, Map<String, String> form) {
+        throw new UnsupportedOperationException("GitLab form mutations are not supported by this client");
+    }
+
     enum Status {
         SUCCESS,
         NOT_FOUND,

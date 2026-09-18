@@ -144,6 +144,69 @@ class GitLabApiClientImplTest {
     }
 
     @Test
+    void postsEncodedFormToConfiguredOriginWithoutFollowingRedirects() throws IOException {
+        AtomicReference<String> method = new AtomicReference<>();
+        AtomicReference<String> contentType = new AtomicReference<>();
+        AtomicReference<String> body = new AtomicReference<>();
+        server.createContext("/api/v4/projects/42/merge_requests/7/notes", exchange -> {
+            method.set(exchange.getRequestMethod());
+            contentType.set(exchange.getRequestHeaders().getFirst("Content-Type"));
+            body.set(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+            respond(exchange, 201, "{}");
+        });
+
+        ApiResponse response = client("secret-token").postForm(
+                "/projects/42/merge_requests/7/notes", Map.of("body", "禁止提交 pom 文件\n路径 a/pom.xml"));
+
+        assertEquals(Status.SUCCESS, response.status());
+        assertEquals("POST", method.get());
+        assertEquals("application/x-www-form-urlencoded", contentType.get());
+        assertEquals("body=%E7%A6%81%E6%AD%A2%E6%8F%90%E4%BA%A4%20pom%20%E6%96%87%E4%BB%B6%0A%E8%B7%AF%E5%BE%84%20a%2Fpom.xml", body.get());
+    }
+
+    @Test
+    void putsEncodedCloseEvent() throws IOException {
+        AtomicReference<String> method = new AtomicReference<>();
+        AtomicReference<String> body = new AtomicReference<>();
+        server.createContext("/api/v4/projects/42/merge_requests/7", exchange -> {
+            method.set(exchange.getRequestMethod());
+            body.set(new String(exchange.getRequestBody().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+            respond(exchange, 200, "{}");
+        });
+
+        ApiResponse response = client("secret-token").putForm(
+                "/projects/42/merge_requests/7", Map.of("state_event", "close"));
+
+        assertEquals(Status.SUCCESS, response.status());
+        assertEquals("PUT", method.get());
+        assertEquals("state_event=close", body.get());
+    }
+
+    @Test
+    void mutationMethodsRejectAbsolutePathsAndDoNotFollowRedirects() throws IOException {
+        AtomicBoolean redirectedRequestReceived = new AtomicBoolean();
+        redirectServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        redirectServer.createContext("/target", exchange -> {
+            redirectedRequestReceived.set(true);
+            respond(exchange, 200, "unexpected");
+        });
+        redirectServer.start();
+        server.createContext("/api/v4/projects/42/merge_requests/7", exchange -> {
+            exchange.getResponseHeaders().set("Location", redirectUrl() + "/target");
+            exchange.sendResponseHeaders(302, -1);
+            exchange.close();
+        });
+        GitLabApiClientImpl client = client("secret-token");
+
+        assertThrows(IllegalArgumentException.class,
+                () -> client.postForm("https://untrusted.example/notes", Map.of("body", "x")));
+        ApiResponse response = client.putForm("/projects/42/merge_requests/7", Map.of("state_event", "close"));
+
+        assertEquals(Status.PERMANENT_FAILURE, response.status());
+        assertFalse(redirectedRequestReceived.get());
+    }
+
+    @Test
     void rejectsAbsoluteOrUnrootedApiPathsAndBaseUriQueryOrFragment() {
         GitLabApiClientImpl client = client("secret-token");
 

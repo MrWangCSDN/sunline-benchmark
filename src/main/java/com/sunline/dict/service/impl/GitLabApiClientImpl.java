@@ -58,38 +58,59 @@ public class GitLabApiClientImpl implements GitLabApiClient {
     @Override
     public ApiResponse get(String apiPath, Map<String, String> query) {
         URI requestUri = buildRequestUri(apiPath, query);
-        for (int attempt = 0; attempt < 3; attempt++) {
+        return send(requestUri, "GET", null, true);
+    }
+
+    @Override
+    public ApiResponse postForm(String apiPath, Map<String, String> form) {
+        return send(buildRequestUri(apiPath, Map.of()), "POST", encodeParameters(form), false);
+    }
+
+    @Override
+    public ApiResponse putForm(String apiPath, Map<String, String> form) {
+        return send(buildRequestUri(apiPath, Map.of()), "PUT", encodeParameters(form), false);
+    }
+
+    private ApiResponse send(URI requestUri, String method, String formBody, boolean retryTransientFailures) {
+        int attempts = retryTransientFailures ? 3 : 1;
+        for (int attempt = 0; attempt < attempts; attempt++) {
             try {
-                HttpRequest.Builder builder = HttpRequest.newBuilder(requestUri)
-                        .GET()
-                        .timeout(REQUEST_TIMEOUT);
+                HttpRequest.Builder builder = HttpRequest.newBuilder(requestUri).timeout(REQUEST_TIMEOUT);
+                if (formBody == null) {
+                    builder.GET();
+                } else {
+                    builder.header("Content-Type", "application/x-www-form-urlencoded")
+                            .method(method, HttpRequest.BodyPublishers.ofString(formBody, StandardCharsets.UTF_8));
+                }
                 if (accessToken != null && !accessToken.isBlank()) {
                     builder.header("PRIVATE-TOKEN", accessToken);
                 }
                 HttpResponse<String> response = httpClient.send(builder.build(),
                         HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
                 ApiResponse result = classify(response);
-                if (result.status() != Status.TRANSIENT_FAILURE || attempt == 2) {
+                if (!retryTransientFailures || result.status() != Status.TRANSIENT_FAILURE || attempt == attempts - 1) {
                     return result;
                 }
             } catch (HttpTimeoutException exception) {
-                if (attempt == 2) {
+                if (!retryTransientFailures || attempt == attempts - 1) {
                     return failure("GitLab request timed out");
                 }
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
                 return failure("GitLab request interrupted");
             } catch (IOException exception) {
-                if (attempt == 2) {
+                if (!retryTransientFailures || attempt == attempts - 1) {
                     return failure("GitLab request failed");
                 }
             }
 
-            try {
-                retrySleeper.sleep(RETRY_DELAYS.get(attempt));
-            } catch (InterruptedException exception) {
-                Thread.currentThread().interrupt();
-                return failure("GitLab request interrupted");
+            if (retryTransientFailures) {
+                try {
+                    retrySleeper.sleep(RETRY_DELAYS.get(attempt));
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    return failure("GitLab request interrupted");
+                }
             }
         }
         return failure("GitLab request failed");
@@ -125,14 +146,14 @@ public class GitLabApiClientImpl implements GitLabApiClient {
             throw new IllegalArgumentException("GitLab API path must be relative to the configured origin");
         }
         StringBuilder uri = new StringBuilder(baseUri.toString()).append("/api/v4").append(apiPath);
-        String encodedQuery = encodeQuery(query);
+        String encodedQuery = encodeParameters(query);
         if (!encodedQuery.isEmpty()) {
             uri.append('?').append(encodedQuery);
         }
         return URI.create(uri.toString());
     }
 
-    private static String encodeQuery(Map<String, String> query) {
+    private static String encodeParameters(Map<String, String> query) {
         if (query == null || query.isEmpty()) {
             return "";
         }
