@@ -4,6 +4,10 @@ import com.sunline.dict.service.flowchange.ConfiguredGitLabProjectProvider;
 import com.sunline.dict.service.pomguard.GitLabMergeRequestService;
 import com.sunline.dict.service.pomguard.PomChangePolicy;
 import org.junit.jupiter.api.Test;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -77,7 +81,7 @@ class PomMergeGuardServiceImplTest {
     @Test
     void sourceBranchPushProcessesUniqueIidsInAscendingOrderAndMasterOnlyWarns() {
         FixtureMrService source = pomFixture();
-        source.open = List.of(new MergeRequestRef(42, 9, "feature/a", "master", "opened"), new MergeRequestRef(42, 7, "feature/a", "master", "opened"), new MergeRequestRef(42, 9, "feature/a", "master", "opened"));
+        source.open = List.of(new MergeRequestRef(42, 9, "feature/a", "master", "opened", "1"), new MergeRequestRef(42, 7, "feature/a", "master", "opened", "1"), new MergeRequestRef(42, 9, "feature/a", "master", "opened", "1"));
         Map<String, Object> sourceResult = guard(source).handlePushHook(pushPayload("refs/heads/feature/a", "ordinary", List.of("module/pom.xml")));
         assertEquals(List.of(7L, 9L), source.changedIids);
         assertEquals(2, sourceResult.get("closed"));
@@ -93,7 +97,7 @@ class PomMergeGuardServiceImplTest {
     @Test
     void currentClosedOrRetargetedMrIsSkippedBeforeAnyReadOfChangesOrWrite() {
         FixtureMrService mr = pomFixture();
-        mr.current = new MergeRequestRef(42, 7, "feature/a", "develop", "closed");
+        mr.current = new MergeRequestRef(42, 7, "feature/a", "develop", "closed", "1");
 
         Map<String, Object> result = guard(mr).handleMergeRequestHook(mrPayload(42, 7, "update", "opened", "master"));
 
@@ -114,6 +118,27 @@ class PomMergeGuardServiceImplTest {
         assertEquals(false, mr.notes.get(0).contains("\r"));
     }
 
+    @Test
+    void sourceBranchQueryFailureLogsOnlyStableCodeAndProjectId() {
+        FixtureMrService mr = pomFixture();
+        mr.failList = true;
+        String sensitive = "REVIEW_SYNTHETIC_SOURCE_BRANCH_SECRET";
+        Logger logger = (Logger) LoggerFactory.getLogger(PomMergeGuardServiceImpl.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        try {
+            guard(mr).handlePushHook(pushPayload("refs/heads/" + sensitive, "ordinary", List.of()));
+        } finally {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+        String logs = appender.list.stream().map(ILoggingEvent::getFormattedMessage).reduce("", (left, right) -> left + "\n" + right);
+        assertEquals(true, logs.contains("projectId=42"));
+        assertEquals(true, logs.contains("MR_QUERY_FAILED"));
+        assertEquals(false, logs.contains(sensitive));
+    }
+
     @SuppressWarnings("unchecked") private static Map<String, Object> decision(Map<String, Object> result) { return (Map<String, Object>) ((List<?>) result.get("decisions")).get(0); }
     private static PomMergeGuardServiceImpl guard(FixtureMrService service) { return new PomMergeGuardServiceImpl(service, new PomChangePolicy("merge pom file go"), () -> List.of(42L), true, "master", 20); }
     private static FixtureMrService pomFixture() { FixtureMrService service = new FixtureMrService(); service.changes = List.of(new MergeRequestChange("module/pom.xml", "module/pom.xml", false, false, false)); service.commits = List.of(new MergeRequestCommit("a1", "ordinary")); return service; }
@@ -122,11 +147,11 @@ class PomMergeGuardServiceImplTest {
 
     private static final class FixtureMrService implements GitLabMergeRequestService {
         List<MergeRequestRef> open = List.of(); List<MergeRequestChange> changes = List.of(); List<MergeRequestCommit> commits = List.of();
-        MergeRequestRef current = new MergeRequestRef(42, 7, "feature/a", "master", "opened");
-        List<String> notes = new ArrayList<>(); List<Long> changedIids = new ArrayList<>(); int calls; int changeCalls; int commitCalls; int closeCalls; boolean failNote; boolean failClose;
+        MergeRequestRef current = new MergeRequestRef(42, 7, "feature/a", "master", "opened", "1");
+        List<String> notes = new ArrayList<>(); List<Long> changedIids = new ArrayList<>(); int calls; int changeCalls; int commitCalls; int closeCalls; boolean failNote; boolean failClose; boolean failList;
         @Override public MergeRequestRef get(long projectId, long iid) { calls++; return current; }
-        @Override public List<MergeRequestRef> listOpen(long projectId, String sourceBranch, String targetBranch) { calls++; return open; }
-        @Override public List<MergeRequestChange> changes(long projectId, long iid) { calls++; changeCalls++; changedIids.add(iid); return changes; }
+        @Override public List<MergeRequestRef> listOpen(long projectId, String sourceBranch, String targetBranch) { calls++; if (failList) throw new GitLabMergeRequestAccessException("MR_QUERY_FAILED"); return open; }
+        @Override public List<MergeRequestChange> changes(long projectId, long iid, String expectedDiffCount) { calls++; changeCalls++; changedIids.add(iid); return changes; }
         @Override public List<MergeRequestCommit> commits(long projectId, long iid) { calls++; commitCalls++; return commits; }
         @Override public void createNote(long projectId, long iid, String body) { calls++; if (failNote) throw new GitLabMergeRequestAccessException("MR_NOTE_FAILED"); notes.add(body); }
         @Override public void close(long projectId, long iid) { calls++; closeCalls++; if (failClose) throw new GitLabMergeRequestAccessException("MR_CLOSE_FAILED"); }

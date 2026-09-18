@@ -35,7 +35,7 @@ public class GitLabMergeRequestServiceImpl implements GitLabMergeRequestService 
         if (!item.isObject()) throw failure("MR_QUERY_FAILED");
         return new MergeRequestRef(projectId, longValue(item, "iid", "MR_QUERY_FAILED"),
                 text(item, "source_branch", "MR_QUERY_FAILED"), text(item, "target_branch", "MR_QUERY_FAILED"),
-                text(item, "state", "MR_QUERY_FAILED"));
+                text(item, "state", "MR_QUERY_FAILED"), nullableText(item, "changes_count"));
     }
 
     @Override
@@ -45,16 +45,18 @@ public class GitLabMergeRequestServiceImpl implements GitLabMergeRequestService 
                 Map.of("state", "opened", "source_branch", required(sourceBranch), "target_branch", required(targetBranch)),
                 item -> results.add(new MergeRequestRef(projectId, longValue(item, "iid", "MR_QUERY_FAILED"),
                         text(item, "source_branch", "MR_QUERY_FAILED"), text(item, "target_branch", "MR_QUERY_FAILED"),
-                        text(item, "state", "MR_QUERY_FAILED"))));
+                        text(item, "state", "MR_QUERY_FAILED"), nullableText(item, "changes_count"))));
         return List.copyOf(results);
     }
 
     @Override
-    public List<MergeRequestChange> changes(long projectId, long iid) {
+    public List<MergeRequestChange> changes(long projectId, long iid, String expectedDiffCount) {
+        int expected = expectedDiffCount(expectedDiffCount);
         List<MergeRequestChange> changes = new ArrayList<>();
         forEachPage("/projects/" + projectId + "/merge_requests/" + iid + "/diffs", "MR_CHANGES_FAILED", Map.of(),
                 item -> changes.add(new MergeRequestChange(nullableText(item, "old_path"), nullableText(item, "new_path"),
                         bool(item, "new_file", "MR_CHANGES_FAILED"), bool(item, "deleted_file", "MR_CHANGES_FAILED"), bool(item, "renamed_file", "MR_CHANGES_FAILED"))));
+        if (changes.size() != expected) throw failure("MR_CHANGES_FAILED");
         return List.copyOf(changes);
     }
 
@@ -108,6 +110,11 @@ public class GitLabMergeRequestServiceImpl implements GitLabMergeRequestService 
         List<String> pages = response.headers() == null ? null : response.headers().get("x-next-page");
         if (pages == null || pages.isEmpty() || pages.get(0) == null || pages.get(0).isBlank()) return null;
         return pages.get(0).trim();
+    }
+    private static int expectedDiffCount(String value) {
+        if (value == null || !value.matches("[0-9]+")) throw failure("MR_CHANGES_FAILED");
+        try { return Integer.parseInt(value); }
+        catch (NumberFormatException ignored) { throw failure("MR_CHANGES_FAILED"); }
     }
     private static String required(String value) { if (value == null || value.isBlank()) throw new IllegalArgumentException("GitLab merge request parameter is invalid"); return value; }
     private static String text(JsonNode node, String field, String code) { String value = nullableText(node, field); if (value == null || value.isEmpty()) throw failure(code); return value; }

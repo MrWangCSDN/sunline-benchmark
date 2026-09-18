@@ -6,12 +6,13 @@ import java.util.List;
 public interface GitLabMergeRequestService {
     MergeRequestRef get(long projectId, long iid);
     List<MergeRequestRef> listOpen(long projectId, String sourceBranch, String targetBranch);
-    List<MergeRequestChange> changes(long projectId, long iid);
+    List<MergeRequestChange> changes(long projectId, long iid, String expectedDiffCount);
     List<MergeRequestCommit> commits(long projectId, long iid);
     void createNote(long projectId, long iid, String body);
     void close(long projectId, long iid);
 
-    record MergeRequestRef(long projectId, long iid, String sourceBranch, String targetBranch, String state) { }
+    record MergeRequestRef(long projectId, long iid, String sourceBranch, String targetBranch, String state,
+                           String changesCount) { }
     record MergeRequestChange(String oldPath, String newPath, boolean newFile, boolean deletedFile, boolean renamedFile) { }
     record MergeRequestCommit(String sha, String message) { }
 

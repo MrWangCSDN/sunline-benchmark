@@ -91,6 +91,7 @@ public class PomMergeGuardServiceImpl implements PomMergeGuardService {
                     .collect(java.util.stream.Collectors.toMap(GitLabMergeRequestService.MergeRequestRef::iid, mr -> mr, (a, b) -> a))
                     .entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> result.add(inspect(projectId, entry.getKey())));
         } catch (GitLabMergeRequestService.GitLabMergeRequestAccessException exception) {
+            log.warn("POM guard source MR query failure: projectId={}, code={}", projectId, exception.errorCode());
             result.add(decision("ERROR", projectId, null, List.of(), null, false, false, exception.errorCode()));
         }
         return result.map();
@@ -102,7 +103,7 @@ public class PomMergeGuardServiceImpl implements PomMergeGuardService {
             if (!"opened".equals(current.state()) || !targetBranch.equals(current.targetBranch())) {
                 return decision("IGNORED", projectId, iid, List.of(), null, false, false, null);
             }
-            List<String> paths = policy.pomPaths(mergeRequests.changes(projectId, iid));
+            List<String> paths = policy.pomPaths(mergeRequests.changes(projectId, iid, current.changesCount()));
             if (paths.isEmpty()) return decision("NO_POM_CHANGE", projectId, iid, paths, null, false, false, null);
             Optional<String> bypass = policy.firstBypassCommitSha(mergeRequests.commits(projectId, iid));
             if (bypass.isPresent()) return decision("BYPASSED", projectId, iid, paths, bypass.get(), false, false, null);

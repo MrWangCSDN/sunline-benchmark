@@ -20,15 +20,22 @@ class GitLabMergeRequestServiceImplTest {
     @Test
     void listsOpenedMergeRequestsWithLiteralBranchesAndPagination() {
         FixtureClient client = new FixtureClient(
-                ok("[{\"iid\":9,\"source_branch\":\"feature/a\",\"target_branch\":\"master\",\"state\":\"opened\"}]", Map.of("x-next-page", List.of(" 2 "))),
-                ok("[{\"iid\":10,\"source_branch\":\"feature/a\",\"target_branch\":\"master\",\"state\":\"opened\"}]", Map.of()));
+                ok("[{\"iid\":9,\"source_branch\":\"feature/a\",\"target_branch\":\"master\",\"state\":\"opened\",\"changes_count\":\"0\"}]", Map.of("x-next-page", List.of(" 2 "))),
+                ok("[{\"iid\":10,\"source_branch\":\"feature/a\",\"target_branch\":\"master\",\"state\":\"opened\",\"changes_count\":\"0\"}]", Map.of()));
 
         List<MergeRequestRef> result = service(client).listOpen(42, "feature/a", "master");
 
-        assertEquals(List.of(new MergeRequestRef(42, 9, "feature/a", "master", "opened"),
-                new MergeRequestRef(42, 10, "feature/a", "master", "opened")), result);
+        assertEquals(List.of(new MergeRequestRef(42, 9, "feature/a", "master", "opened", "0"),
+                new MergeRequestRef(42, 10, "feature/a", "master", "opened", "0")), result);
         assertEquals(Map.of("state", "opened", "source_branch", "feature/a", "target_branch", "master", "page", "1", "per_page", "2"), client.queries.get(0));
         assertEquals("2", client.queries.get(1).get("page"));
+    }
+
+    @Test
+    void preservesRawChangesCountFromAuthoritativeMergeRequestRead() {
+        FixtureClient client = new FixtureClient(ok("{\"iid\":7,\"source_branch\":\"feature/a\",\"target_branch\":\"master\",\"state\":\"opened\",\"changes_count\":\"2\"}"));
+
+        assertEquals(new MergeRequestRef(42, 7, "feature/a", "master", "opened", "2"), service(client).get(42, 7));
     }
 
     @Test
@@ -38,7 +45,7 @@ class GitLabMergeRequestServiceImplTest {
                 ok("[{\"id\":\"a1\",\"message\":\"first\"}]", Map.of("x-next-page", List.of("2"))),
                 ok("[{\"id\":\"b2\",\"message\":\"second\"}]"), ok("{}"), ok("{\"state\":\"closed\"}"));
 
-        assertEquals(List.of(new MergeRequestChange("old/pom.xml", "new/pom.xml", false, false, true)), service(client).changes(42, 7));
+        assertEquals(List.of(new MergeRequestChange("old/pom.xml", "new/pom.xml", false, false, true)), service(client).changes(42, 7, "1"));
         assertEquals(List.of(new MergeRequestCommit("a1", "first"), new MergeRequestCommit("b2", "second")), service(client).commits(42, 7));
         service(client).createNote(42, 7, "body text");
         service(client).close(42, 7);
@@ -58,7 +65,7 @@ class GitLabMergeRequestServiceImplTest {
         GitLabMergeRequestAccessException failed = assertThrows(GitLabMergeRequestAccessException.class,
                 () -> service(client).listOpen(42, "feature/a", "master"));
         GitLabMergeRequestAccessException malformed = assertThrows(GitLabMergeRequestAccessException.class,
-                () -> service(client).changes(42, 7));
+                () -> service(client).changes(42, 7, "0"));
 
         assertEquals("MR_QUERY_FAILED", failed.errorCode());
         assertEquals("MR_CHANGES_FAILED", malformed.errorCode());
@@ -72,7 +79,7 @@ class GitLabMergeRequestServiceImplTest {
                 ok("[{\"old_path\":\"README.md\",\"new_path\":\"README.md\",\"new_file\":false,\"deleted_file\":false,\"renamed_file\":false}]", Map.of("x-next-page", List.of("2"))),
                 ok("[{\"old_path\":\"module/pom.xml\",\"new_path\":\"module/pom.xml\",\"new_file\":false,\"deleted_file\":false,\"renamed_file\":false}]"));
 
-        List<MergeRequestChange> changes = service(client).changes(42, 7);
+        List<MergeRequestChange> changes = service(client).changes(42, 7, "2");
 
         assertEquals(2, changes.size());
         assertEquals("module/pom.xml", changes.get(1).newPath());
@@ -95,9 +102,48 @@ class GitLabMergeRequestServiceImplTest {
         FixtureClient client = new FixtureClient(ok("[]", Map.of("x-next-page", List.of("1"))));
 
         GitLabMergeRequestAccessException exception = assertThrows(GitLabMergeRequestAccessException.class,
-                () -> service(client).changes(42, 7));
+                () -> service(client).changes(42, 7, "0"));
 
         assertEquals("MR_CHANGES_FAILED", exception.errorCode());
+    }
+
+    @Test
+    void rejectsOverflowChangesCountBecauseDiffCompletenessCannotBeProven() {
+        FixtureClient client = new FixtureClient(ok("[]"));
+
+        GitLabMergeRequestAccessException exception = assertThrows(GitLabMergeRequestAccessException.class,
+                () -> service(client).changes(42, 7, "1000+"));
+
+        assertEquals("MR_CHANGES_FAILED", exception.errorCode());
+    }
+
+    @Test
+    void rejectsMissingBlankAndNonDecimalChangesCounts() {
+        FixtureClient client = new FixtureClient(ok("[]"), ok("[]"), ok("[]"));
+
+        assertEquals("MR_CHANGES_FAILED", assertThrows(GitLabMergeRequestAccessException.class,
+                () -> service(client).changes(42, 7, null)).errorCode());
+        assertEquals("MR_CHANGES_FAILED", assertThrows(GitLabMergeRequestAccessException.class,
+                () -> service(client).changes(42, 7, " ")).errorCode());
+        assertEquals("MR_CHANGES_FAILED", assertThrows(GitLabMergeRequestAccessException.class,
+                () -> service(client).changes(42, 7, "2.0")).errorCode());
+    }
+
+    @Test
+    void rejectsDiffCountMismatchRatherThanReportingNoPomChange() {
+        FixtureClient client = new FixtureClient(ok("[{\"old_path\":\"README.md\",\"new_path\":\"README.md\",\"new_file\":false,\"deleted_file\":false,\"renamed_file\":false}]"));
+
+        GitLabMergeRequestAccessException exception = assertThrows(GitLabMergeRequestAccessException.class,
+                () -> service(client).changes(42, 7, "2"));
+
+        assertEquals("MR_CHANGES_FAILED", exception.errorCode());
+    }
+
+    @Test
+    void acceptsExactZeroChangesCountWithEmptyDiffList() {
+        FixtureClient client = new FixtureClient(ok("[]"));
+
+        assertEquals(List.of(), service(client).changes(42, 7, "0"));
     }
 
     private static GitLabMergeRequestServiceImpl service(FixtureClient client) {
