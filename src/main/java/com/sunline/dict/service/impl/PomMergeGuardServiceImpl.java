@@ -52,13 +52,22 @@ public class PomMergeGuardServiceImpl implements PomMergeGuardService {
         long projectId = projectId(payload);
         Result result = new Result("merge_request", projectId);
         Map<String, Object> attrs = map(payload, "object_attributes");
-        if (!enabled || !allowed(projectId) || !"merge_request".equals(text(payload, "object_kind"))
-                || !targetBranch.equals(text(attrs, "target_branch")) || !"opened".equals(text(attrs, "state"))
-                || !("open".equals(text(attrs, "action")) || "update".equals(text(attrs, "action")) || "reopen".equals(text(attrs, "action")))) {
+        Long iid = longValue(attrs, "iid");
+        String action = text(attrs, "action");
+        String state = text(attrs, "state");
+        String target = text(attrs, "target_branch");
+        log.info("POM guard MR received: projectId={}, iid={}, action={}, state={}, targetBranch={}", projectId,
+                iid == null ? "none" : iid, safeLogValue(action), safeLogValue(state), safeLogValue(target));
+        String ignoreReason = mergeRequestIgnoreReason(projectId, payload, attrs);
+        if (ignoreReason != null) {
+            log.info("POM guard MR ignored: projectId={}, iid={}, reason={}", projectId,
+                    iid == null ? "none" : iid, ignoreReason);
             return result.ignored(null).map();
         }
-        Long iid = longValue(attrs, "iid");
-        if (iid == null) return result.ignored(null).map();
+        if (iid == null) {
+            log.info("POM guard MR ignored: projectId={}, iid=none, reason=IID_MISSING", projectId);
+            return result.ignored(null).map();
+        }
         result.add(inspect(projectId, iid));
         return result.map();
     }
@@ -68,22 +77,26 @@ public class PomMergeGuardServiceImpl implements PomMergeGuardService {
         long projectId = projectId(payload);
         Result result = new Result("push", projectId);
         String ref = text(payload, "ref");
-        if (!enabled || !allowed(projectId) || isBranchDeletion(payload) || ref == null || !ref.startsWith("refs/heads/")) return result.ignored(null).map();
+        boolean targetsProtectedBranch = ("refs/heads/" + targetBranch).equals(ref);
+        log.info("POM guard Push received: projectId={}, targetsProtectedBranch={}", projectId, targetsProtectedBranch);
+        if (!enabled || !allowed(projectId) || isBranchDeletion(payload) || ref == null || !ref.startsWith("refs/heads/")) {
+            return completedPush(result.ignored(null));
+        }
         String branch = ref.substring("refs/heads/".length());
-        if (branch.isBlank()) return result.ignored(null).map();
+        if (branch.isBlank()) return completedPush(result.ignored(null));
         if (targetBranch.equals(branch)) {
             List<String> paths = pushPomPaths(payload);
-            if (paths.isEmpty()) return result.ignored(null).map();
+            if (paths.isEmpty()) return completedPush(result.ignored(null));
             Optional<String> bypass = policy.firstBypassCommitSha(pushCommits(payload));
             if (bypass.isPresent()) {
                 log.info("POM guard direct master push bypassed: projectId={}, sha={}, pomPathCount={}", projectId, shortSha(bypass.get()), paths.size());
-                result.add(decision("BYPASSED", projectId, null, paths, bypass.get(), false, false, null));
+                result.add(loggedDecision("Push", "BYPASSED", projectId, null, paths, bypass.get(), false, false, null));
             }
             else {
                 log.warn("POM guard direct master push detected: projectId={}, sha={}, pomPathCount={}", projectId, firstPushShortSha(payload), paths.size());
-                result.add(decision("WARNED_DIRECT_PUSH", projectId, null, paths, null, false, false, null));
+                result.add(loggedDecision("Push", "WARNED_DIRECT_PUSH", projectId, null, paths, null, false, false, null));
             }
-            return result.map();
+            return completedPush(result);
         }
         try {
             mergeRequests.listOpen(projectId, branch, targetBranch).stream()
@@ -92,30 +105,38 @@ public class PomMergeGuardServiceImpl implements PomMergeGuardService {
                     .entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> result.add(inspect(projectId, entry.getKey())));
         } catch (GitLabMergeRequestService.GitLabMergeRequestAccessException exception) {
             log.warn("POM guard source MR query failure: projectId={}, code={}", projectId, exception.errorCode());
-            result.add(decision("ERROR", projectId, null, List.of(), null, false, false, exception.errorCode()));
+            result.add(loggedDecision("Push", "ERROR", projectId, null, List.of(), null, false, false, exception.errorCode()));
         }
-        return result.map();
+        return completedPush(result);
     }
 
     private Map<String, Object> inspect(long projectId, long iid) {
         try {
             GitLabMergeRequestService.MergeRequestRef current = mergeRequests.get(projectId, iid);
-            if (!"opened".equals(current.state()) || !targetBranch.equals(current.targetBranch())) {
-                return decision("IGNORED", projectId, iid, List.of(), null, false, false, null);
+            if (!"opened".equals(current.state())) {
+                log.info("POM guard MR ignored: projectId={}, iid={}, reason=CURRENT_MR_NOT_OPEN", projectId, iid);
+                return loggedDecision("MR", "IGNORED", projectId, iid, List.of(), null, false, false, null);
+            }
+            if (!targetBranch.equals(current.targetBranch())) {
+                log.info("POM guard MR ignored: projectId={}, iid={}, reason=CURRENT_TARGET_BRANCH_MISMATCH", projectId, iid);
+                return loggedDecision("MR", "IGNORED", projectId, iid, List.of(), null, false, false, null);
             }
             List<String> paths = policy.pomPaths(mergeRequests.changes(projectId, iid, current.changesCount()));
-            if (paths.isEmpty()) return decision("NO_POM_CHANGE", projectId, iid, paths, null, false, false, null);
+            if (paths.isEmpty()) {
+                log.info("POM guard MR ignored: projectId={}, iid={}, reason=NO_POM_CHANGE", projectId, iid);
+                return loggedDecision("MR", "NO_POM_CHANGE", projectId, iid, paths, null, false, false, null);
+            }
             Optional<String> bypass = policy.firstBypassCommitSha(mergeRequests.commits(projectId, iid));
-            if (bypass.isPresent()) return decision("BYPASSED", projectId, iid, paths, bypass.get(), false, false, null);
+            if (bypass.isPresent()) return loggedDecision("MR", "BYPASSED", projectId, iid, paths, bypass.get(), false, false, null);
             boolean noted = false;
             String noteError = null;
             try { mergeRequests.createNote(projectId, iid, note(paths)); noted = true; }
             catch (GitLabMergeRequestService.GitLabMergeRequestAccessException exception) { noteError = exception.errorCode(); log.warn("POM guard action failure: projectId={}, iid={}, code={}", projectId, iid, noteError); }
-            try { mergeRequests.close(projectId, iid); return decision("CLOSED", projectId, iid, paths, null, noted, true, noteError); }
-            catch (GitLabMergeRequestService.GitLabMergeRequestAccessException exception) { log.warn("POM guard action failure: projectId={}, iid={}, code={}", projectId, iid, exception.errorCode()); return decision("ERROR", projectId, iid, paths, null, noted, false, exception.errorCode()); }
+            try { mergeRequests.close(projectId, iid); return loggedDecision("MR", "CLOSED", projectId, iid, paths, null, noted, true, noteError); }
+            catch (GitLabMergeRequestService.GitLabMergeRequestAccessException exception) { log.warn("POM guard action failure: projectId={}, iid={}, code={}", projectId, iid, exception.errorCode()); return loggedDecision("MR", "ERROR", projectId, iid, paths, null, noted, false, exception.errorCode()); }
         } catch (GitLabMergeRequestService.GitLabMergeRequestAccessException exception) {
             log.warn("POM guard query failure: projectId={}, iid={}, code={}", projectId, iid, exception.errorCode());
-            return decision("ERROR", projectId, iid, List.of(), null, false, false, exception.errorCode());
+            return loggedDecision("MR", "ERROR", projectId, iid, List.of(), null, false, false, exception.errorCode());
         }
     }
 
@@ -124,6 +145,43 @@ public class PomMergeGuardServiceImpl implements PomMergeGuardService {
         paths.stream().limit(maxCommentPaths).forEach(path -> note.append("\n- ").append(safePath(path)));
         if (paths.size() > maxCommentPaths) note.append("\n另有 ").append(paths.size() - maxCommentPaths).append(" 个文件");
         return note.toString();
+    }
+
+    private String mergeRequestIgnoreReason(long projectId, Map<String, Object> payload, Map<String, Object> attrs) {
+        if (!enabled) return "GUARD_DISABLED";
+        if (!allowed(projectId)) return "PROJECT_NOT_ALLOWED";
+        if (!"merge_request".equals(text(payload, "object_kind"))) return "OBJECT_KIND_MISMATCH";
+        if (!targetBranch.equals(text(attrs, "target_branch"))) return "TARGET_BRANCH_MISMATCH";
+        if (!"opened".equals(text(attrs, "state"))) return "STATE_NOT_OPENED";
+        String action = text(attrs, "action");
+        if (!("open".equals(action) || "update".equals(action) || "reopen".equals(action))) return "ACTION_NOT_SUPPORTED";
+        return null;
+    }
+
+    private Map<String, Object> loggedDecision(String eventType, String outcome, long projectId, Long iid,
+                                               List<String> paths, String bypass, boolean noted,
+                                               boolean closed, String error) {
+        Map<String, Object> value = decision(outcome, projectId, iid, paths, bypass, noted, closed, error);
+        log.info("POM guard {} decision: projectId={}, iid={}, outcome={}, pomPathCount={}, noteCreated={}, closed={}, errorCode={}",
+                eventType, projectId, iid == null ? "none" : iid, outcome, paths.size(), noted, closed,
+                error == null ? "none" : error);
+        return value;
+    }
+
+    private Map<String, Object> completedPush(Result result) {
+        log.info("POM guard Push completed: projectId={}, attempted={}, closed={}, bypassed={}, ignored={}, errors={}",
+                result.projectId, result.attempted, result.closed, result.bypassed, result.ignored, result.errors);
+        return result.map();
+    }
+
+    private static String safeLogValue(String value) {
+        if (value == null || value.isBlank()) return "none";
+        StringBuilder safe = new StringBuilder(value.length());
+        for (int index = 0; index < value.length(); index++) {
+            char character = value.charAt(index);
+            safe.append(Character.isISOControl(character) ? '_' : character);
+        }
+        return safe.toString();
     }
 
     private List<String> pushPomPaths(Map<String, Object> payload) {
