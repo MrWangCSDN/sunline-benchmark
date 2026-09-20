@@ -4,7 +4,11 @@ import com.sunline.dict.service.CallRelationScanService;
 import com.sunline.dict.service.WebhookService;
 import com.sunline.dict.service.pomguard.GitLabWebhookAuthenticator;
 import com.sunline.dict.service.pomguard.PomMergeGuardService;
+import ch.qos.logback.classic.Logger;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
@@ -12,6 +16,8 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -23,6 +29,65 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 class GitLabPomWebhookControllerTest {
+
+    @Test
+    void logsAuthenticationRejectionWithoutLeakingSuppliedToken() throws Exception {
+        String sensitiveToken = "SYNTHETIC_WEBHOOK_TOKEN";
+        try (LogCapture logs = captureLogs()) {
+            fixture("configured-secret").mockMvc.perform(post("/api/webhook/gitlab")
+                    .header("X-Gitlab-Event", "Merge Request Hook")
+                    .header("X-Gitlab-Event-UUID", "event-401")
+                    .header("X-Gitlab-Token", sensitiveToken)
+                    .contentType(MediaType.APPLICATION_JSON).content("{}"));
+
+            assertTrue(logs.text().contains("reason=TOKEN_MISMATCH"));
+            assertTrue(logs.text().contains("eventUuid=event-401"));
+            assertFalse(logs.text().contains(sensitiveToken));
+        }
+    }
+
+    @Test
+    void logsAuthorizedWebhookResultSummary() throws Exception {
+        Fixture fixture = fixture("configured-secret");
+        when(fixture.guard.handleMergeRequestHook(any())).thenReturn(Map.of(
+                "eventType", "merge_request", "projectId", 70649L, "attempted", 1,
+                "closed", 1, "bypassed", 0, "ignored", 0, "errors", 0));
+
+        try (LogCapture logs = captureLogs()) {
+            fixture.mockMvc.perform(post("/api/webhook/gitlab")
+                    .header("X-Gitlab-Event", "Merge Request Hook")
+                    .header("X-Gitlab-Event-UUID", "event-ok")
+                    .header("X-Gitlab-Token", "configured-secret")
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"object_kind\":\"merge_request\"}"));
+
+            assertTrue(logs.text().contains("GitLab Webhook completed"));
+            assertTrue(logs.text().contains("projectId=70649"));
+            assertTrue(logs.text().contains("attempted=1, closed=1, bypassed=0, ignored=0, errors=0"));
+        }
+    }
+
+    @Test
+    void logsSanitizedUnexpectedFailureWithoutPayloadOrExceptionMessage() throws Exception {
+        Fixture fixture = fixture("configured-secret");
+        String sensitivePayload = "SYNTHETIC_PAYLOAD_SECRET";
+        String sensitiveMessage = "SYNTHETIC_EXCEPTION_SECRET";
+        when(fixture.guard.handleMergeRequestHook(any())).thenThrow(new IllegalStateException(sensitiveMessage));
+
+        try (LogCapture logs = captureLogs()) {
+            fixture.mockMvc.perform(post("/api/webhook/gitlab")
+                    .header("X-Gitlab-Event", "Merge Request Hook")
+                    .header("X-Gitlab-Event-UUID", "event-error")
+                    .header("X-Gitlab-Token", "configured-secret")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"object_kind\":\"merge_request\",\"title\":\"" + sensitivePayload + "\"}"));
+
+            assertTrue(logs.text().contains("GitLab Webhook failed"));
+            assertTrue(logs.text().contains("eventUuid=event-error"));
+            assertTrue(logs.text().contains("exceptionType=IllegalStateException"));
+            assertFalse(logs.text().contains(sensitivePayload));
+            assertFalse(logs.text().contains(sensitiveMessage));
+        }
+    }
 
     @Test
     void rejectsMissingTokenBeforeAnyBusinessService() throws Exception {
@@ -100,5 +165,32 @@ class GitLabPomWebhookControllerTest {
         ReflectionTestUtils.setField(controller, "callRelationScanService", relations);
         return new Fixture(MockMvcBuilders.standaloneSetup(controller).build(), guard, webhook, relations);
     }
+
+    private static LogCapture captureLogs() {
+        return new LogCapture((Logger) LoggerFactory.getLogger(WebhookController.class));
+    }
+
+    private static final class LogCapture implements AutoCloseable {
+        private final Logger logger;
+        private final ListAppender<ILoggingEvent> appender = new ListAppender<>();
+
+        private LogCapture(Logger logger) {
+            this.logger = logger;
+            appender.start();
+            logger.addAppender(appender);
+        }
+
+        private String text() {
+            return appender.list.stream().map(ILoggingEvent::getFormattedMessage)
+                    .reduce("", (left, right) -> left + "\n" + right);
+        }
+
+        @Override
+        public void close() {
+            logger.detachAppender(appender);
+            appender.stop();
+        }
+    }
+
     private record Fixture(MockMvc mockMvc, PomMergeGuardService guard, WebhookService webhookService, CallRelationScanService relationService) { }
 }

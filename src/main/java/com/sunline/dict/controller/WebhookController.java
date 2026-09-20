@@ -87,25 +87,36 @@ public class WebhookController {
             @RequestHeader(value = "X-Gitlab-Event", required = false) String event,
             @RequestHeader(value = "X-Gitlab-Token", required = false) String token,
             @RequestHeader(value = "X-Gitlab-Event-UUID", required = false) String eventUuid) {
+        log.info("GitLab Webhook received: event={}, eventUuid={}", safeLogValue(event), safeLogValue(eventUuid));
         GitLabWebhookAuthenticator.AuthenticationResult authentication = gitLabWebhookAuthenticator.authenticate(token);
         if (authentication == GitLabWebhookAuthenticator.AuthenticationResult.SECRET_NOT_CONFIGURED) {
+            log.warn("GitLab Webhook authentication rejected: event={}, eventUuid={}, reason=SECRET_NOT_CONFIGURED",
+                    safeLogValue(event), safeLogValue(eventUuid));
             return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Result.error(503, "WEBHOOK_SECRET_MISSING"));
         }
         if (authentication != GitLabWebhookAuthenticator.AuthenticationResult.AUTHORIZED) {
+            log.warn("GitLab Webhook authentication rejected: event={}, eventUuid={}, reason=TOKEN_MISMATCH",
+                    safeLogValue(event), safeLogValue(eventUuid));
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Result.error(401, "WEBHOOK_UNAUTHORIZED"));
         }
         try {
-            if ("Merge Request Hook".equals(event)) return ResponseEntity.ok(Result.success(pomMergeGuardService == null
-                    ? Map.of("eventType", "merge_request", "ignored", 1) : pomMergeGuardService.handleMergeRequestHook(payload)));
-            if ("Push Hook".equals(event) || "push".equals(event)) {
-                Map<String, Object> guardResult = pomMergeGuardService == null
+            Map<String, Object> result;
+            if ("Merge Request Hook".equals(event)) {
+                result = pomMergeGuardService == null
+                        ? Map.of("eventType", "merge_request", "ignored", 1)
+                        : pomMergeGuardService.handleMergeRequestHook(payload);
+            } else if ("Push Hook".equals(event) || "push".equals(event)) {
+                result = pomMergeGuardService == null
                         ? Map.of("eventType", "push", "ignored", 1) : pomMergeGuardService.handlePushHook(payload);
                 handleGitLabPushLegacy(payload);
-                return ResponseEntity.ok(Result.success(guardResult));
+            } else {
+                result = Map.of("eventType", "ignored", "ignored", 1);
             }
-            return ResponseEntity.ok(Result.success(Map.of("eventType", "ignored", "ignored", 1)));
+            logWebhookCompletion(event, eventUuid, result);
+            return ResponseEntity.ok(Result.success(result));
         } catch (Exception e) {
-            log.error("处理GitLab Webhook失败");
+            log.error("GitLab Webhook failed: event={}, eventUuid={}, exceptionType={}",
+                    safeLogValue(event), safeLogValue(eventUuid), e.getClass().getSimpleName(), sanitizedFailure(e));
             return ResponseEntity.ok(Result.error("处理失败"));
         }
     }
@@ -156,6 +167,34 @@ public class WebhookController {
             log.error("处理GitLab Push Webhook失败");
             return Result.error("处理失败");
         }
+    }
+
+    private static String safeLogValue(String value) {
+        if (value == null || value.isBlank()) return "none";
+        StringBuilder safe = new StringBuilder(value.length());
+        for (int index = 0; index < value.length(); index++) {
+            char character = value.charAt(index);
+            safe.append(Character.isISOControl(character) ? '_' : character);
+        }
+        return safe.toString();
+    }
+
+    private static void logWebhookCompletion(String event, String eventUuid, Map<String, Object> result) {
+        log.info("GitLab Webhook completed: event={}, eventUuid={}, projectId={}, attempted={}, closed={}, bypassed={}, ignored={}, errors={}",
+                safeLogValue(event), safeLogValue(eventUuid), number(result, "projectId", -1),
+                number(result, "attempted", 0), number(result, "closed", 0), number(result, "bypassed", 0),
+                number(result, "ignored", 0), number(result, "errors", 0));
+    }
+
+    private static long number(Map<String, Object> result, String key, long fallback) {
+        Object value = result == null ? null : result.get(key);
+        return value instanceof Number number ? number.longValue() : fallback;
+    }
+
+    private static RuntimeException sanitizedFailure(Exception exception) {
+        RuntimeException sanitized = new RuntimeException();
+        sanitized.setStackTrace(exception.getStackTrace());
+        return sanitized;
     }
     
     /**
