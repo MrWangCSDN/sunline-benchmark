@@ -148,7 +148,7 @@ class PomMergeGuardServiceImplTest {
         assertEquals("CLOSED", decision(result).get("outcome"));
         assertEquals(true, decision(result).get("noteCreated"));
         assertEquals(true, decision(result).get("closed"));
-        assertEquals("禁止提交 pom 文件。本合并请求包含 pom.xml，已自动关闭。\n如确需提交，请在 commit message 中加入：merge pom file go\n\n命中的文件：\n- module/pom.xml", ok.notes.get(0));
+        assertEquals("禁止提交 pom 文件。本合并请求包含 pom.xml，已自动关闭。\n\n命中的文件：\n- module/pom.xml", ok.notes.get(0));
 
         FixtureMrService noteFails = pomFixture(); noteFails.failNote = true;
         assertEquals("CLOSED", decision(guard(noteFails).handleMergeRequestHook(mrPayload(42, 7, "open", "opened", "master"))).get("outcome"));

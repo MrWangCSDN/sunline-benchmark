@@ -25,7 +25,7 @@ import java.util.TreeSet;
 @ConditionalOnBean(GitLabMergeRequestService.class)
 public class PomMergeGuardServiceImpl implements PomMergeGuardService {
     private static final Logger log = LoggerFactory.getLogger(PomMergeGuardServiceImpl.class);
-    private static final String NOTE_PREFIX = "禁止提交 pom 文件。本合并请求包含 pom.xml，已自动关闭。\n如确需提交，请在 commit message 中加入：merge pom file go";
+    private static final String NOTE_PREFIX = "禁止提交 pom 文件。本合并请求包含 pom.xml，已自动关闭。";
     private final GitLabMergeRequestService mergeRequests;
     private final PomChangePolicy policy;
     private final Set<Long> allowedProjects;
