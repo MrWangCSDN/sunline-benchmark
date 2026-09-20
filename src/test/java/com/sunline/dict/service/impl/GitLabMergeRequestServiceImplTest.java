@@ -146,6 +146,55 @@ class GitLabMergeRequestServiceImplTest {
         assertEquals(List.of(), service(client).changes(42, 7, "0"));
     }
 
+    @Test
+    void fallsBackToLegacyChangesEndpointWhenDiffsEndpointIsNotFound() {
+        FixtureClient client = new FixtureClient(
+                response(GitLabApiClient.Status.NOT_FOUND, 404, "{\"message\":\"404 Not Found\"}"),
+                ok("{\"changes_count\":\"1\",\"changes\":[{\"old_path\":\"pom.xml\",\"new_path\":\"pom.xml\",\"new_file\":false,\"deleted_file\":false,\"renamed_file\":false}]}"));
+
+        List<MergeRequestChange> changes = service(client).changes(42, 7, "1");
+
+        assertEquals(List.of(new MergeRequestChange("pom.xml", "pom.xml", false, false, false)), changes);
+        assertEquals(List.of("/projects/42/merge_requests/7/diffs", "/projects/42/merge_requests/7/changes"), client.getPaths);
+        assertEquals(Map.of(), client.queries.get(1));
+    }
+
+    @Test
+    void fallsBackToLegacyChangesEndpointWhenDiffsResponseIsNotAnArray() {
+        FixtureClient client = new FixtureClient(
+                ok("{\"message\":\"unsupported endpoint response\"}"),
+                ok("{\"changes_count\":\"1\",\"changes\":[{\"old_path\":\"pom.xml\",\"new_path\":\"pom.xml\",\"new_file\":false,\"deleted_file\":false,\"renamed_file\":false}]}"));
+
+        assertEquals(1, service(client).changes(42, 7, "1").size());
+        assertEquals(List.of("/projects/42/merge_requests/7/diffs", "/projects/42/merge_requests/7/changes"), client.getPaths);
+    }
+
+    @Test
+    void doesNotFallBackToLegacyChangesEndpointForAuthorizationOrServerFailures() {
+        FixtureClient client = new FixtureClient(response(GitLabApiClient.Status.PERMANENT_FAILURE, 401, "unauthorized"));
+
+        GitLabMergeRequestAccessException exception = assertThrows(GitLabMergeRequestAccessException.class,
+                () -> service(client).changes(42, 7, "1"));
+
+        assertEquals("MR_CHANGES_FAILED", exception.errorCode());
+        assertEquals(List.of("/projects/42/merge_requests/7/diffs"), client.getPaths);
+    }
+
+    @Test
+    void rejectsIncompleteOrMalformedLegacyChangesResponse() {
+        FixtureClient incomplete = new FixtureClient(
+                response(GitLabApiClient.Status.NOT_FOUND, 404, "not found"),
+                ok("{\"changes_count\":\"1\",\"changes\":[]}"));
+        FixtureClient malformed = new FixtureClient(
+                response(GitLabApiClient.Status.NOT_FOUND, 404, "not found"),
+                ok("{\"changes_count\":\"1\"}"));
+
+        assertEquals("MR_CHANGES_FAILED", assertThrows(GitLabMergeRequestAccessException.class,
+                () -> service(incomplete).changes(42, 7, "1")).errorCode());
+        assertEquals("MR_CHANGES_FAILED", assertThrows(GitLabMergeRequestAccessException.class,
+                () -> service(malformed).changes(42, 7, "1")).errorCode());
+    }
+
     private static GitLabMergeRequestServiceImpl service(FixtureClient client) {
         return new GitLabMergeRequestServiceImpl(client, new ObjectMapper(), 2);
     }
@@ -153,6 +202,9 @@ class GitLabMergeRequestServiceImplTest {
     private static GitLabApiClient.ApiResponse ok(String body) { return ok(body, Map.of()); }
     private static GitLabApiClient.ApiResponse ok(String body, Map<String, List<String>> headers) {
         return new GitLabApiClient.ApiResponse(GitLabApiClient.Status.SUCCESS, 200, body, headers, null);
+    }
+    private static GitLabApiClient.ApiResponse response(GitLabApiClient.Status status, int httpStatus, String body) {
+        return new GitLabApiClient.ApiResponse(status, httpStatus, body, Map.of(), null);
     }
 
     private static final class FixtureClient implements GitLabApiClient {

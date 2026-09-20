@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sunline.dict.service.flowchange.GitLabApiClient;
 import com.sunline.dict.service.pomguard.GitLabMergeRequestService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -17,6 +19,8 @@ import java.util.Map;
 @Service
 @ConditionalOnProperty(name = "git.gitlab.url")
 public class GitLabMergeRequestServiceImpl implements GitLabMergeRequestService {
+    private static final Logger log = LoggerFactory.getLogger(GitLabMergeRequestServiceImpl.class);
+
     private final GitLabApiClient apiClient;
     private final ObjectMapper objectMapper;
     private final int pageSize;
@@ -52,12 +56,53 @@ public class GitLabMergeRequestServiceImpl implements GitLabMergeRequestService 
     @Override
     public List<MergeRequestChange> changes(long projectId, long iid, String expectedDiffCount) {
         int expected = expectedDiffCount(expectedDiffCount);
-        List<MergeRequestChange> changes = new ArrayList<>();
-        forEachPage("/projects/" + projectId + "/merge_requests/" + iid + "/diffs", "MR_CHANGES_FAILED", Map.of(),
-                item -> changes.add(new MergeRequestChange(nullableText(item, "old_path"), nullableText(item, "new_path"),
-                        bool(item, "new_file", "MR_CHANGES_FAILED"), bool(item, "deleted_file", "MR_CHANGES_FAILED"), bool(item, "renamed_file", "MR_CHANGES_FAILED"))));
+        List<MergeRequestChange> changes = diffChanges(projectId, iid);
+        if (changes == null) {
+            changes = legacyChanges(projectId, iid);
+        }
         if (changes.size() != expected) throw failure("MR_CHANGES_FAILED");
         return List.copyOf(changes);
+    }
+
+    private List<MergeRequestChange> diffChanges(long projectId, long iid) {
+        List<MergeRequestChange> changes = new ArrayList<>();
+        String path = "/projects/" + projectId + "/merge_requests/" + iid + "/diffs";
+        String page = "1";
+        java.util.Set<String> seenPages = new HashSet<>();
+        while (page != null) {
+            if (!page.matches("[1-9][0-9]*") || !seenPages.add(page)) throw failure("MR_CHANGES_FAILED");
+            Map<String, String> query = Map.of("page", page, "per_page", String.valueOf(pageSize));
+            GitLabApiClient.ApiResponse response = apiClient.get(path, query);
+            if ("1".equals(page) && response != null && response.status() == GitLabApiClient.Status.NOT_FOUND) {
+                log.warn("GitLab MR diffs endpoint unavailable, falling back to legacy changes endpoint: projectId={}, iid={}, httpStatus={}",
+                        projectId, iid, response.httpStatus());
+                return null;
+            }
+            JsonNode values = parse(response, "MR_CHANGES_FAILED");
+            if (!values.isArray()) {
+                if ("1".equals(page)) {
+                    log.warn("GitLab MR diffs response is incompatible, falling back to legacy changes endpoint: projectId={}, iid={}, httpStatus={}",
+                            projectId, iid, response.httpStatus());
+                    return null;
+                }
+                throw failure("MR_CHANGES_FAILED");
+            }
+            for (JsonNode item : values) changes.add(change(item));
+            page = nextPage(response);
+            if (page != null && (!page.matches("[1-9][0-9]*") || seenPages.contains(page))) throw failure("MR_CHANGES_FAILED");
+        }
+        return changes;
+    }
+
+    private List<MergeRequestChange> legacyChanges(long projectId, long iid) {
+        String path = "/projects/" + projectId + "/merge_requests/" + iid + "/changes";
+        JsonNode root = parse(apiClient.get(path, Map.of()), "MR_CHANGES_FAILED");
+        if (!root.isObject()) throw failure("MR_CHANGES_FAILED");
+        JsonNode values = root.path("changes");
+        if (!values.isArray()) throw failure("MR_CHANGES_FAILED");
+        List<MergeRequestChange> changes = new ArrayList<>();
+        for (JsonNode item : values) changes.add(change(item));
+        return changes;
     }
 
     @Override
@@ -115,6 +160,11 @@ public class GitLabMergeRequestServiceImpl implements GitLabMergeRequestService 
         if (value == null || !value.matches("[0-9]+")) throw failure("MR_CHANGES_FAILED");
         try { return Integer.parseInt(value); }
         catch (NumberFormatException ignored) { throw failure("MR_CHANGES_FAILED"); }
+    }
+    private static MergeRequestChange change(JsonNode item) {
+        return new MergeRequestChange(nullableText(item, "old_path"), nullableText(item, "new_path"),
+                bool(item, "new_file", "MR_CHANGES_FAILED"), bool(item, "deleted_file", "MR_CHANGES_FAILED"),
+                bool(item, "renamed_file", "MR_CHANGES_FAILED"));
     }
     private static String required(String value) { if (value == null || value.isBlank()) throw new IllegalArgumentException("GitLab merge request parameter is invalid"); return value; }
     private static String text(JsonNode node, String field, String code) { String value = nullableText(node, field); if (value == null || value.isEmpty()) throw failure(code); return value; }
