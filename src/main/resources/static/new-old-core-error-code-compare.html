@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>新老核心错误码比对</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .upload-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .upload-box {
+            border: 2px dashed #ddd;
+            border-radius: 10px;
+            padding: 30px;
+            text-align: center;
+            transition: all 0.3s;
+            background: #f8f9fa;
+        }
+
+        .upload-box:hover {
+            border-color: #667eea;
+            background: #f0f4ff;
+        }
+
+        .upload-box.has-file {
+            border-color: #28a745;
+            background: #f0fff4;
+        }
+
+        .upload-box h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .upload-box input[type="file"] {
+            display: none;
+        }
+
+        .upload-btn {
+            display: inline-block;
+            padding: 12px 30px;
+            background: #667eea;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 14px;
+        }
+
+        .upload-btn:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+        }
+
+        .file-info {
+            margin-top: 15px;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+            display: none;
+        }
+
+        .file-info.show {
+            display: block;
+        }
+
+        .file-info .file-name {
+            color: #333;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .file-info .file-size {
+            color: #666;
+            font-size: 12px;
+        }
+
+        .remove-file {
+            margin-top: 10px;
+            padding: 6px 15px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .remove-file:hover {
+            background: #c82333;
+        }
+
+        .exclude-section {
+            margin-bottom: 20px;
+        }
+
+        .exclude-section label {
+            font-size: 14px;
+            font-weight: bold;
+            color: #333;
+            margin-right: 10px;
+        }
+
+        .exclude-section input[type="text"] {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            width: 400px;
+        }
+
+        .exclude-section input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .exclude-section .hint {
+            font-size: 12px;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        .button-group {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .btn {
+            padding: 12px 40px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+
+        .btn-primary {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #218838;
+            transform: translateY(-2px);
+        }
+
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+            transform: translateY(-2px);
+        }
+
+        .result-section {
+            display: none;
+            margin-top: 30px;
+        }
+
+        .result-section.show {
+            display: block;
+        }
+
+        .result-header {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .result-header h3 {
+            color: #333;
+            font-size: 18px;
+        }
+
+        .download-btn {
+            padding: 8px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .download-btn:hover {
+            background: #0056b3;
+        }
+
+        .result-info {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+
+        .result-info h4 {
+            color: #856404;
+            margin-bottom: 10px;
+        }
+
+        .result-info ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .result-info li {
+            padding: 5px 0;
+            color: #856404;
+        }
+
+        .legend {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        .legend h4 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .legend-items {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+            border: 1px solid #ddd;
+        }
+
+        .legend-color.green {
+            background: #90EE90;
+        }
+
+        .legend-color.yellow {
+            background: #ffff99;
+        }
+
+        .legend-color.gray {
+            background: #d3d3d3;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 30px;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .error-message.show {
+            display: block;
+        }
+
+        .tips {
+            background: #d1ecf1;
+            border-left: 4px solid #17a2b8;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+
+        .tips h4 {
+            color: #0c5460;
+            margin-bottom: 10px;
+        }
+
+        .tips ul {
+            color: #0c5460;
+            padding-left: 20px;
+        }
+
+        .tips li {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🆚 新老核心错误码比对</h1>
+            <p>以「交易码 + 新响应码」为唯一键，比较旧版本与新版本错误码 Excel 的差异，标记新增、删除和被修改的列</p>
+        </div>
+
+        <div class="content">
+            <!-- 上传区域 -->
+            <div class="upload-section">
+                <!-- 旧版本错误码excel -->
+                <div class="upload-box" id="oldBox">
+                    <h3>📄 旧版本错误码excel</h3>
+                    <input type="file" id="oldFile" accept=".xlsx,.xls">
+                    <label for="oldFile" class="upload-btn">选择文件</label>
+                    <div class="file-info" id="oldInfo">
+                        <div class="file-name" id="oldName"></div>
+                        <div class="file-size" id="oldSize"></div>
+                        <button class="remove-file" onclick="removeFile('old')">移除</button>
+                    </div>
+                </div>
+
+                <!-- 新版本错误码excel -->
+                <div class="upload-box" id="newBox">
+                    <h3>📄 新版本错误码excel</h3>
+                    <input type="file" id="newFile" accept=".xlsx,.xls">
+                    <label for="newFile" class="upload-btn">选择文件</label>
+                    <div class="file-info" id="newInfo">
+                        <div class="file-name" id="newName"></div>
+                        <div class="file-size" id="newSize"></div>
+                        <button class="remove-file" onclick="removeFile('new')">移除</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 固定表头说明（单 sheet，无需排除 sheet） -->
+            <div class="exclude-section">
+                <label>表头格式（固定在第 1 行）：</label>
+                <div class="hint">
+                    A 交易码、B 交易名称、C 分组、D 新响应码、E 新响应码错误描述、
+                    F 调用方SOP格式调用防腐交易响应码、G 调用方SOAP/JSON格式调用防腐交易响应码；
+                    唯一键为「交易码 + 新响应码」，数据从第 2 行开始
+                </div>
+            </div>
+
+            <!-- 按钮组 -->
+            <div class="button-group">
+                <button class="btn btn-primary" id="compareBtn" disabled>
+                    🔍 开始比较
+                </button>
+                <button class="btn btn-secondary" onclick="cancelCompare()">
+                    ❌ 取消
+                </button>
+                <button class="btn btn-danger" onclick="resetForm()">
+                    🔄 重置
+                </button>
+            </div>
+
+            <!-- 加载中 -->
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>正在比较文档，请稍候...</p>
+            </div>
+
+            <!-- 错误信息 -->
+            <div class="error-message" id="errorMessage"></div>
+
+            <!-- 结果区域 -->
+            <div class="result-section" id="resultSection">
+                <div class="result-header">
+                    <h3>📈 比对结果</h3>
+                    <button class="download-btn" onclick="downloadResult()">
+                        ⬇️ 下载结果
+                    </button>
+                </div>
+
+                <!-- 图例 -->
+                <div class="legend">
+                    <h4>📌 颜色说明</h4>
+                    <div class="legend-items">
+                        <div class="legend-item">
+                            <div class="legend-color green"></div>
+                            <span>新增（绿色）- 整行标绿：新版本新增的错误码</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color yellow"></div>
+                            <span>修改（黄色）- 仅变化的列标黄，明细见「修订记录」</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color gray"></div>
+                            <span>删除（灰色+删除线）- 旧版本独有，仅登记「修订记录」</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 统计信息 -->
+                <div class="result-info" id="resultInfo"></div>
+            </div>
+
+            <!-- 使用提示 -->
+            <div class="tips">
+                <h4>💡 使用说明</h4>
+                <ul>
+                    <li><strong>文件说明：</strong>
+                        <ul>
+                            <li>左边：旧版本错误码excel（Excel格式）</li>
+                            <li>右边：新版本错误码excel（Excel格式）</li>
+                            <li>表头固定在第 1 行（A~G 共 7 列），数据从第 2 行开始；表头不符合会直接报错并指出哪一列不对</li>
+                            <li>文件含多个 sheet 时会先提示"只比对第一个 sheet"，确认后才开始比对；取消则不比对</li>
+                        </ul>
+                    </li>
+                    <li><strong>唯一键与比对范围：</strong>
+                        <ul>
+                            <li>唯一键：<strong>交易码 + 新响应码</strong>（A + D 列）</li>
+                            <li>比对列：交易名称(B)、分组(C)、新响应码错误描述(E)、调用方SOP格式调用防腐交易响应码(F)、调用方SOAP/JSON格式调用防腐交易响应码(G)</li>
+                            <li>比较前统一去掉首尾空格；同一「交易码 + 新响应码」重复时后行覆盖前行（日志告警）</li>
+                            <li>缺少交易码或新响应码的行会被跳过，并在结果统计里给出跳过行数</li>
+                        </ul>
+                    </li>
+                    <li><strong>变更标记：</strong>
+                        <ul>
+                            <li><span style="color:#28a745">✅ 新增</span>：新版本独有的错误码，整行标绿</li>
+                            <li><span style="color:#ffc107">✏️ 修改</span>：仅变化的列标黄，结果 sheet 显示新值，旧值→新值写在修订明细里</li>
+                            <li><span style="color:#6c757d">❌ 删除</span>：旧版本独有的错误码，不在结果 sheet 追加行，仅登记到「修订记录」</li>
+                        </ul>
+                    </li>
+                    <li><strong>修订记录格式（5 列）：</strong>
+                        <ul>
+                            <li>A列：交易码</li>
+                            <li>B列：新响应码</li>
+                            <li>C列：修订级别（固定为"错误码"）</li>
+                            <li>D列：修订方式（新增/修改/删除，带颜色标记）</li>
+                            <li>E列：修订明细（形如「列名: 旧值 → 新值」，多列用分号分隔，带双向超链接）</li>
+                        </ul>
+                    </li>
+                    <li><strong>超链接：</strong>
+                        <ul>
+                            <li>修订记录 → 结果 sheet 对应行（正向链接）</li>
+                            <li>结果 sheet 对应行 → 修订记录（反向链接）</li>
+                        </ul>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let oldFile = null;
+        let newFile = null;
+        let resultFileName = null;
+
+        // 文件选择事件
+        document.getElementById('oldFile').addEventListener('change', function(e) {
+            handleFileSelect(e, 'old');
+        });
+
+        document.getElementById('newFile').addEventListener('change', function(e) {
+            handleFileSelect(e, 'new');
+        });
+
+        // 处理文件选择
+        function handleFileSelect(e, type) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            if (type === 'old') {
+                oldFile = file;
+                document.getElementById('oldName').textContent = file.name;
+                document.getElementById('oldSize').textContent = formatFileSize(file.size);
+                document.getElementById('oldInfo').classList.add('show');
+                document.getElementById('oldBox').classList.add('has-file');
+            } else {
+                newFile = file;
+                document.getElementById('newName').textContent = file.name;
+                document.getElementById('newSize').textContent = formatFileSize(file.size);
+                document.getElementById('newInfo').classList.add('show');
+                document.getElementById('newBox').classList.add('has-file');
+            }
+
+            checkFilesReady();
+        }
+
+        // 移除文件
+        function removeFile(type) {
+            if (type === 'old') {
+                oldFile = null;
+                document.getElementById('oldFile').value = '';
+                document.getElementById('oldInfo').classList.remove('show');
+                document.getElementById('oldBox').classList.remove('has-file');
+            } else {
+                newFile = null;
+                document.getElementById('newFile').value = '';
+                document.getElementById('newInfo').classList.remove('show');
+                document.getElementById('newBox').classList.remove('has-file');
+            }
+
+            checkFilesReady();
+        }
+
+        // 检查文件是否准备好
+        function checkFilesReady() {
+            const compareBtn = document.getElementById('compareBtn');
+            if (oldFile && newFile) {
+                compareBtn.disabled = false;
+            } else {
+                compareBtn.disabled = true;
+            }
+        }
+
+        // 格式化文件大小
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        }
+
+        // 发起比对请求（firstSheetOnly：多 sheet 确认后传 true）
+        async function requestCompare(firstSheetOnly) {
+            const formData = new FormData();
+            formData.append('oldFile', oldFile);
+            formData.append('newFile', newFile);
+            formData.append('firstSheetOnly', firstSheetOnly ? 'true' : 'false');
+
+            const response = await fetch('/api/new-old-core-error-code/compare', {
+                method: 'POST',
+                body: formData
+            });
+            return response.json();
+        }
+
+        // 开始比较
+        document.getElementById('compareBtn').addEventListener('click', async function() {
+            if (!oldFile || !newFile) {
+                showError('请先上传两个Excel文件');
+                return;
+            }
+
+            // 显示加载
+            document.getElementById('loading').classList.add('show');
+            document.getElementById('resultSection').classList.remove('show');
+            document.getElementById('errorMessage').classList.remove('show');
+
+            try {
+                let result = await requestCompare(false);
+
+                // 文件含多个 sheet：提示确认"只比对第一个 sheet"
+                if (result.code === 200 && result.data && result.data.needConfirm) {
+                    document.getElementById('loading').classList.remove('show');
+                    const oldNames = result.data.oldSheetNames || [];
+                    const newNames = result.data.newSheetNames || [];
+                    const message = '检测到多个 sheet：\n'
+                        + '旧版本：' + oldNames.join('、') + '\n'
+                        + '新版本：' + newNames.join('、') + '\n\n'
+                        + '本功能只比对第一个 sheet（旧版本「' + (oldNames[0] || '') + '」，'
+                        + '新版本「' + (newNames[0] || '') + '」），是否继续？';
+                    if (!window.confirm(message)) {
+                        showError('已取消比对（未比对任何内容）');
+                        return;
+                    }
+                    document.getElementById('loading').classList.add('show');
+                    result = await requestCompare(true);
+                }
+
+                if (result.code === 200) {
+                    // 显示结果
+                    resultFileName = result.data.fileName;
+                    showResult(result.data);
+                } else {
+                    showError(result.message || '比较失败');
+                }
+            } catch (error) {
+                console.error('比较失败', error);
+                showError('比较失败：' + error.message);
+            } finally {
+                document.getElementById('loading').classList.remove('show');
+            }
+        });
+
+        // 显示结果
+        function showResult(data) {
+            let html = '<p>共比对行数: ' + (data.totalRows ?? '-') + '</p>'
+                + '<p>差异条目: ' + (data.totalChanges ?? 0) + '</p>';
+            if (data.invalidRows) {
+                html += '<p>已跳过行数（缺少交易码或新响应码）: ' + data.invalidRows + '</p>';
+            }
+            document.getElementById('resultInfo').innerHTML = html;
+            document.getElementById('resultSection').classList.add('show');
+        }
+
+        // 下载结果
+        function downloadResult() {
+            if (!resultFileName) {
+                showError('没有可下载的结果');
+                return;
+            }
+
+            window.location.href = '/api/new-old-core-error-code/download/' + encodeURIComponent(resultFileName);
+        }
+
+        // 显示错误
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+
+            setTimeout(() => {
+                errorDiv.classList.remove('show');
+            }, 5000);
+        }
+
+        // 取消比较
+        function cancelCompare() {
+            // 可以添加取消逻辑
+            console.log('取消比较');
+        }
+
+        // 重置表单
+        function resetForm() {
+            removeFile('old');
+            removeFile('new');
+            document.getElementById('resultSection').classList.remove('show');
+            document.getElementById('errorMessage').classList.remove('show');
+            resultFileName = null;
+        }
+    </script>
+</body>
+</html>

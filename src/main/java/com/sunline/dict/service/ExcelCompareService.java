@@ -41,6 +41,19 @@ public interface ExcelCompareService {
             MultipartFile oldFile, MultipartFile newFile, String excludeSheets) throws Exception;
 
     /**
+     * 新老核心错误码比对模式
+     * 表头固定（第 1 行 A~G 共 7 列），唯一键为「交易码 + 新响应码」
+     *
+     * @param oldFile        旧版本错误码 Excel
+     * @param newFile        新版本错误码 Excel（作为输出底本）
+     * @param firstSheetOnly 文件含多个 sheet 时是否已确认"只比对第一个 sheet"
+     * @return 比较结果信息：未确认且存在多个 sheet 时返回 needConfirm + sheet 名；
+     *         比对完成返回 fileName, totalRows, totalChanges, invalidRows
+     */
+    Map<String, Object> compareNewOldCoreErrorCodes(
+            MultipartFile oldFile, MultipartFile newFile, boolean firstSheetOnly) throws Exception;
+
+    /**
      * 获取结果文件
      * @param fileName 文件名
      * @return 文件对象
