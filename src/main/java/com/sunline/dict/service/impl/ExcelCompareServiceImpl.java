@@ -3724,6 +3724,352 @@ public class ExcelCompareServiceImpl implements ExcelCompareService {
             return e;
         }
     }
+
+    // ==================== 新老核心错误码比对 ====================
+
+    /** 错误码比对固定表头（A~G 列，顺序固定） */
+    private static final String[] EC_HEADERS = {
+            "交易码",
+            "交易名称",
+            "分组",
+            "新响应码",
+            "新响应码错误描述",
+            "调用方SOP格式调用防腐交易响应码",
+            "调用方SOAP/JSON格式调用防腐交易响应码"
+    };
+    /** 唯一键列：A 交易码 */
+    private static final int EC_COL_TRAN_CODE = 0;
+    /** 唯一键列：D 新响应码 */
+    private static final int EC_COL_RESP_CODE = 3;
+    /** 参与比对的列（键列 A/D 不参与）：交易名称、分组、新响应码错误描述、SOP 响应码、SOAP/JSON 响应码 */
+    private static final int[] EC_COMPARE_COLS = {1, 2, 4, 5, 6};
+    /** 组合唯一键分隔符（不会出现在单元格文本中） */
+    private static final char EC_KEY_SEPARATOR = '\u0001';
+    /** 表头所在行（固定第 1 行） */
+    private static final int EC_HEADER_ROW = 0;
+    /** 修订记录 sheet 名 */
+    private static final String EC_REVISION_SHEET = "修订记录";
+
+    /**
+     * 新老核心错误码比对入口
+     * 表头固定（第 1 行 A~G），唯一键 = 交易码 + 新响应码，比较其余 5 列
+     */
+    @Override
+    public Map<String, Object> compareNewOldCoreErrorCodes(
+            MultipartFile oldFile, MultipartFile newFile, boolean firstSheetOnly) throws Exception {
+
+        log.info("开始新老核心错误码比对，firstSheetOnly={}", firstSheetOnly);
+
+        File resultDir = new File(RESULT_DIR);
+        if (!resultDir.exists()) resultDir.mkdirs();
+
+        ZipSecureFile.setMinInflateRatio(0.001);
+
+        try (Workbook oldWb = WorkbookFactory.create(oldFile.getInputStream());
+             Workbook newWb = WorkbookFactory.create(newFile.getInputStream())) {
+
+            if (oldWb.getNumberOfSheets() == 0 || newWb.getNumberOfSheets() == 0) {
+                throw new RuntimeException("Excel 至少需要包含一个 sheet");
+            }
+
+            // 多 sheet 且尚未确认 → 交前端确认"只比对第一个 sheet"
+            if (!firstSheetOnly
+                    && (oldWb.getNumberOfSheets() > 1 || newWb.getNumberOfSheets() > 1)) {
+                Map<String, Object> confirm = new HashMap<>();
+                confirm.put("needConfirm", true);
+                confirm.put("oldSheetNames", sheetNamesOf(oldWb));
+                confirm.put("newSheetNames", sheetNamesOf(newWb));
+                confirm.put("oldSheetCount", oldWb.getNumberOfSheets());
+                confirm.put("newSheetCount", newWb.getNumberOfSheets());
+                log.info("两侧存在多个 sheet，等待用户确认只比对第一个 sheet");
+                return confirm;
+            }
+
+            Sheet oldSheet = oldWb.getSheetAt(0);
+            Sheet newSheet = newWb.getSheetAt(0);
+            validateErrorCodeHeader(oldSheet, "旧版本");
+            validateErrorCodeHeader(newSheet, "新版本");
+
+            EcSheet oldData = readErrorCodeRows(oldSheet, "旧版本");
+            EcSheet newData = readErrorCodeRows(newSheet, "新版本");
+
+            try (Workbook resultWb = new XSSFWorkbook()) {
+                StyleCache styles = new StyleCache(resultWb);
+                String resultSheetName = newSheet.getSheetName();
+                Sheet resultSheet = resultWb.createSheet(resultSheetName);
+                copySheetContent(newSheet, resultSheet);
+
+                List<EcRevision> revisions = new ArrayList<>();
+
+                // 新增 + 修改：遍历新版本（保持输出行序）
+                for (EcRow newRow : newData.rows.values()) {
+                    EcRow oldRow = oldData.rows.get(newRow.key);
+                    if (oldRow == null) {
+                        for (int c = 0; c < EC_HEADERS.length; c++) {
+                            paintCell(resultSheet, newRow.rowIndex, c, styles.addedBgWithBorder);
+                        }
+                        revisions.add(EcRevision.added(newRow, resultSheetName));
+                    } else {
+                        List<String> diffs = new ArrayList<>();
+                        for (int c : EC_COMPARE_COLS) {
+                            String oldVal = normalize(oldRow.values[c]);
+                            String newVal = normalize(newRow.values[c]);
+                            if (!oldVal.equals(newVal)) {
+                                paintCell(resultSheet, newRow.rowIndex, c, styles.modifiedBgWithBorder);
+                                diffs.add(EC_HEADERS[c] + ": " + oldVal + " → " + newVal);
+                            }
+                        }
+                        if (!diffs.isEmpty()) {
+                            revisions.add(EcRevision.modified(newRow, diffs, resultSheetName));
+                        }
+                    }
+                }
+
+                // 删除：旧版本独有（结果 sheet 不追加行，仅登记修订记录）
+                for (EcRow oldRow : oldData.rows.values()) {
+                    if (!newData.rows.containsKey(oldRow.key)) {
+                        revisions.add(EcRevision.deleted(oldRow));
+                    }
+                }
+
+                writeErrorCodeRevisionSheet(resultWb, revisions, styles);
+
+                String fileName = "new-old-core-error-code-compare-"
+                        + new SimpleDateFormat("yyyyMMddHHmmssSSS").format(new Date()) + ".xlsx";
+                File out = new File(resultDir, fileName);
+                try (FileOutputStream fos = new FileOutputStream(out)) {
+                    resultWb.write(fos);
+                }
+
+                int invalidRows = oldData.invalidRows + newData.invalidRows;
+                log.info("新老核心错误码比对完成：{} 行，{} 处变更，跳过 {} 行",
+                        newData.rows.size(), revisions.size(), invalidRows);
+
+                Map<String, Object> ret = new HashMap<>();
+                ret.put("fileName", fileName);
+                ret.put("totalRows", newData.rows.size());
+                ret.put("totalChanges", revisions.size());
+                ret.put("invalidRows", invalidRows);
+                return ret;
+            }
+        }
+    }
+
+    /** 收集 workbook 的所有 sheet 名（保持顺序） */
+    private List<String> sheetNamesOf(Workbook wb) {
+        List<String> names = new ArrayList<>();
+        for (int i = 0; i < wb.getNumberOfSheets(); i++) {
+            names.add(wb.getSheetName(i));
+        }
+        return names;
+    }
+
+    /** 校验错误码表头：第 1 行 A~G 共 7 列，逐字比对（trim 后） */
+    private void validateErrorCodeHeader(Sheet sheet, String label) {
+        Row header = sheet.getRow(EC_HEADER_ROW);
+        if (header == null) {
+            throw new RuntimeException(label + "错误码 Excel 缺少表头行（第 1 行）");
+        }
+        for (int c = 0; c < EC_HEADERS.length; c++) {
+            Cell cell = header.getCell(c);
+            String actual = cell == null ? "" : new DataFormatter().formatCellValue(cell).trim();
+            if (!EC_HEADERS[c].equals(actual)) {
+                throw new RuntimeException(label + "错误码 Excel 表头不正确：" + getColumnName(c) + " 列应为“"
+                        + EC_HEADERS[c] + "”，实际为“" + actual + "”");
+            }
+        }
+    }
+
+    /** 读取错误码数据行（第 2 行起），唯一键 = 交易码 + 新响应码 */
+    private EcSheet readErrorCodeRows(Sheet sheet, String label) {
+        Map<String, EcRow> rows = new LinkedHashMap<>();
+        int invalidRows = 0;
+
+        for (int r = EC_HEADER_ROW + 1; r <= sheet.getLastRowNum(); r++) {
+            Row row = sheet.getRow(r);
+            if (row == null) continue;
+
+            String[] values = new String[EC_HEADERS.length];
+            boolean allBlank = true;
+            for (int c = 0; c < EC_HEADERS.length; c++) {
+                Cell cell = row.getCell(c);
+                values[c] = cell == null ? "" : new DataFormatter().formatCellValue(cell).trim();
+                if (!values[c].isEmpty()) allBlank = false;
+            }
+            if (allBlank) continue;
+
+            String tranCode = values[EC_COL_TRAN_CODE];
+            String respCode = values[EC_COL_RESP_CODE];
+            if (tranCode.isEmpty() || respCode.isEmpty()) {
+                invalidRows++;
+                log.warn("{}错误码 Excel 第 {} 行缺少交易码或新响应码，已跳过", label, r + 1);
+                continue;
+            }
+
+            String key = tranCode + EC_KEY_SEPARATOR + respCode;
+            if (rows.containsKey(key)) {
+                log.warn("{}错误码 Excel 第 {} 行交易码[{}]+新响应码[{}]重复（后行覆盖前行）",
+                        label, r + 1, tranCode, respCode);
+            }
+            rows.put(key, new EcRow(key, tranCode, respCode, values, r));
+        }
+        return new EcSheet(rows, invalidRows);
+    }
+
+    /** 追加错误码修订记录 sheet：交易码 | 新响应码 | 修订级别 | 修订方式 | 修订明细 */
+    private void writeErrorCodeRevisionSheet(Workbook wb, List<EcRevision> revisions, StyleCache styles) {
+        // 排序：新增 < 修改 < 删除，其次按结果行号
+        revisions.sort((a, b) -> {
+            int w = Integer.compare(ecWayRank(a.way), ecWayRank(b.way));
+            if (w != 0) return w;
+            int rA = a.linkRow == null ? Integer.MAX_VALUE : a.linkRow;
+            int rB = b.linkRow == null ? Integer.MAX_VALUE : b.linkRow;
+            return Integer.compare(rA, rB);
+        });
+
+        String sheetName = wb.getSheet(EC_REVISION_SHEET) != null
+                ? EC_REVISION_SHEET + "_diff" : EC_REVISION_SHEET;
+        Sheet rev = wb.createSheet(sheetName);
+
+        Row header = rev.createRow(0);
+        header.createCell(0).setCellValue("交易码");
+        header.createCell(1).setCellValue("新响应码");
+        header.createCell(2).setCellValue("修订级别");
+        header.createCell(3).setCellValue("修订方式");
+        header.createCell(4).setCellValue("修订明细");
+
+        CreationHelper helper = wb.getCreationHelper();
+        for (int i = 0; i < revisions.size(); i++) {
+            EcRevision e = revisions.get(i);
+            int rowIdx = i + 1;
+            Row row = rev.createRow(rowIdx);
+            row.createCell(0).setCellValue(e.tranCode);
+            row.createCell(1).setCellValue(e.respCode);
+            row.createCell(2).setCellValue(e.level);
+            row.createCell(3).setCellValue(e.way);
+            Cell detailCell = row.createCell(4);
+            detailCell.setCellValue(e.detail);
+
+            // 按修订方式给"修订方式"列染色
+            switch (e.way) {
+                case "新增": row.getCell(3).setCellStyle(styles.addedBgWithBorder); break;
+                case "修改": row.getCell(3).setCellStyle(styles.modifiedBgWithBorder); break;
+                case "删除": row.getCell(3).setCellStyle(styles.deletedBgWithBorder); break;
+                default:
+            }
+
+            // 明细 → 结果行超链接 + 反向链接（删除行不在结果 sheet 中，无链接）
+            if (e.linkSheetName != null && e.linkRow != null && e.linkCol != null) {
+                Hyperlink link = helper.createHyperlink(HyperlinkType.DOCUMENT);
+                link.setAddress("'" + e.linkSheetName + "'!"
+                        + CellReference.convertNumToColString(e.linkCol) + (e.linkRow + 1));
+                detailCell.setHyperlink(link);
+
+                Sheet targetSheet = wb.getSheet(e.linkSheetName);
+                if (targetSheet != null) {
+                    Row targetRow = targetSheet.getRow(e.linkRow);
+                    if (targetRow != null) {
+                        Cell targetCell = targetRow.getCell(e.linkCol);
+                        if (targetCell == null) targetCell = targetRow.createCell(e.linkCol);
+                        Hyperlink back = helper.createHyperlink(HyperlinkType.DOCUMENT);
+                        back.setAddress("'" + sheetName + "'!A" + (rowIdx + 1));
+                        targetCell.setHyperlink(back);
+                    }
+                }
+            }
+        }
+    }
+
+    private int ecWayRank(String way) {
+        switch (way) {
+            case "新增": return 0;
+            case "修改": return 1;
+            case "删除": return 2;
+            default: return 99;
+        }
+    }
+
+    /** 错误码 sheet 读取结果 */
+    private static class EcSheet {
+        final Map<String, EcRow> rows;
+        final int invalidRows;
+
+        EcSheet(Map<String, EcRow> rows, int invalidRows) {
+            this.rows = rows;
+            this.invalidRows = invalidRows;
+        }
+    }
+
+    /** 错误码数据行 */
+    private static class EcRow {
+        final String key;
+        final String tranCode;
+        final String respCode;
+        final String[] values;
+        final int rowIndex;
+
+        EcRow(String key, String tranCode, String respCode, String[] values, int rowIndex) {
+            this.key = key;
+            this.tranCode = tranCode;
+            this.respCode = respCode;
+            this.values = values;
+            this.rowIndex = rowIndex;
+        }
+
+        /** 非空比较列的摘要，用于新增/删除的修订明细 */
+        String summary() {
+            List<String> parts = new ArrayList<>();
+            for (int c : EC_COMPARE_COLS) {
+                if (!values[c].isEmpty()) parts.add(EC_HEADERS[c] + "=" + values[c]);
+            }
+            return parts.isEmpty() ? "（无其它列数据）" : String.join("; ", parts);
+        }
+    }
+
+    /** 错误码修订条目 */
+    private static class EcRevision {
+        String tranCode;
+        String respCode;
+        String level = "错误码";
+        String way;
+        String detail;
+        String linkSheetName;
+        Integer linkRow;
+        Integer linkCol;
+
+        static EcRevision added(EcRow row, String sheetName) {
+            EcRevision e = new EcRevision();
+            e.tranCode = row.tranCode;
+            e.respCode = row.respCode;
+            e.way = "新增";
+            e.detail = "新增错误码：" + row.summary();
+            e.linkSheetName = sheetName;
+            e.linkRow = row.rowIndex;
+            e.linkCol = EC_COL_TRAN_CODE;
+            return e;
+        }
+
+        static EcRevision modified(EcRow row, List<String> diffs, String sheetName) {
+            EcRevision e = new EcRevision();
+            e.tranCode = row.tranCode;
+            e.respCode = row.respCode;
+            e.way = "修改";
+            e.detail = String.join("; ", diffs);
+            e.linkSheetName = sheetName;
+            e.linkRow = row.rowIndex;
+            e.linkCol = EC_COL_TRAN_CODE;
+            return e;
+        }
+
+        static EcRevision deleted(EcRow row) {
+            EcRevision e = new EcRevision();
+            e.tranCode = row.tranCode;
+            e.respCode = row.respCode;
+            e.way = "删除";
+            e.detail = "删除错误码：" + row.summary();
+            return e;
+        }
+    }
 }
 
 
